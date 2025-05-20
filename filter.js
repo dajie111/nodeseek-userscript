@@ -92,44 +92,4 @@ function applyKeywordFilter() {
     if (typeof makeDraggable === 'function') {
         makeDraggable(dialog, {width: dialog.offsetWidth, height: header.offsetHeight + inputButtonContainer.offsetHeight + 20}); // 根据内容调整可拖动区域大小
     }
-
-    // 为过滤按钮添加点击事件
-    filterBtn.onclick = function() {
-        console.log('过滤按钮点击');
-        const keywordsInput = input.value;
-        const keywords = keywordsInput.split(',').map(kw => kw.trim()).filter(kw => kw.length > 0);
-        console.log('输入的关键词:', keywords);
-
-        // 获取所有帖子元素
-        // TODO: 请根据实际页面结构修改这里的选择器
-        const postElements = document.querySelectorAll('.thread, .topic-item'); 
-        console.log('找到的帖子元素数量:', postElements.length);
-
-        postElements.forEach(post => {
-            const postText = post.textContent.toLowerCase();
-            let showPost = false;
-
-            if (keywords.length === 0) {
-                // 如果没有输入关键词，则显示所有帖子
-                showPost = true;
-            } else {
-                // 检查帖子内容是否包含任意关键词
-                for (const keyword of keywords) {
-                    if (postText.includes(keyword.toLowerCase())) {
-                        showPost = true;
-                        break;
-                    }
-                }
-            }
-
-            // 显示或隐藏帖子
-            if (showPost) {
-                post.style.display = ''; // 使用空字符串恢复默认显示
-                console.log('显示帖子:', post);
-            } else {
-                post.style.display = 'none';
-                console.log('隐藏帖子:', post);
-            }
-        });
-    };
 }
