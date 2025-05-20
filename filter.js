@@ -48,6 +48,10 @@ function createFilterUI() {
     container.style.minWidth = '260px';
     container.style.maxWidth = '350px';
     container.style.userSelect = 'auto';
+    
+    // 添加拖动功能
+    makeDraggable(container); // 调用拖动函数
+
     container.innerHTML = `
         <label style="font-weight:bold;">关键词过滤（逗号分隔）：</label><br>
         <input id="ns-keyword-input" type="text" style="width:180px;padding:4px 8px;font-size:15px;border:1px solid #ccc;border-radius:4px;" placeholder="输入关键词，如A,B,C" />
