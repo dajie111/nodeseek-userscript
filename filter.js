@@ -56,7 +56,7 @@ function applyKeywordFilter() {
     // 输入框
     const input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = '输入关键词,如A,B,C111';
+    input.placeholder = '输入关键词,如A,B,C0000';
     input.style.width = 'calc(100% - 80px)'; // 调整宽度给按钮留空间
     input.style.padding = '6px 10px';
     input.style.marginRight = '8px';
@@ -85,13 +85,11 @@ function applyKeywordFilter() {
 
     dialog.appendChild(inputButtonContainer);
 
-    // 将弹窗添加到页面body
     document.body.appendChild(dialog);
 
     // 使弹窗可拖动
     // 假设 makeDraggable 函数在全局范围内可用 (在 nodeseek_blacklist.user.js 中定义)
     if (typeof makeDraggable === 'function') {
-        // 使关键词过滤弹窗可拖动，可拖动区域为顶部标题+输入框/按钮区域
-        makeDraggable(dialog, {width: dialog.offsetWidth, height: header.offsetHeight + inputButtonContainer.offsetHeight + 20});
+        makeDraggable(dialog, {width: 10, height: 10}); // 根据内容调整可拖动区域大小
     }
 }
