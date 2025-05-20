@@ -56,7 +56,7 @@ function applyKeywordFilter() {
     // 输入框
     const input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = '输入关键词,如A,B,C';
+    input.placeholder = '输入关键词,如A,B,C111';
     input.style.width = 'calc(100% - 80px)'; // 调整宽度给按钮留空间
     input.style.padding = '6px 10px';
     input.style.marginRight = '8px';
