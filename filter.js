@@ -85,11 +85,13 @@ function applyKeywordFilter() {
 
     dialog.appendChild(inputButtonContainer);
 
+    // 将弹窗添加到页面body
     document.body.appendChild(dialog);
 
     // 使弹窗可拖动
     // 假设 makeDraggable 函数在全局范围内可用 (在 nodeseek_blacklist.user.js 中定义)
     if (typeof makeDraggable === 'function') {
-        makeDraggable(dialog, {width: dialog.offsetWidth, height: header.offsetHeight + inputButtonContainer.offsetHeight + 20}); // 根据内容调整可拖动区域大小
+        // 使关键词过滤弹窗可拖动，可拖动区域为顶部标题+输入框/按钮区域
+        makeDraggable(dialog, {width: dialog.offsetWidth, height: header.offsetHeight + inputButtonContainer.offsetHeight + 20});
     }
 }
