@@ -19,11 +19,37 @@ function filterPosts(keywords) {
     console.log(`[NodeSeek过滤] 过滤完成，显示${showCount}条，隐藏${postItems.length - showCount}条。`);
 }
 
+// 保存关键词到 localStorage
+function saveKeywords(keywords) {
+    if (keywords && keywords.length > 0) {
+        localStorage.setItem('ns-filter-keywords', JSON.stringify(keywords));
+    } else {
+        localStorage.removeItem('ns-filter-keywords');
+    }
+}
+
+// 从 localStorage 获取关键词
+function getKeywords() {
+    const saved = localStorage.getItem('ns-filter-keywords');
+    return saved ? JSON.parse(saved) : [];
+}
+
+// 清除过滤效果，恢复所有帖子显示
+function clearFilter() {
+    const postItems = document.querySelectorAll('ul.post-list > li.post-list-item');
+    postItems.forEach(item => {
+        item.style.display = '';
+    });
+    localStorage.removeItem('ns-filter-keywords');
+    console.log('[NodeSeek过滤]', '已清除过滤');
+}
+
 // 创建关键词输入界面（弹窗）
 function createFilterUI(onFilter) {
     const existing = document.getElementById('ns-keyword-filter-dialog');
     if (existing) {
         existing.remove();
+        clearFilter();
         return;
     }
     const dialog = document.createElement('div');
@@ -60,18 +86,33 @@ function createFilterUI(onFilter) {
         <span id="ns-keyword-log" style="margin-left:10px;color:#888;font-size:13px;"></span>
     `;
     document.body.appendChild(dialog);
-    // 关闭按钮
+    
+    // 填充已保存的关键词
+    const savedKeywords = getKeywords();
+    const input = dialog.querySelector('#ns-keyword-input');
+    if (savedKeywords.length > 0) {
+        input.value = savedKeywords.join(',');
+    }
+    
+    // 关闭按钮 - 清除过滤效果
     dialog.querySelector('#ns-keyword-filter-close').onclick = function() {
         dialog.remove();
+        clearFilter();
     };
+    
     // 过滤逻辑
-    const input = dialog.querySelector('#ns-keyword-input');
     function doFilter() {
         const val = input.value;
         const keywords = val.split(/,|，/).map(s => s.trim()).filter(Boolean);
         filterPosts(keywords);
+        saveKeywords(keywords); // 保存关键词到 localStorage
+        // 新增：操作日志记录
+        if (typeof window.addLog === 'function') {
+            window.addLog('关键词过滤：' + (keywords.length > 0 ? keywords.join(',') : '无'));
+        }
         if (typeof onFilter === 'function') onFilter(keywords);
     }
+    
     dialog.querySelector('#ns-keyword-btn').onclick = doFilter;
     input.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
@@ -109,10 +150,14 @@ function createFilterUI(onFilter) {
 
 // 关键词过滤的 observer 初始化（用于主插件调用）
 function initFilterObserver() {
-    // 只保留 observer 监听分页、异步加载、SPA路由时，重新过滤当前输入框的关键词
-    // 但不再自动根据输入内容过滤，只在按钮或回车时过滤
-    // 可以直接注释掉 observer 的 filterPosts 调用，或者移除 observer
-    // 这里选择移除 observer，保持纯手动过滤
+    // 检查是否有保存的关键词，如果有则自动应用过滤
+    const savedKeywords = getKeywords();
+    if (savedKeywords.length > 0) {
+        // 自动应用过滤
+        filterPosts(savedKeywords);
+        // 自动显示过滤弹窗
+        createFilterUI();
+    }
 }
 
 // 拖动功能实现（与主插件一致，支持 window.makeDraggable）
@@ -167,5 +212,6 @@ if (!window.makeDraggable) {
 window.NodeSeekFilter = {
     filterPosts,
     createFilterUI,
-    initFilterObserver
+    initFilterObserver,
+    clearFilter
 };
