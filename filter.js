@@ -1,103 +1,181 @@
-// 关键词过滤功能入口
-window.showKeywordFilterDialog = function() {
-    // 检查弹窗是否已存在
-    if (document.getElementById('keyword-filter-dialog')) {
-        document.getElementById('keyword-filter-dialog').remove();
+// 关键词过滤主函数
+function filterPosts(keywords) {
+    console.log('[NodeSeek过滤]', '开始过滤，关键词：' + keywords.join(','));
+    const postItems = document.querySelectorAll('ul.post-list > li.post-list-item');
+    let showCount = 0;
+    // 新增：去除空格后再匹配
+    const norm = s => s.replace(/\s+/g, '').toLowerCase();
+    postItems.forEach(item => {
+        const titleEl = item.querySelector('.post-title a');
+        const title = titleEl ? titleEl.textContent.trim() : '';
+        const matched = keywords.length === 0 || keywords.every(kw => kw && norm(title).includes(norm(kw)));
+        if (matched) {
+            item.style.display = '';
+            showCount++;
+        } else {
+            item.style.display = 'none';
+        }
+    });
+    console.log(`[NodeSeek过滤] 过滤完成，显示${showCount}条，隐藏${postItems.length - showCount}条。`);
+}
+
+// 创建关键词输入界面（弹窗）
+function createFilterUI(onFilter) {
+    const existing = document.getElementById('ns-keyword-filter-dialog');
+    if (existing) {
+        existing.remove();
         return;
     }
-    // 创建弹窗
     const dialog = document.createElement('div');
-    dialog.id = 'keyword-filter-dialog';
+    dialog.id = 'ns-keyword-filter-dialog';
     dialog.style.position = 'fixed';
-    dialog.style.top = '8vh';
-    dialog.style.right = '4vw';
-    dialog.style.zIndex = 10000;
+    dialog.style.top = '60px';
+    dialog.style.right = '16px';
+    dialog.style.zIndex = 10001;
     dialog.style.background = '#fff';
-    dialog.style.border = '1px solid #ccc';
-    dialog.style.borderRadius = '10px';
-    dialog.style.boxShadow = '0 2px 16px rgba(0,0,0,0.18)';
-    dialog.style.padding = '18px 20px 16px 20px';
-    dialog.style.minWidth = '320px';
-    dialog.style.maxWidth = '96vw';
-    dialog.style.maxHeight = '80vh';
-    dialog.style.overflowY = 'auto';
-    dialog.style.fontFamily = 'inherit';
-    dialog.style.transition = 'all 0.2s';
-    // 移动端适配
-    if (window.innerWidth <= 767) {
-        dialog.style.width = '96vw';
-        dialog.style.minWidth = 'unset';
-        dialog.style.right = '2vw';
-        dialog.style.left = '2vw';
-        dialog.style.top = '4vh';
-        dialog.style.padding = '14px 8px 12px 8px';
-        dialog.style.borderRadius = '12px';
+    dialog.style.padding = '18px 24px 16px 24px';
+    dialog.style.borderRadius = '12px';
+    dialog.style.boxShadow = '0 4px 18px rgba(0,0,0,0.18)';
+    dialog.style.fontSize = '16px';
+    dialog.style.color = '#222';
+    dialog.style.lineHeight = '2';
+    dialog.style.border = '2px solid #4CAF50';
+    // 设置宽度与查看好友弹窗一致
+    if (window.innerWidth > 767) {
+        dialog.style.minWidth = '380px';
+        dialog.style.maxWidth = '600px';
+    } else {
+        dialog.style.minWidth = '';
+        dialog.style.maxWidth = '';
     }
-
-    // 标题和关闭按钮
-    const title = document.createElement('div');
-    title.textContent = '关键词过滤';
-    title.style.fontWeight = 'bold';
-    title.style.fontSize = window.innerWidth <= 767 ? '18px' : '16px';
-    title.style.marginBottom = '10px';
-    dialog.appendChild(title);
-    const closeBtn = document.createElement('span');
-    closeBtn.textContent = '×';
-    closeBtn.style.position = 'absolute';
-    closeBtn.style.right = window.innerWidth <= 767 ? '10px' : '12px';
-    closeBtn.style.top = window.innerWidth <= 767 ? '6px' : '8px';
-    closeBtn.style.cursor = 'pointer';
-    closeBtn.style.fontSize = window.innerWidth <= 767 ? '28px' : '22px';
-    closeBtn.style.lineHeight = '1';
-    closeBtn.style.width = window.innerWidth <= 767 ? '36px' : '28px';
-    closeBtn.style.height = window.innerWidth <= 767 ? '36px' : '28px';
-    closeBtn.style.textAlign = 'center';
-    closeBtn.style.borderRadius = '50%';
-    closeBtn.style.background = 'rgba(0,0,0,0.04)';
-    closeBtn.style.display = 'flex';
-    closeBtn.style.alignItems = 'center';
-    closeBtn.style.justifyContent = 'center';
-    closeBtn.onmouseover = function() { closeBtn.style.background = '#eee'; };
-    closeBtn.onmouseout = function() { closeBtn.style.background = 'rgba(0,0,0,0.04)'; };
-    closeBtn.onclick = function() { dialog.remove(); };
-    dialog.appendChild(closeBtn);
-
-    // 简单内容
-    const info = document.createElement('div');
-    info.textContent = '请输入要过滤的关键词（支持多个，逗号分隔）。后续可扩展为过滤帖子、用户等。';
-    info.style.margin = window.innerWidth <= 767 ? '8px 0 16px 0' : '10px 0 20px 0';
-    info.style.fontSize = window.innerWidth <= 767 ? '15px' : '13px';
-    dialog.appendChild(info);
-
-    // 输入框
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = '输入关键词，如A,B,C0000';
-    input.style.width = '100%';
-    input.style.padding = window.innerWidth <= 767 ? '12px' : '8px';
-    input.style.fontSize = window.innerWidth <= 767 ? '18px' : '15px';
-    input.style.marginBottom = window.innerWidth <= 767 ? '16px' : '10px';
-    input.style.border = '1px solid #ccc';
-    input.style.borderRadius = '6px';
-    input.style.boxSizing = 'border-box';
-    dialog.appendChild(input);
-
-    // 过滤按钮
-    const btn = document.createElement('button');
-    btn.textContent = '过滤';
-    btn.style.marginTop = window.innerWidth <= 767 ? '10px' : '6px';
-    btn.style.padding = window.innerWidth <= 767 ? '12px 0' : '8px 0';
-    btn.style.width = '100%';
-    btn.style.fontSize = window.innerWidth <= 767 ? '18px' : '15px';
-    btn.style.background = '#4CAF50';
-    btn.style.color = '#fff';
-    btn.style.border = 'none';
-    btn.style.borderRadius = '6px';
-    btn.style.cursor = 'pointer';
-    btn.onclick = function() {
-        alert('这里将实现关键词过滤逻辑，当前输入：' + input.value);
-    };
-    dialog.appendChild(btn);
-
+    dialog.style.userSelect = 'auto';
+    dialog.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span style="font-weight:bold;font-size:17px;">关键词过滤</span>
+            <span id="ns-keyword-filter-close" style="cursor:pointer;font-size:22px;line-height:1;">×</span>
+        </div>
+        <label style="font-weight:bold;">关键词（逗号分隔）：</label><br>
+        <input id="ns-keyword-input" type="text" style="width:180px;padding:4px 8px;font-size:15px;border:1px solid #ccc;border-radius:4px;" placeholder="输入关键词，如A,B,C" />
+        <button id="ns-keyword-btn" style="margin-left:8px;padding:4px 12px;font-size:15px;background:#4CAF50;color:#fff;border:none;border-radius:4px;cursor:pointer;">过滤</button>
+        <span id="ns-keyword-log" style="margin-left:10px;color:#888;font-size:13px;"></span>
+    `;
     document.body.appendChild(dialog);
+    // 关闭按钮
+    dialog.querySelector('#ns-keyword-filter-close').onclick = function() {
+        dialog.remove();
+    };
+    // 过滤逻辑
+    const input = dialog.querySelector('#ns-keyword-input');
+    function doFilter() {
+        const val = input.value;
+        const keywords = val.split(/,|，/).map(s => s.trim()).filter(Boolean);
+        filterPosts(keywords);
+        dialog.querySelector('#ns-keyword-log').textContent = `已过滤：${keywords.join(',')}`;
+        if (typeof onFilter === 'function') onFilter(keywords);
+    }
+    dialog.querySelector('#ns-keyword-btn').onclick = doFilter;
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            doFilter();
+        }
+    });
+    input.onclick = function() {
+        input.placeholder = '';
+    };
+    input.onblur = function() {
+        if (!input.value) input.placeholder = '输入关键词，如A,B,C';
+    };
+    // 弹窗可拖动，拖动区域为左上角10x10像素，与查看好友弹窗一致
+    setTimeout(() => {
+        const titleBar = dialog.querySelector('div');
+        if (titleBar && window.makeDraggable) {
+            window.makeDraggable(dialog, {width: 10, height: 10});
+            // 鼠标移动到左上角10x10像素时变为move
+            dialog.addEventListener('mousemove', function(e) {
+                const rect = dialog.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                if (x >= 0 && x < 10 && y >= 0 && y < 10) {
+                    dialog.style.cursor = 'move';
+                } else {
+                    dialog.style.cursor = 'default';
+                }
+            });
+            dialog.addEventListener('mouseleave', function() {
+                dialog.style.cursor = 'default';
+            });
+        }
+    }, 0);
+}
+
+// 关键词过滤的 observer 初始化（用于主插件调用）
+function initFilterObserver() {
+    // 监听页面变化（如分页、异步加载、SPA路由）
+    const observer = new MutationObserver(() => {
+        const input = document.getElementById('ns-keyword-input');
+        if (input) {
+            const val = input.value;
+            const keywords = val.split(/,|，/).map(s => s.trim()).filter(Boolean);
+            filterPosts(keywords);
+        }
+    });
+    const postList = document.querySelector('ul.post-list');
+    if (postList) {
+        observer.observe(postList, {childList: true, subtree: true});
+    }
+}
+
+// 拖动功能实现（与主插件一致，支持 window.makeDraggable）
+if (!window.makeDraggable) {
+    window.makeDraggable = function(element, dragAreaSize = {width: 100, height: 32}) {
+        let isDragging = false;
+        let initialMouseX, initialMouseY;
+        let initialElementX, initialElementY;
+        const onMouseDown = (e) => {
+            const elementRect = element.getBoundingClientRect();
+            const clickXInElement = e.clientX - elementRect.left;
+            const clickYInElement = e.clientY - elementRect.top;
+            if (clickXInElement < 0 || clickXInElement >= dragAreaSize.width || clickYInElement < 0 || clickYInElement >= dragAreaSize.height) {
+                return;
+            }
+            isDragging = true;
+            initialMouseX = e.clientX;
+            initialMouseY = e.clientY;
+            element.style.left = elementRect.left + 'px';
+            element.style.top = elementRect.top + 'px';
+            element.style.right = 'auto';
+            initialElementX = parseFloat(element.style.left);
+            initialElementY = parseFloat(element.style.top);
+            element.style.cursor = 'move';
+            document.body.classList.add('dragging-active');
+            document.addEventListener('mousemove', onMouseMoveWhileDragging);
+            document.addEventListener('mouseup', onMouseUp);
+            e.preventDefault();
+        };
+        const onMouseMoveWhileDragging = (e) => {
+            if (!isDragging) return;
+            const dx = e.clientX - initialMouseX;
+            const dy = e.clientY - initialMouseY;
+            let newLeft = initialElementX + dx;
+            let newTop = initialElementY + dy;
+            element.style.left = newLeft + 'px';
+            element.style.top = newTop + 'px';
+        };
+        const onMouseUp = (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+            document.body.classList.remove('dragging-active');
+            document.removeEventListener('mousemove', onMouseMoveWhileDragging);
+            document.removeEventListener('mouseup', onMouseUp);
+            element.style.cursor = 'default';
+        };
+        element.addEventListener('mousedown', onMouseDown);
+    };
+}
+
+// 导出
+window.NodeSeekFilter = {
+    filterPosts,
+    createFilterUI,
+    initFilterObserver
 };
