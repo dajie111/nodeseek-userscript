@@ -55,7 +55,7 @@ function createFilterUI(onFilter) {
             <span id="ns-keyword-filter-close" style="cursor:pointer;font-size:22px;line-height:1;">×</span>
         </div>
         <label style="font-weight:bold;">关键词（逗号分隔）：</label><br>
-        <input id="ns-keyword-input" type="text" style="width:180px;padding:4px 8px;font-size:15px;border:1px solid #ccc;border-radius:4px;" placeholder="输入关键词，如A,B,C" />
+        <input id="ns-keyword-input" type="text" style="width:280px;padding:4px 8px;font-size:15px;border:1px solid #ccc;border-radius:4px;" placeholder="输入关键词，如A,B,C" />
         <button id="ns-keyword-btn" style="margin-left:8px;padding:4px 12px;font-size:15px;background:#4CAF50;color:#fff;border:none;border-radius:4px;cursor:pointer;">过滤</button>
         <span id="ns-keyword-log" style="margin-left:10px;color:#888;font-size:13px;"></span>
     `;
@@ -70,7 +70,6 @@ function createFilterUI(onFilter) {
         const val = input.value;
         const keywords = val.split(/,|，/).map(s => s.trim()).filter(Boolean);
         filterPosts(keywords);
-        dialog.querySelector('#ns-keyword-log').textContent = `已过滤：${keywords.join(',')}`;
         if (typeof onFilter === 'function') onFilter(keywords);
     }
     dialog.querySelector('#ns-keyword-btn').onclick = doFilter;
@@ -110,19 +109,10 @@ function createFilterUI(onFilter) {
 
 // 关键词过滤的 observer 初始化（用于主插件调用）
 function initFilterObserver() {
-    // 监听页面变化（如分页、异步加载、SPA路由）
-    const observer = new MutationObserver(() => {
-        const input = document.getElementById('ns-keyword-input');
-        if (input) {
-            const val = input.value;
-            const keywords = val.split(/,|，/).map(s => s.trim()).filter(Boolean);
-            filterPosts(keywords);
-        }
-    });
-    const postList = document.querySelector('ul.post-list');
-    if (postList) {
-        observer.observe(postList, {childList: true, subtree: true});
-    }
+    // 只保留 observer 监听分页、异步加载、SPA路由时，重新过滤当前输入框的关键词
+    // 但不再自动根据输入内容过滤，只在按钮或回车时过滤
+    // 可以直接注释掉 observer 的 filterPosts 调用，或者移除 observer
+    // 这里选择移除 observer，保持纯手动过滤
 }
 
 // 拖动功能实现（与主插件一致，支持 window.makeDraggable）
