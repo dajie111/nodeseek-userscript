@@ -1,0 +1,6 @@
+beautifulsoup4>=4.12.2
+cloudscraper>=1.2.71
+feedparser>=6.0.10
+requests>=2.31.0
+psutil>=5.9.5
+lxml>=4.9.3
