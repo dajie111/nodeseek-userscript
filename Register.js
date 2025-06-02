@@ -1076,7 +1076,9 @@
                     endInput.value = toDateInputStr(maxDateStr);
                 }
                 // Schedule next update immediately
-                updateFetchButtonState();
+                setTimeout(() => {
+                    updateFetchButtonState();
+                }, 3000); // Display success message for 3 seconds
             } else {
                 const NO_DATA_MESSAGE = '未获取到任何数据。';
                 fetchRangeStatus.textContent = NO_DATA_MESSAGE;
