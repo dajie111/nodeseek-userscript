@@ -1034,6 +1034,50 @@
                 renderTableAndStats(history);
             }
         };
+
+        if (window.innerWidth <= 767) {
+            dialog.style.position = 'fixed';
+            dialog.style.width = '96%';
+            dialog.style.minWidth = 'unset';
+            dialog.style.maxWidth = '96%';
+            dialog.style.left = '2%';
+            dialog.style.right = '2%';
+            dialog.style.top = '10px';
+            dialog.style.transform = 'none';
+            dialog.style.borderRadius = '10px';
+            dialog.style.maxHeight = '88vh';
+            dialog.style.padding = '12px 8px 8px 8px';
+            dialog.style.overflowY = 'auto';
+            // 关闭按钮
+            closeBtn.style.right = '8px';
+            closeBtn.style.top = '5px';
+            closeBtn.style.fontSize = '24px';
+            closeBtn.style.width = '30px';
+            closeBtn.style.height = '30px';
+            closeBtn.style.lineHeight = '30px';
+            closeBtn.style.textAlign = 'center';
+            // 按钮
+            fetchRangeBtn.style.fontSize = '16px';
+            fetchRangeBtn.style.padding = '8px 16px';
+            clearBtn.style.fontSize = '16px';
+            clearBtn.style.padding = '8px 16px';
+            filterBtn.style.fontSize = '16px';
+            filterBtn.style.padding = '8px 16px';
+            // 输入框
+            startInput.style.fontSize = '16px';
+            startInput.style.padding = '6px 8px';
+            endInput.style.fontSize = '16px';
+            endInput.style.padding = '6px 8px';
+            // 筛选栏竖排
+            filterBar.style.flexDirection = 'column';
+            filterBar.style.alignItems = 'stretch';
+            filterBar.style.gap = '6px';
+            // 表格卡片化
+            contentArea.style.padding = '0';
+            contentArea.style.overflowX = 'auto';
+            // statsDiv字体
+            statsDiv.style.fontSize = '15px';
+        }
     }
 
     // 将 `fetchChickenLegData` 和 `saveChickenLegHistory` 函数移到 `showChickenLegStatsDialog` 外部，
