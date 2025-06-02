@@ -603,8 +603,8 @@
 
         // 拉取区间数据按钮和进度
         const fetchRangeBtn = document.createElement('button');
-        fetchRangeBtn.textContent = '拉取区间数据';
-        fetchRangeBtn.style.padding = '3px 12px';
+        fetchRangeBtn.textContent = '拉取数据';
+        fetchRangeBtn.style.padding = '6px 12px'; // Adjusted padding
         fetchRangeBtn.style.fontSize = '14px';
         fetchRangeBtn.style.background = '#28a745';
         fetchRangeBtn.style.color = 'white';
@@ -612,13 +612,38 @@
         fetchRangeBtn.style.borderRadius = '3px';
         fetchRangeBtn.style.cursor = 'pointer';
         const fetchRangeStatus = document.createElement('span');
-        fetchRangeStatus.style.marginLeft = '10px';
+        fetchRangeStatus.style.marginLeft = '10px'; // Keep this style for now
         fetchRangeStatus.style.color = '#d00';
+
+        // Function to update the fetch button's state and countdown
+        function updateFetchButtonState() {
+            const nextAllowTime = parseInt(localStorage.getItem(CHICKEN_LEG_NEXT_ALLOW_KEY) || '0');
+            const now = Date.now();
+
+            if (now < nextAllowTime) {
+                fetchRangeBtn.disabled = true;
+                let remainingSeconds = Math.ceil((nextAllowTime - now) / 1000);
+                fetchRangeStatus.textContent = `请等待 ${remainingSeconds} 秒后再次拉取`;
+                // Set a timeout to update the countdown
+                if (chickenLegTimeoutId) clearTimeout(chickenLegTimeoutId); // Clear previous timeout
+                chickenLegTimeoutId = setTimeout(updateFetchButtonState, 1000); // Update every second
+            } else {
+                fetchRangeBtn.disabled = false;
+                fetchRangeStatus.textContent = '';
+                if (chickenLegTimeoutId) {
+                    clearTimeout(chickenLegTimeoutId);
+                    chickenLegTimeoutId = null;
+                }
+            }
+        }
+
+        // Initial update when the dialog opens
+        updateFetchButtonState();
 
         // 清除本地数据按钮
         const clearBtn = document.createElement('button');
         clearBtn.textContent = '清除本地数据';
-        clearBtn.style.padding = '3px 12px';
+        clearBtn.style.padding = '6px 12px'; // Adjusted padding
         clearBtn.style.fontSize = '14px';
         clearBtn.style.background = '#f44336';
         clearBtn.style.color = 'white';
@@ -628,7 +653,7 @@
 
         const startInput = document.createElement('input');
         startInput.type = 'date';
-        startInput.style.padding = '2px 6px';
+        startInput.style.padding = '6px 6px'; // Adjusted padding
         startInput.style.fontSize = '14px';
         startInput.style.border = '1px solid #ccc';
         startInput.style.borderRadius = '3px';
@@ -636,7 +661,7 @@
 
         const endInput = document.createElement('input');
         endInput.type = 'date';
-        endInput.style.padding = '2px 6px';
+        endInput.style.padding = '6px 6px'; // Adjusted padding
         endInput.style.fontSize = '14px';
         endInput.style.border = '1px solid #ccc';
         endInput.style.borderRadius = '3px';
@@ -657,7 +682,6 @@
         startInput.value = `${startYear}-${startMonth}-${startDay}`;
 
         filterBar.appendChild(fetchRangeBtn);
-        filterBar.appendChild(fetchRangeStatus);
         filterBar.appendChild(clearBtn);
         filterBar.appendChild(document.createTextNode('起始日期:'));
         filterBar.appendChild(startInput);
@@ -666,7 +690,7 @@
         // 重新引入筛选按钮
         const filterBtn = document.createElement('button');
         filterBtn.textContent = '筛选';
-        filterBtn.style.padding = '3px 12px';
+        filterBtn.style.padding = '6px 12px'; // Adjusted padding
         filterBtn.style.fontSize = '14px';
         filterBtn.style.background = '#007bff'; // 蓝色
         filterBtn.style.color = 'white';
@@ -676,6 +700,14 @@
         filterBar.appendChild(filterBtn);
 
         dialog.appendChild(filterBar);
+
+        // New: Status message container, placed below filterBar
+        const fetchStatusContainer = document.createElement('div');
+        fetchStatusContainer.style.margin = '8px 0';
+        fetchStatusContainer.style.fontSize = '13px';
+        fetchStatusContainer.style.textAlign = 'center';
+        fetchStatusContainer.appendChild(fetchRangeStatus); // Move status span here
+        dialog.appendChild(fetchStatusContainer);
 
         // ========== 统计信息区 ==========
         const statsDiv = document.createElement('div');
@@ -928,6 +960,28 @@
 
         // ========== 拉取区间数据 ==========
         fetchRangeBtn.onclick = async function() {
+            const nextAllowTime = parseInt(localStorage.getItem(CHICKEN_LEG_NEXT_ALLOW_KEY) || '0');
+            const now = Date.now();
+
+            if (now < nextAllowTime) {
+                // Should already be disabled, but double check
+                updateFetchButtonState();
+                return;
+            }
+
+            // Set cooldown
+            const ONE_MINUTE = 60 * 1000;
+            localStorage.setItem(CHICKEN_LEG_LAST_FETCH_KEY, now.toString());
+            localStorage.setItem(CHICKEN_LEG_NEXT_ALLOW_KEY, (now + ONE_MINUTE).toString());
+
+            fetchRangeBtn.disabled = true;
+            fetchRangeStatus.textContent = '正在拉取...';
+            // Stop existing countdown if any
+            if (chickenLegTimeoutId) {
+                clearTimeout(chickenLegTimeoutId);
+                chickenLegTimeoutId = null;
+            }
+
             // 1. 先读取本地数据，找出本地已有的唯一key集合
             let history = [];
             try {
@@ -940,8 +994,6 @@
                     localKeySet.add(key);
                 }
             });
-            fetchRangeBtn.disabled = true;
-            fetchRangeStatus.textContent = '正在拉取...';
             let allData = [];
             let emptyCount = 0;
             let shouldStop = false;
@@ -956,7 +1008,11 @@
                         },
                         credentials: 'same-origin',
                     });
-                    if (!resp.ok) break;
+                    if (!resp.ok) {
+                         // If API returns non-ok status, stop fetching and report error
+                         fetchRangeStatus.textContent = `拉取失败：HTTP 错误 ${resp.status}`;
+                         break;
+                    }
                     const json = await resp.json();
                     if (!json.success || !Array.isArray(json.data) || json.data.length === 0) {
                         emptyCount++;
@@ -980,6 +1036,7 @@
                 }
                 await new Promise(r => setTimeout(r, 300));
             }
+
             if (allData.length > 0) {
                 saveChickenLegHistory(allData);
                 fetchRangeStatus.textContent = `拉取完成，共${allData.length}条，已保存。`;
@@ -1018,10 +1075,15 @@
                     startInput.value = toDateInputStr(minDateStr);
                     endInput.value = toDateInputStr(maxDateStr);
                 }
+                // Schedule next update immediately
+                updateFetchButtonState();
             } else {
-                fetchRangeStatus.textContent = '未获取到任何数据。';
+                const NO_DATA_MESSAGE = '未获取到任何数据。';
+                fetchRangeStatus.textContent = NO_DATA_MESSAGE;
+                setTimeout(() => {
+                    updateFetchButtonState(); // Update with cooldown message after 3 seconds
+                }, 3000);
             }
-            fetchRangeBtn.disabled = false;
         };
 
         // ========== 清除本地数据 ==========
