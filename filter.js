@@ -55,26 +55,46 @@ function createFilterUI(onFilter) {
     const dialog = document.createElement('div');
     dialog.id = 'ns-keyword-filter-dialog';
     dialog.style.position = 'fixed';
-    dialog.style.top = '60px';
-    dialog.style.right = '16px';
     dialog.style.zIndex = 10001;
     dialog.style.background = '#fff';
-    dialog.style.padding = '18px 24px 16px 24px';
-    dialog.style.borderRadius = '12px';
-    dialog.style.boxShadow = '0 4px 18px rgba(0,0,0,0.18)';
+    dialog.style.borderRadius = '12px'; // Default for desktop
+    dialog.style.boxShadow = '0 4px 18px rgba(0,0,0,0.18)'; // Default for desktop
     dialog.style.fontSize = '16px';
     dialog.style.color = '#222';
     dialog.style.lineHeight = '2';
     dialog.style.border = '2px solid #4CAF50';
-    // 设置宽度与查看好友弹窗一致
-    if (window.innerWidth > 767) {
-        dialog.style.minWidth = '380px';
-        dialog.style.maxWidth = '600px';
-    } else {
-        dialog.style.minWidth = '';
-        dialog.style.maxWidth = '';
-    }
     dialog.style.userSelect = 'auto';
+
+    // Default positioning and size for desktop
+    dialog.style.top = '60px';
+    dialog.style.right = '16px';
+    dialog.style.left = 'auto'; // Ensure left is auto for right positioning
+    dialog.style.minWidth = '380px';
+    dialog.style.maxWidth = '600px';
+    dialog.style.width = 'auto'; // Default auto width for desktop
+    dialog.style.padding = '18px 24px 16px 24px'; // Default padding for desktop
+    dialog.style.maxHeight = 'unset'; // Desktop doesn't have a forced max height
+    dialog.style.overflowY = 'unset'; // Desktop doesn't force scroll
+    dialog.style.overflowX = 'unset'; // Desktop doesn't force scroll
+    dialog.style.transform = 'none'; // No transform for desktop
+
+    // Mobile specific styles (width <= 767px)
+    if (window.innerWidth <= 767) {
+        dialog.style.width = '96%';
+        dialog.style.minWidth = 'unset';
+        dialog.style.maxWidth = '96%';
+        dialog.style.left = '50%';
+        dialog.style.top = '50%';
+        dialog.style.transform = 'translate(-50%, -50%)'; // Center the dialog
+        dialog.style.right = 'auto'; // Ensure right is auto for left positioning
+        dialog.style.maxHeight = '88vh'; // Match other mobile dialogs
+        dialog.style.padding = '12px 8px 8px 8px'; // Match other mobile dialogs
+        dialog.style.overflowY = 'auto'; // Ensure scrollable
+        dialog.style.overflowX = 'hidden'; // Hide horizontal scroll
+        dialog.style.borderRadius = '10px'; // Match other mobile dialogs
+        dialog.style.boxShadow = '0 2px 20px rgba(0,0,0,0.2)'; // Match other mobile dialogs
+    }
+
     dialog.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <span style="font-weight:bold;font-size:17px;">关键词过滤</span>
@@ -86,6 +106,26 @@ function createFilterUI(onFilter) {
         <span id="ns-keyword-log" style="margin-left:10px;color:#888;font-size:13px;"></span>
     `;
     document.body.appendChild(dialog);
+
+    // Apply mobile styles to input and button after they are in the DOM
+    if (window.innerWidth <= 767) {
+        const input = dialog.querySelector('#ns-keyword-input');
+        const button = dialog.querySelector('#ns-keyword-btn');
+        if (input) {
+            input.style.width = '100%'; // Full width on mobile
+            input.style.padding = '8px 10px'; // Larger padding
+            input.style.fontSize = '16px'; // Larger font size
+            input.style.boxSizing = 'border-box'; // Include padding in width calculation
+        }
+        if (button) {
+            button.style.width = '100%'; // Full width on mobile
+            button.style.marginLeft = '0'; // No margin left
+            button.style.marginTop = '10px'; // Margin top
+            button.style.padding = '8px 16px'; // Larger padding
+            button.style.fontSize = '16px'; // Larger font size
+            button.style.boxSizing = 'border-box'; // Include padding in width calculation
+        }
+    }
 
     // 填充已保存的关键词
     const savedKeywords = getKeywords();
