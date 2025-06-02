@@ -86,20 +86,20 @@ function createFilterUI(onFilter) {
         <span id="ns-keyword-log" style="margin-left:10px;color:#888;font-size:13px;"></span>
     `;
     document.body.appendChild(dialog);
-    
+
     // 填充已保存的关键词
     const savedKeywords = getKeywords();
     const input = dialog.querySelector('#ns-keyword-input');
     if (savedKeywords.length > 0) {
         input.value = savedKeywords.join(',');
     }
-    
+
     // 关闭按钮 - 清除过滤效果
     dialog.querySelector('#ns-keyword-filter-close').onclick = function() {
         dialog.remove();
         clearFilter();
     };
-    
+
     // 过滤逻辑
     function doFilter() {
         const val = input.value;
@@ -112,7 +112,7 @@ function createFilterUI(onFilter) {
         }
         if (typeof onFilter === 'function') onFilter(keywords);
     }
-    
+
     dialog.querySelector('#ns-keyword-btn').onclick = doFilter;
     input.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
@@ -125,17 +125,17 @@ function createFilterUI(onFilter) {
     input.onblur = function() {
         if (!input.value) input.placeholder = '输入关键词，如A,B,C';
     };
-    // 弹窗可拖动，拖动区域为左上角10x10像素，与查看好友弹窗一致
+    // 弹窗可拖动，拖动区域为左上角30x30像素，与鸡腿统计弹窗一致
     setTimeout(() => {
         const titleBar = dialog.querySelector('div');
         if (titleBar && window.makeDraggable) {
-            window.makeDraggable(dialog, {width: 10, height: 10});
-            // 鼠标移动到左上角10x10像素时变为move
+            window.makeDraggable(dialog, {width: 30, height: 30});
+            // 鼠标移动到左上角30x30像素时变为move
             dialog.addEventListener('mousemove', function(e) {
                 const rect = dialog.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
-                if (x >= 0 && x < 10 && y >= 0 && y < 10) {
+                if (x >= 0 && x < 30 && y >= 0 && y < 30) {
                     dialog.style.cursor = 'move';
                 } else {
                     dialog.style.cursor = 'default';
