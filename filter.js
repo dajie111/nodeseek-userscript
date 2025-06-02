@@ -55,6 +55,8 @@ function createFilterUI(onFilter) {
     const dialog = document.createElement('div');
     dialog.id = 'ns-keyword-filter-dialog';
     dialog.style.position = 'fixed';
+    dialog.style.top = '60px';
+    dialog.style.right = '16px';
     dialog.style.zIndex = 10001;
     dialog.style.background = '#fff';
     dialog.style.padding = '18px 24px 16px 24px';
@@ -64,21 +66,13 @@ function createFilterUI(onFilter) {
     dialog.style.color = '#222';
     dialog.style.lineHeight = '2';
     dialog.style.border = '2px solid #4CAF50';
-    // 根据设备判断弹窗位置和宽度
-    if (window.innerWidth <= 767) {
-        dialog.style.top = 'auto'; // 移动端从底部定位
-        dialog.style.bottom = '10px';
-        dialog.style.left = '50%';
-        dialog.style.transform = 'translateX(-50%)';
-        dialog.style.width = '96%'; // 移动端宽度
-        dialog.style.maxWidth = '96%'; // 移动端最大宽度
-        dialog.style.minWidth = 'unset';
-        dialog.style.padding = '12px 16px 10px 16px'; // 调整内边距
-    } else {
-        dialog.style.top = '60px'; // PC端默认位置
-        dialog.style.right = '16px';
+    // 设置宽度与查看好友弹窗一致
+    if (window.innerWidth > 767) {
         dialog.style.minWidth = '380px';
         dialog.style.maxWidth = '600px';
+    } else {
+        dialog.style.minWidth = '';
+        dialog.style.maxWidth = '';
     }
     dialog.style.userSelect = 'auto';
     dialog.innerHTML = `
@@ -131,18 +125,17 @@ function createFilterUI(onFilter) {
     input.onblur = function() {
         if (!input.value) input.placeholder = '输入关键词，如A,B,C';
     };
-    // 弹窗可拖动
+    // 弹窗可拖动，拖动区域为左上角30x30像素，与鸡腿统计弹窗一致
     setTimeout(() => {
-        if (window.makeDraggable) {
-            // 在移动端，将整个弹窗作为拖动区域
-            const dragArea = window.innerWidth <= 767 ? {width: dialog.offsetWidth, height: dialog.offsetHeight} : {width: 30, height: 30};
-            window.makeDraggable(dialog, dragArea);
-            // 鼠标移动到拖动区域时变为move
+        const titleBar = dialog.querySelector('div');
+        if (titleBar && window.makeDraggable) {
+            window.makeDraggable(dialog, {width: 30, height: 30});
+            // 鼠标移动到左上角30x30像素时变为move
             dialog.addEventListener('mousemove', function(e) {
                 const rect = dialog.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
-                if (x >= 0 && x < dragArea.width && y >= 0 && y < dragArea.height) {
+                if (x >= 0 && x < 30 && y >= 0 && y < 30) {
                     dialog.style.cursor = 'move';
                 } else {
                     dialog.style.cursor = 'default';
@@ -173,164 +166,45 @@ if (!window.makeDraggable) {
         let isDragging = false;
         let initialMouseX, initialMouseY;
         let initialElementX, initialElementY;
-
-        // Helper to check if the specific point in the hotspot is interactive
-        const isPointInteractive = (clientX, clientY, draggableElement) => {
-            let elementUnderCursor = document.elementFromPoint(clientX, clientY);
-            let currentTarget = elementUnderCursor;
-
-            while(currentTarget && currentTarget !== draggableElement.ownerDocument.body && currentTarget !== draggableElement.ownerDocument.documentElement) {
-                if (currentTarget === draggableElement) break; // Reached the draggable element itself
-
-                const tagName = currentTarget.tagName;
-                if (['INPUT', 'BUTTON', 'A', 'TEXTAREA', 'SELECT'].includes(tagName) ||
-                    currentTarget.isContentEditable ||
-                    window.getComputedStyle(currentTarget).cursor === 'pointer' ||
-                    (typeof currentTarget.onclick === 'function' && currentTarget !== draggableElement)
-                   ) {
-                    // Ensure this interactive element is a child of 'draggableElement'
-                    // and is the one actually under the cursor at clientX, clientY
-                    if (draggableElement.contains(currentTarget)) {
-                        return true; // Point is obscured by an interactive child
-                    }
-                }
-                currentTarget = currentTarget.parentElement;
-            }
-            return false; // Point is not obscured by an interactive child
-        };
-
         const onMouseDown = (e) => {
             const elementRect = element.getBoundingClientRect();
             const clickXInElement = e.clientX - elementRect.left;
             const clickYInElement = e.clientY - elementRect.top;
-
-            // 1. Check if the click is within the designated drag area
-            // 只有在PC端才限制拖动区域，移动端不限制
-            const isMobile = window.innerWidth <= 767;
-            if (!isMobile) {
-                if (clickXInElement < 0 || clickXInElement >= dragAreaSize.width ||
-                    clickYInElement < 0 || clickYInElement >= dragAreaSize.height) {
-                    return; // Clicked outside the draggable area
-                }
+            if (clickXInElement < 0 || clickXInElement >= dragAreaSize.width || clickYInElement < 0 || clickYInElement >= dragAreaSize.height) {
+                return;
             }
-
-            // 2. Check if the point clicked in the hotspot is interactive
-            // 移动端不执行此检查
-            if (!isMobile && isPointInteractive(e.clientX, e.clientY, element)) {
-                return; // Clicked on an interactive element within the drag area
-            }
-
             isDragging = true;
             initialMouseX = e.clientX;
             initialMouseY = e.clientY;
-
-            // Ensure element is positioned with left/top for dragging
-            const currentStyle = window.getComputedStyle(element);
-            if ((element.style.right !== '' && element.style.right !== 'auto') || (currentStyle.right !== 'auto' && (element.style.left === '' || element.style.left === 'auto'))) {
-                element.style.left = elementRect.left + 'px';
-                element.style.right = 'auto';
-            } else if (element.style.left === '' || element.style.left === 'auto' || currentStyle.left === 'auto') {
-                element.style.left = elementRect.left + 'px';
-            }
-            if (element.style.top === '' || element.style.top === 'auto' || currentStyle.top === 'auto') {
-                 element.style.top = elementRect.top + 'px';
-            }
+            element.style.left = elementRect.left + 'px';
+            element.style.top = elementRect.top + 'px';
+            element.style.right = 'auto';
             initialElementX = parseFloat(element.style.left);
             initialElementY = parseFloat(element.style.top);
-
-            element.style.cursor = 'grabbing'; // 拖动时显示抓取光标
+            element.style.cursor = 'move';
             document.body.classList.add('dragging-active');
-
             document.addEventListener('mousemove', onMouseMoveWhileDragging);
             document.addEventListener('mouseup', onMouseUp);
-
             e.preventDefault();
         };
-
         const onMouseMoveWhileDragging = (e) => {
             if (!isDragging) return;
-
             const dx = e.clientX - initialMouseX;
             const dy = e.clientY - initialMouseY;
-
             let newLeft = initialElementX + dx;
             let newTop = initialElementY + dy;
-
             element.style.left = newLeft + 'px';
             element.style.top = newTop + 'px';
         };
-
         const onMouseUp = (e) => {
             if (!isDragging) return;
             isDragging = false;
             document.body.classList.remove('dragging-active');
             document.removeEventListener('mousemove', onMouseMoveWhileDragging);
             document.removeEventListener('mouseup', onMouseUp);
-            // 拖动结束后，根据鼠标当前位置更新光标
-            handleHoverCursor(e);
+            element.style.cursor = 'default';
         };
-
-        const handleHoverCursor = (e) => {
-            if (isDragging) return; // 如果正在拖动，则光标已为 'grabbing'
-
-            const elementRect = element.getBoundingClientRect();
-            const mouseXInElement = e.clientX - elementRect.left;
-            const mouseYInElement = e.clientY - elementRect.top;
-
-            let showCustomCursor = false;
-
-            // 添加调试日志
-            console.log(`Mouse: (${e.clientX}, ${e.clientY}), Element Rect: Left=${elementRect.left}, Top=${elementRect.top}, Width=${elementRect.width}, Height=${elementRect.height}`);
-            console.log(`Mouse In Element: (${mouseXInElement}, ${mouseYInElement}), Drag Area: Width=${dragAreaSize.width}, Height=${dragAreaSize.height}`);
-
-            // 检查鼠标是否在元素边界内
-            if (mouseXInElement >= 0 && mouseXInElement < elementRect.width &&
-                mouseYInElement >= 0 && mouseYInElement < elementRect.height) {
-                // 检查是否在指定的拖动热点区域内 (PC端) 或整个元素 (移动端)
-                const isMobile = window.innerWidth <= 767;
-                if (isMobile || (mouseXInElement >= 0 && mouseXInElement < dragAreaSize.width &&
-                    mouseYInElement >= 0 && mouseYInElement < dragAreaSize.height)) {
-                    // 对于悬停状态，我们不严格检查是否被"交互式子元素"遮挡
-                    // 只要在拖动区域内，就显示自定义光标，但点击时依然会通过 isPointInteractive 检查
-                    showCustomCursor = true;
-                }
-            }
-
-            if (showCustomCursor) {
-                // 用户希望"雪花样式"光标。由于"雪花"不是标准CSS光标，
-                // 我们使用 'all-scroll' 作为视觉上多方向的替代。
-                // 如果需要真正的雪花图标，需要提供一个自定义光标图片URL。
-                element.style.cursor = 'all-scroll';
-            } else {
-                // 如果不在活跃热点区域，则设置默认光标，但仅当鼠标仍在元素上方时。
-                // onMouseLeaveElement 处理鼠标完全离开元素的情况。
-                 if (mouseXInElement >= 0 && mouseXInElement < elementRect.width &&
-                    mouseYInElement >= 0 && mouseYInElement < elementRect.height) {
-                    element.style.cursor = 'default';
-                }
-            }
-        };
-
-        const onMouseLeaveElement = (e) => {
-            if (!isDragging) {
-                // 检查鼠标是否确实离开了元素或移动到元素的一部分子元素。
-                if (!e.relatedTarget || !element.contains(e.relatedTarget)) {
-                    element.style.cursor = 'default';
-                }
-            }
-        };
-
         element.addEventListener('mousedown', onMouseDown);
-        element.addEventListener('mousemove', handleHoverCursor); // 处理悬停时改变光标
-        element.addEventListener('mouseleave', onMouseLeaveElement); // 鼠标离开元素时重置光标
-
-        // 添加 CSS 规则以禁用拖动时文本选择
-        if (!document.getElementById('dragging-style--userscript')) { // 此脚本的唯一 ID
-            const styleTag = document.createElement('style');
-            styleTag.id = 'dragging-style--userscript';
-            styleTag.innerHTML = '.dragging-active, .dragging-active * { user-select: none !important; -webkit-user-select: none !important; }';
-            document.head.appendChild(styleTag);
-        }
     };
 }
 
