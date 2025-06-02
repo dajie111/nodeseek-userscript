@@ -598,19 +598,20 @@
         const filterBar = document.createElement('div');
         filterBar.style.display = 'flex';
         filterBar.style.alignItems = 'center';
-        filterBar.style.gap = '8px';
         filterBar.style.margin = '10px 0 10px 0';
 
         // 拉取区间数据按钮和进度
         const fetchRangeBtn = document.createElement('button');
-        fetchRangeBtn.textContent = '拉取数据';
-        fetchRangeBtn.style.padding = '6px 12px'; // Adjusted padding
+        fetchRangeBtn.innerHTML = '拉取<br>数据'; // 上下两行显示
+        fetchRangeBtn.style.padding = '8px 12px'; // Adjusted padding for buttons
         fetchRangeBtn.style.fontSize = '14px';
         fetchRangeBtn.style.background = '#28a745';
         fetchRangeBtn.style.color = 'white';
         fetchRangeBtn.style.border = 'none';
         fetchRangeBtn.style.borderRadius = '3px';
         fetchRangeBtn.style.cursor = 'pointer';
+        fetchRangeBtn.style.textAlign = 'center';
+        fetchRangeBtn.style.lineHeight = '1.1';
         const fetchRangeStatus = document.createElement('span');
         fetchRangeStatus.style.marginLeft = '10px'; // Keep this style for now
         fetchRangeStatus.style.color = '#d00';
@@ -642,18 +643,20 @@
 
         // 清除本地数据按钮
         const clearBtn = document.createElement('button');
-        clearBtn.textContent = '清除本地数据';
-        clearBtn.style.padding = '6px 12px'; // Adjusted padding
+        clearBtn.innerHTML = '清除<br>数据'; // 上下两行显示
+        clearBtn.style.padding = '8px 12px'; // Adjusted padding for buttons
         clearBtn.style.fontSize = '14px';
         clearBtn.style.background = '#f44336';
         clearBtn.style.color = 'white';
         clearBtn.style.border = 'none';
         clearBtn.style.borderRadius = '3px';
         clearBtn.style.cursor = 'pointer';
+        clearBtn.style.textAlign = 'center';
+        clearBtn.style.lineHeight = '1.1';
 
         const startInput = document.createElement('input');
         startInput.type = 'date';
-        startInput.style.padding = '6px 6px'; // Adjusted padding
+        startInput.style.padding = '6px 6px'; // Adjusted padding for inputs
         startInput.style.fontSize = '14px';
         startInput.style.border = '1px solid #ccc';
         startInput.style.borderRadius = '3px';
@@ -661,7 +664,7 @@
 
         const endInput = document.createElement('input');
         endInput.type = 'date';
-        endInput.style.padding = '6px 6px'; // Adjusted padding
+        endInput.style.padding = '6px 6px'; // Adjusted padding for inputs
         endInput.style.fontSize = '14px';
         endInput.style.border = '1px solid #ccc';
         endInput.style.borderRadius = '3px';
@@ -681,22 +684,53 @@
         const startDay = String(oneYearAgo.getDate()).padStart(2, '0');
         startInput.value = `${startYear}-${startMonth}-${startDay}`;
 
-        filterBar.appendChild(fetchRangeBtn);
-        filterBar.appendChild(clearBtn);
-        filterBar.appendChild(document.createTextNode('起始日期:'));
-        filterBar.appendChild(startInput);
-        filterBar.appendChild(document.createTextNode('结束日期:'));
-        filterBar.appendChild(endInput);
+        // Create a wrapper for fetch and clear buttons
+        const buttonsWrapper = document.createElement('div');
+        buttonsWrapper.style.display = 'flex';
+        buttonsWrapper.style.gap = '8px';
+        buttonsWrapper.style.marginRight = '20px'; // Add margin to separate from date inputs
+        buttonsWrapper.appendChild(fetchRangeBtn);
+        buttonsWrapper.appendChild(clearBtn);
+
+        // Create a wrapper for '起始日期' and startInput
+        const startDateWrapper = document.createElement('div');
+        startDateWrapper.style.display = 'flex';
+        startDateWrapper.style.alignItems = 'center';
+        startDateWrapper.style.gap = '4px';
+        startDateWrapper.style.marginRight = '12px'; // Smaller margin to separate from end date
+        startDateWrapper.style.marginLeft = '-7px'; // 向左移动7px
+        const startDateLabel = document.createElement('span'); // Use span for text node
+        startDateLabel.textContent = '起始日期:';
+        startDateLabel.style.whiteSpace = 'nowrap'; // Prevent wrapping
+        startDateWrapper.appendChild(startDateLabel);
+        startDateWrapper.appendChild(startInput);
+
+        // Create a wrapper for '结束日期' and endInput
+        const endDateWrapper = document.createElement('div');
+        endDateWrapper.style.display = 'flex';
+        endDateWrapper.style.alignItems = 'center';
+        endDateWrapper.style.gap = '4px';
+        endDateWrapper.style.marginLeft = '-7px'; // 向左移动7px
+        const endDateLabel = document.createElement('span'); // Use span for text node
+        endDateLabel.textContent = '结束日期:';
+        endDateLabel.style.whiteSpace = 'nowrap'; // Prevent wrapping
+        endDateWrapper.appendChild(endDateLabel);
+        endDateWrapper.appendChild(endInput);
+
+        filterBar.appendChild(buttonsWrapper);
+        filterBar.appendChild(startDateWrapper);
+        filterBar.appendChild(endDateWrapper);
         // 重新引入筛选按钮
         const filterBtn = document.createElement('button');
         filterBtn.textContent = '筛选';
-        filterBtn.style.padding = '6px 12px'; // Adjusted padding
+        filterBtn.style.padding = '8px 12px'; // Adjusted padding for buttons
         filterBtn.style.fontSize = '14px';
         filterBtn.style.background = '#007bff'; // 蓝色
         filterBtn.style.color = 'white';
         filterBtn.style.border = 'none';
         filterBtn.style.borderRadius = '3px';
         filterBtn.style.cursor = 'pointer';
+        filterBtn.style.marginLeft = 'auto'; // Push to the right
         filterBar.appendChild(filterBtn);
 
         dialog.appendChild(filterBar);
@@ -997,6 +1031,8 @@
             let allData = [];
             let emptyCount = 0;
             let shouldStop = false;
+            let finalStatusMessage = ''; // To store the final message
+
             for (let page = 1; page <= 100 && !shouldStop; page++) {
                 fetchRangeStatus.textContent = `正在拉取第${page}页...`;
                 try {
@@ -1010,7 +1046,8 @@
                     });
                     if (!resp.ok) {
                          // If API returns non-ok status, stop fetching and report error
-                         fetchRangeStatus.textContent = `拉取失败：HTTP 错误 ${resp.status}`;
+                         finalStatusMessage = `拉取失败：HTTP 错误 ${resp.status}`;
+                         shouldStop = true; // Stop loop and go to final message display
                          break;
                     }
                     const json = await resp.json();
@@ -1031,61 +1068,62 @@
                         }
                     }
                 } catch (e) {
-                    fetchRangeStatus.textContent = `第${page}页拉取失败：${e.message}`;
+                    finalStatusMessage = `拉取失败：第${page}页拉取失败：${e.message}`;
+                    shouldStop = true; // Stop loop and go to final message display
                     break;
                 }
                 await new Promise(r => setTimeout(r, 300));
             }
 
-            if (allData.length > 0) {
-                saveChickenLegHistory(allData);
-                fetchRangeStatus.textContent = `拉取完成，共${allData.length}条，已保存。`;
-                // 刷新历史和表格
-                try {
-                    history = JSON.parse(localStorage.getItem(CHICKEN_LEG_HISTORY_KEY) || '[]');
-                } catch (e) { history = []; }
-                history.sort((a, b) => new Date(b[3]) - new Date(a[3]));
-                renderTableAndStats(history);
-                // 自动设置起止日期为本地数据最早和最晚时间
-                if (history.length > 0) {
-                    // 遍历找最早和最晚的日期
-                    let minDate = null, maxDate = null, minDateStr = '', maxDateStr = '';
-                    history.forEach(item => {
-                        let dateStr = String(item[3]).trim();
-                        if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateStr)) {
-                            dateStr = dateStr.replace(' ', 'T') + 'Z';
-                        } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(dateStr)) {
-                            dateStr = dateStr + 'Z';
+            // After the loop, determine final message and display for 3 seconds
+            if (finalStatusMessage === '') { // No error occurred during fetching
+                if (allData.length > 0) {
+                    saveChickenLegHistory(allData);
+                    finalStatusMessage = `拉取完成，共${allData.length}条，已保存。`;
+                    // 刷新历史和表格
+                    try {
+                        history = JSON.parse(localStorage.getItem(CHICKEN_LEG_HISTORY_KEY) || '[]');
+                    } catch (e) { history = []; }
+                    history.sort((a, b) => new Date(b[3]) - new Date(a[3]));
+                    renderTableAndStats(history);
+                    // 自动设置起止日期为本地数据最早和最晚时间
+                    if (history.length > 0) {
+                        // 遍历找最早和最晚的日期
+                        let minDate = null, maxDate = null, minDateStr = '', maxDateStr = '';
+                        history.forEach(item => {
+                            let dateStr = String(item[3]).trim();
+                            if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateStr)) {
+                                dateStr = dateStr.replace(' ', 'T') + 'Z';
+                            } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(dateStr)) {
+                                dateStr = dateStr + 'Z';
+                            }
+                            const d = new Date(dateStr);
+                            if (isNaN(d.getTime())) return;
+                            if (!minDate || d < minDate) { minDate = d; minDateStr = item[3]; }
+                            if (!maxDate || d > maxDate) { maxDate = d; maxDateStr = item[3]; }
+                        });
+                        function toDateInputStr(dateStr) {
+                            if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateStr)) {
+                                dateStr = dateStr.replace(' ', 'T') + 'Z';
+                            } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(dateStr)) {
+                                dateStr = dateStr + 'Z';
+                            }
+                            const d = new Date(dateStr);
+                            if (isNaN(d.getTime())) return '';
+                            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                         }
-                        const d = new Date(dateStr);
-                        if (isNaN(d.getTime())) return;
-                        if (!minDate || d < minDate) { minDate = d; minDateStr = item[3]; }
-                        if (!maxDate || d > maxDate) { maxDate = d; maxDateStr = item[3]; }
-                    });
-                    function toDateInputStr(dateStr) {
-                        if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateStr)) {
-                            dateStr = dateStr.replace(' ', 'T') + 'Z';
-                        } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(dateStr)) {
-                            dateStr = dateStr + 'Z';
-                        }
-                        const d = new Date(dateStr);
-                        if (isNaN(d.getTime())) return '';
-                        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                        startInput.value = toDateInputStr(minDateStr);
+                        endInput.value = toDateInputStr(maxDateStr);
                     }
-                    startInput.value = toDateInputStr(minDateStr);
-                    endInput.value = toDateInputStr(maxDateStr);
+                } else {
+                    finalStatusMessage = '未获取到任何数据。';
                 }
-                // Schedule next update immediately
-                setTimeout(() => {
-                    updateFetchButtonState();
-                }, 3000); // Display success message for 3 seconds
-            } else {
-                const NO_DATA_MESSAGE = '未获取到任何数据。';
-                fetchRangeStatus.textContent = NO_DATA_MESSAGE;
-                setTimeout(() => {
-                    updateFetchButtonState(); // Update with cooldown message after 3 seconds
-                }, 3000);
             }
+
+            fetchRangeStatus.textContent = finalStatusMessage;
+            setTimeout(() => {
+                updateFetchButtonState(); // This will show the cooldown or re-enable the button
+            }, 3000);
         };
 
         // ========== 清除本地数据 ==========
