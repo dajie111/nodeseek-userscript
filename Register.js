@@ -488,6 +488,7 @@
 
         const title = document.createElement('div');
         title.textContent = '鸡腿统计';
+        title.style.marginTop = '4px'; // 向下移动4px
 
         const closeBtn = document.createElement('span');
         closeBtn.textContent = '×';
