@@ -130,7 +130,6 @@
         // 设置心跳更新
         const heartbeatId = setInterval(() => {
             if (localStorage.getItem('nodeseek_sign_enabled') !== 'true') {
-                // 如果签到功能被禁用，清除所有计时器
                 clearInterval(heartbeatId);
                 if (intervalId) {
                     clearInterval(intervalId);
@@ -140,14 +139,29 @@
                 return;
             }
 
-            // 检查当前是否是控制签到的页面
             const currentActivePage = localStorage.getItem(SIGN_ACTIVE_PAGE_KEY);
+            const lastActiveTime = parseInt(localStorage.getItem(SIGN_LAST_ACTIVE_TIME_KEY) || '0');
+            const now = Date.now();
+
+            // 日志输出当前页面ID和活跃页面ID，方便排查
+            // _addLog(`当前页面ID: ${pageId}，活跃页面ID: ${currentActivePage}，心跳: ${now - lastActiveTime}ms`);
+
+            // 如果没有活跃页面，或活跃页面心跳超时，当前页面直接争夺控制权
+            if (!currentActivePage || now - lastActiveTime > PAGE_EXPIRY_TIME) {
+                localStorage.setItem(SIGN_ACTIVE_PAGE_KEY, pageId);
+                localStorage.setItem(SIGN_LAST_ACTIVE_TIME_KEY, now.toString());
+                if (!isActivePage) {
+                    isActivePage = true;
+                    if (!timerRunning) {
+                        startCheckingTime();
+                    }
+                    _addLog('检测到无活跃页面或原活跃页面失效，当前页面强制获得签到控制权');
+                }
+                return;
+            }
 
             if (currentActivePage === pageId) {
-                // 如果这个页面是当前活跃的签到页面，则更新心跳
-                localStorage.setItem(SIGN_LAST_ACTIVE_TIME_KEY, Date.now().toString());
-
-                // 确保标记为活跃页面
+                localStorage.setItem(SIGN_LAST_ACTIVE_TIME_KEY, now.toString());
                 if (!isActivePage) {
                     isActivePage = true;
                     if (!timerRunning) {
@@ -155,11 +169,9 @@
                     }
                 }
             } else {
-                // 如果当前页面不是活跃的签到页面，则停止计时器
                 if (isActivePage) {
                     isActivePage = false;
                     console.log('检测到其他页面已刷新并获得签到控制权');
-                    // _addLog('当前页面不再负责签到，控制权已转移'); // 已按需删除
                 }
             }
         }, PAGE_ACTIVE_INTERVAL);
@@ -195,59 +207,64 @@
                 const m = now.getMinutes();
                 const s = now.getSeconds();
 
-                // 每10秒输出一次倒计时日志
-                const currentTimestamp = Math.floor(now.getTime() / 1000);
-                if (currentTimestamp - lastLogTime >= 10) {
-                    lastLogTime = currentTimestamp;
-
-                    // 计算距离下一个00:00:00的时间
-                    let nextMidnight = new Date(now);
-                    nextMidnight.setHours(24, 0, 0, 0);
-                    let secondsToMidnight = Math.floor((nextMidnight - now) / 1000);
-
-                    // 格式化时间
-                    let hours = Math.floor(secondsToMidnight / 3600);
-                    let minutes = Math.floor((secondsToMidnight % 3600) / 60);
-                    let seconds = secondsToMidnight % 60;
-
-                    // 输出日志
-                    const currentTimeStr = now.toLocaleTimeString();
-                    let logMessage = `[本地时间 ${currentTimeStr}] 距离下次签到还有 ${hours}小时${minutes}分${seconds}秒`;
-                    console.log(logMessage);
-                    _addLog(logMessage);
-                }
-
-                // 检查是否在规定时间内（00:00:00 - 00:00:10）
-                if (h === 0 && m === 0 && s >= 0 && s <= 10) {
-                    // 检查是否已在10秒内签到过
+                // 检查是否在规定时间内（00:00:00 - 01:00:00）
+                if (h === 0) {
+                    // 生成今日标记key
+                    const todayKey = 'nodeseek_sign_board_jumped_' + now.getFullYear() + '-' + (now.getMonth()+1) + '-' + now.getDate();
+                    // 检查是否已在本小时内签到过
                     const lastSignTime = localStorage.getItem(SIGN_LAST_SIGN_TIME_KEY);
+                    let signedThisHour = false;
                     if (lastSignTime) {
                         const lastSignDate = new Date(parseInt(lastSignTime));
-                        const timeDiff = now.getTime() - lastSignDate.getTime();
-                        // 如果10秒内已经签到过，则不再执行
-                        if (timeDiff < 10000) {
-                            console.log(`已在${Math.floor(timeDiff/1000)}秒前完成今日签到，不重复执行`);
-                            return;
+                        if (
+                            lastSignDate.getFullYear() === now.getFullYear() &&
+                            lastSignDate.getMonth() === now.getMonth() &&
+                            lastSignDate.getDate() === now.getDate() &&
+                            lastSignDate.getHours() === now.getHours()
+                        ) {
+                            signedThisHour = true;
                         }
                     }
-
+                    // 检查是否跳转过签到页
+                    const jumped = localStorage.getItem(todayKey) === 'true';
+                    if (signedThisHour && jumped) {
+                        // 已签到且已跳转过，不再执行
+                        return;
+                    }
+                    if (!jumped) {
+                        _addLog('本小时内尚未跳转过签到页，继续尝试签到');
+                    }
                     // 记录当前签到时间
                     localStorage.setItem(SIGN_LAST_SIGN_TIME_KEY, now.getTime().toString());
-                    console.log(`到达签到时间(${h}:${m}:${s})，开始执行签到`);
-                    _addLog(`到达签到时间(${h}:${m}:${s})，开始执行签到`);
-
                     // 执行签到
-                    doSignIn();
+                    doSignIn(todayKey);
+                } else {
+                    // 非签到时间段，重置跳转标记
+                    const todayKey = 'nodeseek_sign_board_jumped_' + now.getFullYear() + '-' + (now.getMonth()+1) + '-' + now.getDate();
+                    localStorage.removeItem(todayKey);
                 }
             }, 1000);
         }
 
         // 立即检查控制权
         checkActiveStatus();
+
+        // ========== 页面激活自动重启定时器 + 日志提醒 ==========
+        if (!window.__nodeseek_sign_visibility_listener_added) {
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'visible') {
+                    if (!timerRunning) {
+                        _addLog('页面重新激活，自动重启签到定时器');
+                        startCheckingTime();
+                    }
+                }
+            });
+            window.__nodeseek_sign_visibility_listener_added = true;
+        }
     }
 
     // 签到流程
-    function doSignIn() {
+    function doSignIn(todayKey) {
         // 用户未登录检测 - 更强的检测方式
         // 1. 首先，直接检查DOM元素
         const loginBtn = document.querySelector('button, a, input[type="button"], div')?.textContent?.includes('登录');
@@ -293,6 +310,9 @@
 
         // 直接在当前页面导航到签到页面
         _addLog('跳转到签到页面');
+        if (todayKey) {
+            localStorage.setItem(todayKey, 'true');
+        }
         window.location.href = 'https://www.nodeseek.com/board';
 
         // 设置标记表明正在签到中
