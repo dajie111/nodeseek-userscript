@@ -424,12 +424,11 @@
                 tdRemark.style.whiteSpace = 'nowrap';
                 tdRemark.style.display = 'inline-block'; // 确保宽度生效
                 tdRemark.style.verticalAlign = 'bottom'; // 下对齐
-                tdRemark.style.paddingBottom = '2px'; // 下移2px
+                tdRemark.style.paddingTop = '2px'; // 向下移动2px
             } else {
                 // 移动端显示方式
                 tdRemark.textContent = info.remark || '　';  // 使用全角空格保持宽度
                 tdRemark.style.verticalAlign = 'bottom'; // 下对齐
-                tdRemark.style.paddingBottom = '2px'; // 下移2px
             }
 
             tdRemark.style.textAlign = 'left';
@@ -518,22 +517,9 @@
                         // 更新存储
                         updateBlacklistRemark(username, newText);
                         
-                        // 异步更新页面上的其他备注显示
-                        setTimeout(function() {
-                            document.querySelectorAll('a.author-name').forEach(function(a) {
-                                if (a.textContent.trim() === username) {
-                                    const oldRemark = a.parentNode.querySelector('.blacklist-remark');
-                                    if (oldRemark) oldRemark.remove();
-                                    
-                                    if (newText) {
-                                        const span = document.createElement('span');
-                                        span.className = 'blacklist-remark';
-                                        span.textContent = newText;
-                                        a.parentNode.appendChild(span);
-                                    }
-                                }
-                            });
-                        }, 100);
+                        // 不再在这里异步更新页面上的其他备注显示
+                        // 这会导致备注出现在错误位置
+                        // 由于已经不刷新页面，用户需要手动刷新页面才能看到所有更新
                         
                         // 更新信息对象
                         info.remark = newText;
@@ -606,14 +592,43 @@
             // 操作
             const tdOp = document.createElement('td');
             tdOp.style.verticalAlign = 'bottom';
+            tdOp.style.paddingLeft = '3px'; // 向右移动3px
             const removeBtn = document.createElement('button');
             removeBtn.textContent = '移除';
             removeBtn.className = 'blacklist-btn red';
             removeBtn.style.fontSize = '11px';
             removeBtn.onclick = function() {
                 if (confirm('确定要移除该用户？')) {
+                    // 从黑名单存储中移除
                     removeFromBlacklist(username);
-                    location.reload(); // 直接刷新网页
+                    
+                    // 从界面上移除对应行
+                    tr.style.opacity = '0.5';
+                    tr.style.transition = 'opacity 0.2s';
+                    
+                    setTimeout(function() {
+                        tr.remove();
+                        
+                        // 如果黑名单列表为空，显示空提示
+                        const tbody = document.querySelector('#blacklist-dialog tbody');
+                        if (tbody && tbody.children.length === 0) {
+                            const empty = document.createElement('div');
+                            empty.textContent = '暂无黑名单用户';
+                            empty.style.textAlign = 'center';
+                            empty.style.color = '#888';
+                            empty.style.margin = '18px 0 8px 0';
+                            document.querySelector('#blacklist-dialog table').after(empty);
+                        }
+                        
+                        // 从页面上移除该用户的备注标记
+                        document.querySelectorAll('a.author-name').forEach(function(a) {
+                            if (a.textContent.trim() === username) {
+                                a.style.color = ''; // 恢复默认颜色
+                                const remark = a.parentNode.querySelector('.blacklist-remark');
+                                if (remark) remark.remove();
+                            }
+                        });
+                    }, 200);
                 }
             };
             tdOp.appendChild(removeBtn);
