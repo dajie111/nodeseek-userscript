@@ -1,257 +1,671 @@
-// ========== 关键词过滤功能模块 ==========
-function filterPosts(keywords) {
-    console.log('[NodeSeek过滤]', '开始过滤，关键词：' + keywords.join(','));
-    const postItems = document.querySelectorAll('ul.post-list > li.post-list-item');
-    let showCount = 0;
-    // 新增：去除空格后再匹配
-    const norm = s => s.replace(/\s+/g, '').toLowerCase();
-    postItems.forEach(item => {
-        const titleEl = item.querySelector('.post-title a');
-        const title = titleEl ? titleEl.textContent.trim() : '';
-        const matched = keywords.length === 0 || keywords.every(kw => kw && norm(title).includes(norm(kw)));
-        if (matched) {
-            item.style.display = '';
-            showCount++;
-        } else {
-            item.style.display = 'none';
-        }
-    });
-    console.log(`[NodeSeek过滤] 过滤完成，显示${showCount}条，隐藏${postItems.length - showCount}条。`);
-}
+// ========== 查看友功能模块 ==========
+// 管理好友数据、显示好友列表弹窗、好友高亮等功能
 
-// 保存关键词到 localStorage
-function saveKeywords(keywords) {
-    if (keywords && keywords.length > 0) {
-        localStorage.setItem('ns-filter-keywords', JSON.stringify(keywords));
-    } else {
-        localStorage.removeItem('ns-filter-keywords');
+(function() {
+    'use strict';
+
+    // ====== 好友功能数据结构 ======
+    const FRIENDS_KEY = 'nodeseek_friends';
+    
+    // 好友数据结构：[{username, pmUrl, remark, timestamp}]
+    function getFriends() {
+        return JSON.parse(localStorage.getItem(FRIENDS_KEY) || '[]');
     }
-}
-
-// 从 localStorage 获取关键词
-function getKeywords() {
-    const saved = localStorage.getItem('ns-filter-keywords');
-    return saved ? JSON.parse(saved) : [];
-}
-
-// 清除过滤效果，恢复所有帖子显示
-function clearFilter() {
-    const postItems = document.querySelectorAll('ul.post-list > li.post-list-item');
-    postItems.forEach(item => {
-        item.style.display = '';
-    });
-    localStorage.removeItem('ns-filter-keywords');
-    console.log('[NodeSeek过滤]', '已清除过滤');
-}
-
-// 创建关键词输入界面（弹窗）
-function createFilterUI(onFilter) {
-    const existing = document.getElementById('ns-keyword-filter-dialog');
-    if (existing) {
-        existing.remove();
-        clearFilter();
-        return;
+    
+    function setFriends(list) {
+        localStorage.setItem(FRIENDS_KEY, JSON.stringify(list));
     }
-    const dialog = document.createElement('div');
-    dialog.id = 'ns-keyword-filter-dialog';
-    dialog.style.position = 'fixed';
-    dialog.style.zIndex = 10001;
-    dialog.style.background = '#fff';
-    dialog.style.borderRadius = '12px'; // Default for desktop
-    dialog.style.boxShadow = '0 4px 18px rgba(0,0,0,0.18)'; // Default for desktop
-    dialog.style.fontSize = '16px';
-    dialog.style.color = '#222';
-    dialog.style.lineHeight = '2';
-    dialog.style.border = '2px solid #4CAF50';
-    dialog.style.userSelect = 'auto';
-
-    // Default positioning and size for desktop
-    dialog.style.top = '60px';
-    dialog.style.right = '16px';
-    dialog.style.left = 'auto'; // Ensure left is auto for right positioning
-    dialog.style.minWidth = '380px';
-    dialog.style.maxWidth = '600px';
-    dialog.style.width = 'auto'; // Default auto width for desktop
-    dialog.style.padding = '18px 24px 16px 24px'; // Default padding for desktop
-    dialog.style.maxHeight = 'unset'; // Desktop doesn't have a forced max height
-    dialog.style.overflowY = 'unset'; // Desktop doesn't force scroll
-    dialog.style.overflowX = 'unset'; // Desktop doesn't force scroll
-    dialog.style.transform = 'none'; // No transform for desktop
-
-    // Mobile specific styles (width <= 767px)
-    if (window.innerWidth <= 767) {
-        dialog.style.width = '96%';
-        dialog.style.minWidth = 'unset';
-        dialog.style.maxWidth = '96%';
-        dialog.style.left = '50%';
-        dialog.style.top = '50%';
-        dialog.style.transform = 'translate(-50%, -50%)'; // Center the dialog
-        dialog.style.right = 'auto'; // Ensure right is auto for left positioning
-        dialog.style.maxHeight = '88vh'; // Match other mobile dialogs
-        dialog.style.padding = '12px 8px 8px 8px'; // Match other mobile dialogs
-        dialog.style.overflowY = 'auto'; // Ensure scrollable
-        dialog.style.overflowX = 'hidden'; // Hide horizontal scroll
-        dialog.style.borderRadius = '10px'; // Match other mobile dialogs
-        dialog.style.boxShadow = '0 2px 20px rgba(0,0,0,0.2)'; // Match other mobile dialogs
-    }
-
-    dialog.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <span style="font-weight:bold;font-size:17px;">关键词过滤</span>
-            <span id="ns-keyword-filter-close" style="cursor:pointer;font-size:22px;line-height:1;">×</span>
-        </div>
-        <label style="font-weight:bold;">关键词（逗号分隔）：</label><br>
-        <input id="ns-keyword-input" type="text" style="width:280px;padding:4px 8px;font-size:15px;border:1px solid #ccc;border-radius:4px;" placeholder="输入关键词，如A,B,C" />
-        <button id="ns-keyword-btn" style="margin-left:8px;padding:4px 12px;font-size:15px;background:#4CAF50;color:#fff;border:none;border-radius:4px;cursor:pointer;">过滤</button>
-        <span id="ns-keyword-log" style="margin-left:10px;color:#888;font-size:13px;"></span>
-    `;
-    document.body.appendChild(dialog);
-
-    // Apply mobile styles to input and button after they are in the DOM
-    if (window.innerWidth <= 767) {
-        const input = dialog.querySelector('#ns-keyword-input');
-        const button = dialog.querySelector('#ns-keyword-btn');
-        if (input) {
-            input.style.width = '100%'; // Full width on mobile
-            input.style.padding = '8px 10px'; // Larger padding
-            input.style.fontSize = '16px'; // Larger font size
-            input.style.boxSizing = 'border-box'; // Include padding in width calculation
-        }
-        if (button) {
-            button.style.width = '100%'; // Full width on mobile
-            button.style.marginLeft = '0'; // No margin left
-            button.style.marginTop = '10px'; // Margin top
-            button.style.padding = '8px 16px'; // Larger padding
-            button.style.fontSize = '16px'; // Larger font size
-            button.style.boxSizing = 'border-box'; // Include padding in width calculation
-        }
-    }
-
-    // 填充已保存的关键词
-    const savedKeywords = getKeywords();
-    const input = dialog.querySelector('#ns-keyword-input');
-    if (savedKeywords.length > 0) {
-        input.value = savedKeywords.join(',');
-    }
-
-    // 关闭按钮 - 清除过滤效果
-    dialog.querySelector('#ns-keyword-filter-close').onclick = function() {
-        dialog.remove();
-        clearFilter();
-    };
-
-    // 过滤逻辑
-    function doFilter() {
-        const val = input.value;
-        const keywords = val.split(/,|，/).map(s => s.trim()).filter(Boolean);
-        filterPosts(keywords);
-        saveKeywords(keywords); // 保存关键词到 localStorage
-        // 新增：操作日志记录
-        if (typeof window.addLog === 'function') {
-            window.addLog('关键词过滤：' + (keywords.length > 0 ? keywords.join(',') : '无'));
-        }
-        if (typeof onFilter === 'function') onFilter(keywords);
-    }
-
-    dialog.querySelector('#ns-keyword-btn').onclick = doFilter;
-    input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            doFilter();
-        }
-    });
-    input.onclick = function() {
-        input.placeholder = '';
-    };
-    input.onblur = function() {
-        if (!input.value) input.placeholder = '输入关键词，如A,B,C';
-    };
-    // 弹窗可拖动，拖动区域为左上角30x30像素，与鸡腿统计弹窗一致
-    setTimeout(() => {
-        const titleBar = dialog.querySelector('div');
-        if (titleBar && window.makeDraggable) {
-            window.makeDraggable(dialog, {width: 30, height: 30});
-            // 鼠标移动到左上角30x30像素时变为move
-            dialog.addEventListener('mousemove', function(e) {
-                const rect = dialog.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                if (x >= 0 && x < 30 && y >= 0 && y < 30) {
-                    dialog.style.cursor = 'move';
-                } else {
-                    dialog.style.cursor = 'default';
-                }
-            });
-            dialog.addEventListener('mouseleave', function() {
-                dialog.style.cursor = 'default';
-            });
-        }
-    }, 0);
-}
-
-// 关键词过滤的 observer 初始化（用于主插件调用）
-function initFilterObserver() {
-    // 检查是否有保存的关键词，如果有则自动应用过滤
-    const savedKeywords = getKeywords();
-    if (savedKeywords.length > 0) {
-        // 自动应用过滤
-        filterPosts(savedKeywords);
-        // 自动显示过滤弹窗
-        createFilterUI();
-    }
-}
-
-// 拖动功能实现（与主插件一致，支持 window.makeDraggable）
-if (!window.makeDraggable) {
-    window.makeDraggable = function(element, dragAreaSize = {width: 100, height: 32}) {
-        let isDragging = false;
-        let initialMouseX, initialMouseY;
-        let initialElementX, initialElementY;
-        const onMouseDown = (e) => {
-            const elementRect = element.getBoundingClientRect();
-            const clickXInElement = e.clientX - elementRect.left;
-            const clickYInElement = e.clientY - elementRect.top;
-            if (clickXInElement < 0 || clickXInElement >= dragAreaSize.width || clickYInElement < 0 || clickYInElement >= dragAreaSize.height) {
-                return;
+    
+    function addFriend(username, remarkInput) {
+        let list = getFriends();
+        if (!list.some(f => f.username === username)) {
+            // 查找ID
+            let userId = null;
+            const userLink = Array.from(document.querySelectorAll('a.author-name'))
+                .find(a => a.textContent.trim() === username);
+            if (userLink && userLink.href) {
+                const match = userLink.href.match(/\/space\/(\d+)/);
+                if (match) userId = match[1];
             }
-            isDragging = true;
-            initialMouseX = e.clientX;
-            initialMouseY = e.clientY;
-            element.style.left = elementRect.left + 'px';
-            element.style.top = elementRect.top + 'px';
-            element.style.right = 'auto';
-            initialElementX = parseFloat(element.style.left);
-            initialElementY = parseFloat(element.style.top);
-            element.style.cursor = 'move';
-            document.body.classList.add('dragging-active');
-            document.addEventListener('mousemove', onMouseMoveWhileDragging);
-            document.addEventListener('mouseup', onMouseUp);
-            e.preventDefault();
-        };
-        const onMouseMoveWhileDragging = (e) => {
-            if (!isDragging) return;
-            const dx = e.clientX - initialMouseX;
-            const dy = e.clientY - initialMouseY;
-            let newLeft = initialElementX + dx;
-            let newTop = initialElementY + dy;
-            element.style.left = newLeft + 'px';
-            element.style.top = newTop + 'px';
-        };
-        const onMouseUp = (e) => {
-            if (!isDragging) return;
-            isDragging = false;
-            document.body.classList.remove('dragging-active');
-            document.removeEventListener('mousemove', onMouseMoveWhileDragging);
-            document.removeEventListener('mouseup', onMouseUp);
-            element.style.cursor = 'default';
-        };
-        element.addEventListener('mousedown', onMouseDown);
-    };
-}
+            let pmUrl = '';
+            if (userId) {
+                pmUrl = 'https://www.nodeseek.com/notification#/message?mode=talk&to=' + userId;
+            } else {
+                pmUrl = 'https://www.nodeseek.com/message/new?to=' + encodeURIComponent(username);
+            }
+            let remark = typeof remarkInput === 'string' ? remarkInput : '';
+            list.push({
+                username,
+                pmUrl,
+                remark,
+                timestamp: new Date().toISOString() // 添加时间戳记录添加好友的时间
+            });
+            setFriends(list);
+            // 记录操作日志
+            if (typeof addLog === 'function') {
+                addLog(`添加用户 ${username} 为好友${remark ? ` (备注: ${remark})` : ''}`);
+            }
+        }
+    }
+    
+    function removeFriend(username) {
+        let list = getFriends();
+        list = list.filter(f => f.username !== username);
+        setFriends(list);
+        // 记录操作日志
+        if (typeof addLog === 'function') {
+            addLog(`删除好友 ${username}`);
+        }
+    }
+    
+    function isFriend(username) {
+        return getFriends().some(f => f.username === username);
+    }
 
-// 导出
-window.NodeSeekFilter = {
-    filterPosts,
-    createFilterUI,
-    initFilterObserver,
-    clearFilter
-};
+    function getFriendPmUrl(username) {
+        const f = getFriends().find(f => f.username === username);
+        return f ? f.pmUrl : '';
+    }
+
+    // 更新好友备注
+    function updateFriendRemark(username, newRemark) {
+        let list = getFriends();
+        const index = list.findIndex(f => f.username === username);
+        if (index !== -1) {
+            list[index].remark = newRemark;
+            setFriends(list);
+            // 记录操作日志
+            if (typeof addLog === 'function') {
+                addLog(`更新好友 ${username} 的备注为: ${newRemark}`);
+            }
+        }
+    }
+
+    // 高亮好友用户名
+    function highlightFriends() {
+        const friends = getFriends();
+
+        document.querySelectorAll('a.author-name').forEach(function(a) {
+            const username = a.textContent.trim();
+
+            // 移除旧的好友类名和备注
+            a.classList.remove('friend-user');
+            const oldRemark = a.parentNode.querySelector('.friend-remark');
+            if (oldRemark) oldRemark.remove();
+
+            // 检查是否是好友
+            const friend = friends.find(f => f.username === username);
+            if (friend) {
+                // 将用户名设置为绿色
+                a.classList.add('friend-user');
+
+                // 显示好友备注
+                if (friend.remark) {
+                    const span = document.createElement('span');
+                    span.className = 'friend-remark';
+                    span.textContent = friend.remark;
+                    a.parentNode.appendChild(span);
+                }
+            }
+        });
+    }
+
+    // 显示好友列表弹窗
+    function showFriendsDialog() {
+        // 检查弹窗是否已存在
+        const existingDialog = document.getElementById('friends-dialog');
+        if (existingDialog) {
+            // 如果已存在，则关闭弹窗
+            existingDialog.remove();
+            return;
+        }
+
+        const list = getFriends();
+
+        // 按添加时间倒序排序，最新添加的排在最前面
+        list.sort((a, b) => {
+            // 如果没有timestamp属性，则排在最后面
+            if (!a.timestamp) return 1;
+            if (!b.timestamp) return -1;
+            // 倒序排序，最新的在最前面
+            return new Date(b.timestamp) - new Date(a.timestamp);
+        });
+
+        // 不再记录查看好友列表的操作
+        const dialog = document.createElement('div');
+        dialog.id = 'friends-dialog';
+        dialog.style.position = 'fixed';
+        dialog.style.top = '60px';
+        dialog.style.right = '16px';
+        dialog.style.zIndex = 10000;
+        dialog.style.background = '#fff';
+        dialog.style.border = '1px solid #ccc';
+        dialog.style.borderRadius = '8px';
+        dialog.style.boxShadow = '0 2px 12px rgba(0,0,0,0.15)';
+        dialog.style.padding = '18px 20px 12px 20px';
+        // 移除固定minWidth设置，在PC设备上保留
+        if (window.innerWidth > 767) {
+            dialog.style.minWidth = '380px';  // 只在PC设备上设置
+        }
+        dialog.style.maxHeight = '60vh';
+        dialog.style.overflowY = 'auto';
+        dialog.style.overflowX = 'auto';
+
+        // 标题和关闭按钮
+        const title = document.createElement('div');
+        title.textContent = '好友列表';
+        title.style.fontWeight = 'bold';
+        title.style.fontSize = '16px';
+        title.style.marginBottom = '10px';
+        dialog.appendChild(title);
+        const closeBtn = document.createElement('span');
+        closeBtn.textContent = '×';
+        closeBtn.style.position = 'absolute';
+        closeBtn.style.right = '12px';
+        closeBtn.style.top = '8px';
+        closeBtn.style.cursor = 'pointer';
+        closeBtn.style.fontSize = '20px';
+        closeBtn.className = 'close-btn'; // 添加类名便于CSS选择器选中
+        closeBtn.onclick = function() { dialog.remove(); };
+        dialog.appendChild(closeBtn);
+
+        // 列表内容
+        if (list.length === 0) {
+            const empty = document.createElement('div');
+            empty.textContent = '暂无好友';
+            empty.style.textAlign = 'center';
+            empty.style.color = '#888';
+            empty.style.margin = '18px 0 8px 0';
+            dialog.appendChild(empty);
+        } else {
+            // 使用表格展示，增加备注列
+            const table = document.createElement('table');
+            table.style.width = '100%';
+            table.style.borderCollapse = 'collapse';
+            table.innerHTML = '<thead><tr>'
+                + '<th style="text-align:left;font-size:13px;width:70px;">用户名</th>'
+                + '<th style="text-align:left;font-size:13px;width:110px;">备注</th>'
+                + '<th style="text-align:left;font-size:13px;width:100px;padding-left:8px;">添加时间</th>'
+                + '<th style="width:48px;text-align:right;"></th></tr></thead>';
+
+            const tableWrapper = document.createElement('div');
+            tableWrapper.style.overflowX = 'auto'; // 支持水平滚动
+            tableWrapper.appendChild(table);
+
+            const tbody = document.createElement('tbody');
+            list.forEach(friend => {
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid #eee';
+                // 用户名
+                const tdUser = document.createElement('td');
+                const nameLink = document.createElement('a');
+
+                // 修改：从pmUrl中提取用户ID，构建主页链接
+                let userId = null;
+                if (friend.pmUrl) {
+                    // 尝试从notification#/message链接中提取用户ID
+                    const match = friend.pmUrl.match(/\/notification#\/message\?mode=talk&to=(\d+)/);
+                    if (match) {
+                        userId = match[1];
+                    }
+                }
+
+                // 设置链接地址为用户主页
+                if (userId) {
+                    nameLink.href = 'https://www.nodeseek.com/space/' + userId + '#/general';
+                } else {
+                    // 如果无法提取到ID，保留原来的pmUrl
+                    nameLink.href = friend.pmUrl;
+                }
+
+                nameLink.textContent = friend.username + '　';
+                nameLink.target = '_blank';
+                nameLink.style.color = '#2ea44f';
+                nameLink.style.fontWeight = 'bold';
+                nameLink.style.fontSize = '13px';
+                nameLink.style.whiteSpace = 'nowrap'; // 确保用户名不换行
+                nameLink.title = '点击访问主页';
+
+                tdUser.appendChild(nameLink);
+
+                tr.appendChild(tdUser);
+                // 备注
+                const tdRemark = document.createElement('td');
+                tdRemark.textContent = friend.remark || '';
+                tdRemark.style.color = '#888';
+                tdRemark.style.fontSize = '12px';
+                tdRemark.style.textAlign = 'left';
+                tdRemark.style.cssText += 'text-align:left !important;';
+
+                // 根据设备类型调整最大宽度和换行行为
+                const isMobile = window.innerWidth <= 767;
+                if (!isMobile) {
+                    tdRemark.style.maxWidth = '110px';
+                    tdRemark.style.overflow = 'hidden';
+                    tdRemark.style.textOverflow = 'ellipsis';
+                    tdRemark.style.whiteSpace = 'nowrap'; // PC端强制不换行
+                }
+
+                // 设置title为备注的完整内容
+                tdRemark.title = friend.remark ? friend.remark : '点击编辑备注';
+
+                // 添加点击编辑功能
+                tdRemark.style.cursor = 'pointer';
+                tdRemark.onclick = function(e) {
+                    e.stopPropagation();
+                    if (tdRemark.querySelector('input')) return;
+                    // 保存当前文本
+                    const currentText = tdRemark.textContent;
+
+                    // 创建输入框
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.value = currentText;
+                    input.style.width = '95%';
+                    input.style.padding = '2px';
+                    input.style.border = '1px solid #2ea44f';
+                    input.style.borderRadius = '3px';
+                    input.style.fontSize = '12px';
+
+                    // 替换当前内容为输入框
+                    const isWithPrefix = isMobile && tdRemark.firstChild.nodeValue === tdRemark.textContent;
+                    tdRemark.textContent = '';
+                    tdRemark.appendChild(input);
+                    input.focus();
+
+                    // 处理输入框失焦事件（保存）
+                    input.onblur = function() {
+                        const newRemark = input.value;
+
+                        // 先移除输入框
+                        input.remove();
+
+                        // 重新设置文本内容
+                        tdRemark.textContent = newRemark;
+
+                        // 更新title属性
+                        tdRemark.title = newRemark || '点击编辑备注';
+
+                        // 更新好友备注
+                        updateFriendRemark(friend.username, newRemark);
+                        
+                        // 实时更新页面上该用户的备注显示
+                        highlightFriends();
+                    };
+
+                    // 处理回车键（保存并失焦）
+                    input.onkeydown = function(e) {
+                        if (e.key === 'Enter') {
+                            input.blur(); // 这会触发onblur事件，已经在那里更新了title
+                        } else if (e.key === 'Escape') {
+                            tdRemark.textContent = currentText; // 取消编辑
+                            tdRemark.title = currentText || '点击编辑备注'; // 同时恢复title属性
+                        }
+                    };
+                };
+                tr.appendChild(tdRemark);
+
+                // 添加时间列
+                const tdTime = document.createElement('td');
+                if (friend.timestamp) {
+                    const date = new Date(friend.timestamp);
+                    tdTime.textContent = date.getFullYear() + '-' +
+                        String(date.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(date.getDate()).padStart(2, '0') + ' ' +
+                        String(date.getHours()).padStart(2, '0') + ':' +
+                        String(date.getMinutes()).padStart(2, '0');
+                } else {
+                    tdTime.textContent = '';
+                }
+                tdTime.style.fontSize = '12px';
+                tdTime.style.whiteSpace = 'nowrap';
+                tdTime.style.paddingLeft = '8px'; // 向右移动8px
+                tr.appendChild(tdTime);
+
+                // 操作
+                const tdOp = document.createElement('td');
+                tdOp.style.textAlign = 'right';
+                const removeBtn = document.createElement('button');
+                removeBtn.textContent = '移除';
+                removeBtn.className = 'blacklist-btn red';
+                removeBtn.style.fontSize = '11px';
+                removeBtn.onclick = function() {
+                    if (confirm('确定要移除该好友？')) {
+                        removeFriend(friend.username);
+                        
+                        // 不刷新页面，直接更新行显示
+                        tr.style.opacity = '0.5';
+                        tr.style.transition = 'opacity 0.2s';
+                        
+                        setTimeout(function() {
+                            tr.remove();
+                            
+                            // 检查是否还有其他好友，如果没有则显示空提示
+                            const currentTbody = tr.closest('tbody');
+                            if (currentTbody && currentTbody.children.length === 0) {
+                                const empty = document.createElement('div');
+                                empty.textContent = '暂无好友';
+                                empty.style.textAlign = 'center';
+                                empty.style.color = '#888';
+                                empty.style.margin = '18px 0 8px 0';
+                                const tableWrapper = currentTbody.closest('div');
+                                if (tableWrapper) {
+                                    tableWrapper.remove();
+                                    dialog.appendChild(empty);
+                                }
+                            }
+                            
+                            // 更新页面上该用户的所有显示
+                            document.querySelectorAll('a.author-name').forEach(function(link) {
+                                if (link.textContent.trim() === friend.username) {
+                                    // 移除好友样式
+                                    link.classList.remove('friend-user');
+                                    // 移除备注
+                                    const oldRemark = link.parentNode.querySelector('.friend-remark');
+                                    if (oldRemark) oldRemark.remove();
+                                    
+                                    // 更新页面上该用户的好友按钮状态
+                                    const userButtons = link.parentNode.querySelectorAll('.userscript-nodeseek-interaction-btn');
+                                    userButtons.forEach(btn => {
+                                        if (btn.textContent === '删除好友') {
+                                            btn.textContent = '添加好友';
+                                            btn.style.background = '#2ea44f';
+                                        }
+                                    });
+                                }
+                            });
+                        }, 200);
+                    }
+                };
+                tdOp.appendChild(removeBtn);
+                tr.appendChild(tdOp);
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            dialog.appendChild(tableWrapper);
+        }
+
+        document.body.appendChild(dialog);
+        
+        // 如果 makeDraggable 函数可用，使弹窗可拖动
+        if (typeof makeDraggable === 'function') {
+            makeDraggable(dialog, {width: 50, height: 50}); // Make friends dialog draggable, increased drag area for testing
+        }
+    }
+
+    // 新增：从好友弹窗中移除指定用户
+    function removeFriendFromDialog(username) {
+        const friendsDialog = document.getElementById('friends-dialog');
+        if (!friendsDialog) return;
+        
+        const table = friendsDialog.querySelector('table');
+        if (!table) return;
+        
+        const tbody = table.querySelector('tbody');
+        if (!tbody) return;
+        
+        // 查找要移除的用户行
+        Array.from(tbody.children).forEach(function(row) {
+            const userNameCell = row.querySelector('td:first-child a');
+            if (userNameCell && userNameCell.textContent.trim().replace('　', '') === username) {
+                // 添加淡出动画
+                row.style.opacity = '0.5';
+                row.style.transition = 'opacity 0.2s';
+                
+                setTimeout(function() {
+                    row.remove();
+                    
+                    // 检查是否还有其他好友，如果没有则显示空提示
+                    if (tbody.children.length === 0) {
+                        const empty = document.createElement('div');
+                        empty.textContent = '暂无好友';
+                        empty.style.textAlign = 'center';
+                        empty.style.color = '#888';
+                        empty.style.margin = '18px 0 8px 0';
+                        const tableWrapper = table.parentElement;
+                        if (tableWrapper) {
+                            tableWrapper.remove();
+                            friendsDialog.appendChild(empty);
+                        }
+                    }
+                }, 200);
+            }
+        });
+    }
+
+    // 新增：实时更新好友弹窗中的内容
+    function updateFriendsDialogWithNewUser(username, remark) {
+        const friendsDialog = document.getElementById('friends-dialog');
+        if (!friendsDialog) return;
+        
+        // 移除可能存在的空提示
+        const emptyDiv = friendsDialog.querySelector('div:last-child');
+        if (emptyDiv && emptyDiv.textContent === '暂无好友') {
+            emptyDiv.remove();
+        }
+        
+        // 获取最新的好友信息
+        const friends = getFriends();
+        const friend = friends.find(f => f.username === username);
+        if (!friend) return;
+        
+        // 查找或创建表格
+        let table = friendsDialog.querySelector('table');
+        if (!table) {
+            // 如果没有表格，创建一个
+            table = document.createElement('table');
+            table.style.width = '100%';
+            table.style.borderCollapse = 'collapse';
+            table.innerHTML = '<thead><tr>'
+                + '<th style="text-align:left;font-size:13px;width:70px;">用户名</th>'
+                + '<th style="text-align:left;font-size:13px;width:110px;">备注</th>'
+                + '<th style="text-align:left;font-size:13px;width:100px;padding-left:8px;">添加时间</th>'
+                + '<th style="width:48px;text-align:right;"></th></tr></thead>';
+            
+            const tableWrapper = document.createElement('div');
+            tableWrapper.style.overflowX = 'auto';
+            tableWrapper.appendChild(table);
+            
+            const tbody = document.createElement('tbody');
+            table.appendChild(tbody);
+            friendsDialog.appendChild(tableWrapper);
+        }
+        
+        const tbody = table.querySelector('tbody');
+        if (!tbody) return;
+        
+        // 创建新行
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #eee';
+        tr.style.opacity = '0'; // 初始透明
+        tr.style.transition = 'opacity 0.3s ease-in';
+        
+        // 用户名列
+        const tdUser = document.createElement('td');
+        const nameLink = document.createElement('a');
+
+        // 从pmUrl中提取用户ID，构建主页链接
+        let userId = null;
+        if (friend.pmUrl) {
+            const match = friend.pmUrl.match(/\/notification#\/message\?mode=talk&to=(\d+)/);
+            if (match) {
+                userId = match[1];
+            }
+        }
+
+        // 设置链接地址为用户主页
+        if (userId) {
+            nameLink.href = 'https://www.nodeseek.com/space/' + userId + '#/general';
+        } else {
+            nameLink.href = friend.pmUrl;
+        }
+
+        nameLink.textContent = friend.username + '　';
+        nameLink.target = '_blank';
+        nameLink.style.color = '#2ea44f';
+        nameLink.style.fontWeight = 'bold';
+        nameLink.style.fontSize = '13px';
+        nameLink.style.whiteSpace = 'nowrap';
+        nameLink.title = '点击访问主页';
+
+        tdUser.appendChild(nameLink);
+        tr.appendChild(tdUser);
+
+        // 备注列
+        const tdRemark = document.createElement('td');
+        tdRemark.textContent = friend.remark || '';
+        tdRemark.style.color = '#888';
+        tdRemark.style.fontSize = '12px';
+        tdRemark.style.textAlign = 'left';
+        tdRemark.style.cssText += 'text-align:left !important;';
+
+        const isMobile = window.innerWidth <= 767;
+        if (!isMobile) {
+            tdRemark.style.maxWidth = '110px';
+            tdRemark.style.overflow = 'hidden';
+            tdRemark.style.textOverflow = 'ellipsis';
+            tdRemark.style.whiteSpace = 'nowrap';
+        }
+
+        tdRemark.title = friend.remark ? friend.remark : '点击编辑备注';
+        tdRemark.style.cursor = 'pointer';
+        
+        // 添加点击编辑功能
+        tdRemark.onclick = function(e) {
+            e.stopPropagation();
+            if (tdRemark.querySelector('input')) return;
+            const currentText = tdRemark.textContent;
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = currentText;
+            input.style.width = '95%';
+            input.style.padding = '2px';
+            input.style.border = '1px solid #2ea44f';
+            input.style.borderRadius = '3px';
+            input.style.fontSize = '12px';
+
+            tdRemark.textContent = '';
+            tdRemark.appendChild(input);
+            input.focus();
+
+            input.onblur = function() {
+                const newRemark = input.value;
+                input.remove();
+                tdRemark.textContent = newRemark;
+                tdRemark.title = newRemark || '点击编辑备注';
+                updateFriendRemark(friend.username, newRemark);
+                
+                // 实时更新页面上该用户的备注显示
+                highlightFriends();
+            };
+
+            input.onkeydown = function(e) {
+                if (e.key === 'Enter') {
+                    input.blur();
+                } else if (e.key === 'Escape') {
+                    tdRemark.textContent = currentText;
+                    tdRemark.title = currentText || '点击编辑备注';
+                }
+            };
+        };
+        tr.appendChild(tdRemark);
+
+        // 添加时间列
+        const tdTime = document.createElement('td');
+        if (friend.timestamp) {
+            const date = new Date(friend.timestamp);
+            tdTime.textContent = date.getFullYear() + '-' +
+                String(date.getMonth() + 1).padStart(2, '0') + '-' +
+                String(date.getDate()).padStart(2, '0') + ' ' +
+                String(date.getHours()).padStart(2, '0') + ':' +
+                String(date.getMinutes()).padStart(2, '0');
+        } else {
+            tdTime.textContent = '';
+        }
+        tdTime.style.fontSize = '12px';
+        tdTime.style.whiteSpace = 'nowrap';
+        tdTime.style.paddingLeft = '8px';
+        tr.appendChild(tdTime);
+
+        // 操作列
+        const tdOp = document.createElement('td');
+        tdOp.style.textAlign = 'right';
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = '移除';
+        removeBtn.className = 'blacklist-btn red';
+        removeBtn.style.fontSize = '11px';
+        removeBtn.onclick = function() {
+            if (confirm('确定要移除该好友？')) {
+                removeFriend(friend.username);
+                
+                tr.style.opacity = '0.5';
+                tr.style.transition = 'opacity 0.2s';
+                
+                setTimeout(function() {
+                    tr.remove();
+                    
+                    if (tbody && tbody.children.length === 0) {
+                        const empty = document.createElement('div');
+                        empty.textContent = '暂无好友';
+                        empty.style.textAlign = 'center';
+                        empty.style.color = '#888';
+                        empty.style.margin = '18px 0 8px 0';
+                        table.parentElement.remove();
+                        friendsDialog.appendChild(empty);
+                    }
+                    
+                    // 更新页面上该用户的所有显示
+                    document.querySelectorAll('a.author-name').forEach(function(link) {
+                        if (link.textContent.trim() === friend.username) {
+                            // 移除好友样式
+                            link.classList.remove('friend-user');
+                            // 移除备注
+                            const oldRemark = link.parentNode.querySelector('.friend-remark');
+                            if (oldRemark) oldRemark.remove();
+                            
+                            // 更新页面上该用户的好友按钮状态
+                            const userButtons = link.parentNode.querySelectorAll('.userscript-nodeseek-interaction-btn');
+                            userButtons.forEach(btn => {
+                                if (btn.textContent === '删除好友') {
+                                    btn.textContent = '添加好友';
+                                    btn.style.background = '#2ea44f';
+                                }
+                            });
+                        }
+                    });
+                }, 200);
+            }
+        };
+        tdOp.appendChild(removeBtn);
+        tr.appendChild(tdOp);
+
+        // 将新行添加到表格顶部（最新的在最前面）
+        if (tbody.firstChild) {
+            tbody.insertBefore(tr, tbody.firstChild);
+        } else {
+            tbody.appendChild(tr);
+        }
+        
+        // 添加淡入动画效果
+        setTimeout(function() {
+            tr.style.opacity = '1';
+        }, 50);
+    }
+
+    // 将函数暴露到全局作用域，供主脚本调用
+    window.NodeSeekFriends = {
+        getFriends,
+        setFriends,
+        addFriend,
+        removeFriend,
+        isFriend,
+        getFriendPmUrl,
+        updateFriendRemark,
+        highlightFriends,
+        showFriendsDialog,
+        updateFriendsDialogWithNewUser,
+        removeFriendFromDialog
+    };
+
+})();
