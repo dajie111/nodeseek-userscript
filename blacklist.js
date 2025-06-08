@@ -424,10 +424,12 @@
                 tdRemark.style.whiteSpace = 'nowrap';
                 tdRemark.style.display = 'inline-block'; // 确保宽度生效
                 tdRemark.style.verticalAlign = 'bottom'; // 下对齐
+                tdRemark.style.paddingBottom = '2px'; // 下移2px
             } else {
                 // 移动端显示方式
                 tdRemark.textContent = info.remark || '　';  // 使用全角空格保持宽度
                 tdRemark.style.verticalAlign = 'bottom'; // 下对齐
+                tdRemark.style.paddingBottom = '2px'; // 下移2px
             }
 
             tdRemark.style.textAlign = 'left';
