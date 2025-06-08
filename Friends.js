@@ -254,65 +254,45 @@
                 tdRemark.onclick = function(e) {
                     e.stopPropagation();
                     if (tdRemark.querySelector('input')) return;
-                    
-                    // 保存当前文本
                     const currentText = tdRemark.textContent;
 
-                    // 创建输入框
                     const input = document.createElement('input');
                     input.type = 'text';
                     input.value = currentText;
+                    input.style.width = '95%';
+                    input.style.padding = '2px';
                     input.style.border = '1px solid #2ea44f';
                     input.style.borderRadius = '3px';
-                    input.style.outline = 'none';
-                    
-                    // 移动端特殊处理
+                    input.style.fontSize = '12px';
+
+                    // 移动端适配：增加输入框尺寸
                     if (isMobile) {
-                        input.style.width = '100%';
                         input.style.padding = '5px';
                         input.style.fontSize = '14px';
+                        input.style.width = '98%';
                         input.style.boxSizing = 'border-box';
-                        // 移动端清除所有内容并添加输入框
-                        tdRemark.innerHTML = '';
-                        tdRemark.appendChild(input);
-                    } else {
-                        input.style.width = '95%';
-                        input.style.padding = '2px';
-                        input.style.fontSize = '12px';
-                        // PC端正常替换
-                        tdRemark.textContent = '';
-                        tdRemark.appendChild(input);
                     }
-                    
+
+                    // 替换当前内容为输入框 - 修复：使用innerHTML完全清除内容，避免CSS前缀影响
+                    tdRemark.innerHTML = '';
+                    tdRemark.appendChild(input);
                     input.focus();
 
-                    // 处理输入框失焦事件（保存）
                     input.onblur = function() {
                         const newRemark = input.value;
-
-                        // 先移除输入框
                         input.remove();
-
-                        // 重新设置文本内容
                         tdRemark.textContent = newRemark;
-
-                        // 更新title属性
                         tdRemark.title = newRemark || '点击编辑备注';
-
-                        // 更新好友备注
                         updateFriendRemark(friend.username, newRemark);
                         
                         // 实时更新页面上该用户的备注显示
                         highlightFriends();
                     };
 
-                    // 处理回车键（保存并失焦）
                     input.onkeydown = function(e) {
                         if (e.key === 'Enter') {
-                            input.blur(); // 这会触发onblur事件，已经在那里更新了title
+                            input.blur();
                         } else if (e.key === 'Escape') {
-                            // 取消编辑
-                            input.remove();
                             tdRemark.textContent = currentText;
                             tdRemark.title = currentText || '点击编辑备注';
                         }
@@ -549,34 +529,28 @@
         tdRemark.onclick = function(e) {
             e.stopPropagation();
             if (tdRemark.querySelector('input')) return;
-            
             const currentText = tdRemark.textContent;
 
             const input = document.createElement('input');
             input.type = 'text';
             input.value = currentText;
+            input.style.width = '95%';
+            input.style.padding = '2px';
             input.style.border = '1px solid #2ea44f';
             input.style.borderRadius = '3px';
-            input.style.outline = 'none';
-            
-            // 移动端特殊处理
+            input.style.fontSize = '12px';
+
+            // 移动端适配：增加输入框尺寸
             if (isMobile) {
-                input.style.width = '100%';
                 input.style.padding = '5px';
                 input.style.fontSize = '14px';
+                input.style.width = '98%';
                 input.style.boxSizing = 'border-box';
-                // 移动端清除所有内容并添加输入框
-                tdRemark.innerHTML = '';
-                tdRemark.appendChild(input);
-            } else {
-                input.style.width = '95%';
-                input.style.padding = '2px';
-                input.style.fontSize = '12px';
-                // PC端正常替换
-                tdRemark.textContent = '';
-                tdRemark.appendChild(input);
             }
-            
+
+            // 替换当前内容为输入框 - 修复：使用innerHTML完全清除内容，避免CSS前缀影响
+            tdRemark.innerHTML = '';
+            tdRemark.appendChild(input);
             input.focus();
 
             input.onblur = function() {
@@ -594,8 +568,6 @@
                 if (e.key === 'Enter') {
                     input.blur();
                 } else if (e.key === 'Escape') {
-                    // 取消编辑
-                    input.remove();
                     tdRemark.textContent = currentText;
                     tdRemark.title = currentText || '点击编辑备注';
                 }
