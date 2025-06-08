@@ -173,6 +173,30 @@
             let newLeft = initialElementX + dx;
             let newTop = initialElementY + dy;
 
+            // 添加边界检测，防止元素被拖拽到屏幕外面
+            const elementRect = element.getBoundingClientRect();
+            const elementWidth = elementRect.width;
+            const elementHeight = elementRect.height;
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+
+            // 确保元素至少有50px的部分始终可见
+            const minVisibleSize = 50;
+
+            // 限制左边界：最左不能超过 -(elementWidth - minVisibleSize)
+            const minLeft = -(elementWidth - minVisibleSize);
+            // 限制右边界：最右不能超过 (viewportWidth - minVisibleSize)
+            const maxLeft = viewportWidth - minVisibleSize;
+
+            // 限制上边界：最上不能超过 0
+            const minTop = 0;
+            // 限制下边界：最下不能超过 (viewportHeight - minVisibleSize)
+            const maxTop = viewportHeight - minVisibleSize;
+
+            // 应用边界限制
+            newLeft = Math.max(minLeft, Math.min(maxLeft, newLeft));
+            newTop = Math.max(minTop, Math.min(maxTop, newTop));
+
             element.style.left = newLeft + 'px';
             element.style.top = newTop + 'px';
         };
@@ -280,7 +304,7 @@
         dialog.style.padding = '18px 20px 12px 20px';
         // 移除固定minWidth设置，在PC设备上保留
         if (window.innerWidth > 767) {
-            dialog.style.minWidth = '380px';  // 只在PC设备上设置
+            dialog.style.minWidth = '490px';  // 只在PC设备上设置
         }
         dialog.style.maxHeight = '60vh';
         dialog.style.overflowY = 'auto';
@@ -308,7 +332,9 @@
         const table = document.createElement('table');
         table.style.width = '100%';
         table.style.borderCollapse = 'collapse';
-        table.innerHTML = '<thead><tr><th style="text-align:left;font-size:13px;">用户名</th><th style="text-align:left;font-size:13px;">　备注　　</th><th style="text-align:left;font-size:13px;">拉黑时间</th><th style="text-align:left;font-size:13px;">　拉黑页面</th><th></th></tr></thead>';
+        // 设置所有表格单元格垂直对齐方式为底部对齐
+        table.style.verticalAlign = 'bottom';
+        table.innerHTML = '<thead><tr><th style="text-align:left;font-size:13px;vertical-align:bottom;">用户名</th><th style="text-align:left;font-size:13px;padding-left:5px;min-width:180px;vertical-align:bottom;">备注</th><th style="text-align:left;font-size:13px;padding-left:8px;vertical-align:bottom;">拉黑时间</th><th style="text-align:left;font-size:13px;padding-left:5px;vertical-align:bottom;">页面</th><th style="vertical-align:bottom;"></th></tr></thead>';
         const tbody = document.createElement('tbody');
         // 使用排序后的数组遍历黑名单
         entriesList.forEach(entry => {
@@ -318,6 +344,7 @@
             tr.style.borderBottom = '1px solid #eee';
             // 用户名
             const tdUser = document.createElement('td');
+            tdUser.style.verticalAlign = 'bottom';
 
             // 创建链接替代纯文本
             const nameLink = document.createElement('a');
@@ -387,145 +414,152 @@
             const isMobile = window.innerWidth <= 767;
 
             if (!isMobile) {
-                // PC端显示方式
-                tdRemark.textContent = '　' + (info.remark || '') + '　';
+                // PC端显示方式 - 增加备注显示空间，即使为空也保持固定宽度
+                tdRemark.textContent = info.remark || '　';  // 使用全角空格保持宽度
                 tdRemark.style.fontSize = '12px';
-                tdRemark.style.maxWidth = '110px';
+                tdRemark.style.minWidth = '180px';  // 最小宽度确保空白时也占位
+                tdRemark.style.maxWidth = '180px';  // 最大宽度限制
                 tdRemark.style.overflow = 'hidden';
                 tdRemark.style.textOverflow = 'ellipsis';
                 tdRemark.style.whiteSpace = 'nowrap';
+                tdRemark.style.display = 'inline-block'; // 确保宽度生效
+                tdRemark.style.verticalAlign = 'bottom'; // 下对齐
             } else {
-                // 移动端显示方式 - 内容不带前后空格
-                tdRemark.textContent = info.remark || '';
+                // 移动端显示方式
+                tdRemark.textContent = info.remark || '　';  // 使用全角空格保持宽度
+                tdRemark.style.verticalAlign = 'bottom'; // 下对齐
             }
 
             tdRemark.style.textAlign = 'left';
             tdRemark.style.cssText += 'text-align:left !important;';
             tdRemark.style.cursor = 'pointer';
+            tdRemark.style.paddingLeft = '5px'; // 向右移动5px
 
             // 设置title为备注的完整内容
             tdRemark.title = info.remark ? info.remark : '点击编辑备注';
 
-            // 新增：点击备注可编辑
-            let clickX = null;
-            tdRemark.onmousedown = function(e) {
-                clickX = e.clientX;
-            };
-
+            // 备注编辑功能 - 使用固定定位的编辑框，不干扰现有布局
             tdRemark.onclick = function(e) {
                 e.stopPropagation();
-                if (tdRemark.querySelector('input')) return;
+                e.preventDefault();
+                
+                // 防止重复点击
+                if (document.getElementById('blacklist-edit-overlay')) return;
+                
                 const currentText = (info.remark || '');
+                
+                // 获取单元格在页面上的位置
+                const cellRect = tdRemark.getBoundingClientRect();
+                
+                // 创建遮罩层
+                const overlay = document.createElement('div');
+                overlay.id = 'blacklist-edit-overlay';
+                overlay.style.position = 'fixed';
+                overlay.style.top = '0';
+                overlay.style.left = '0';
+                overlay.style.width = '100%';
+                overlay.style.height = '100%';
+                overlay.style.backgroundColor = 'transparent';
+                overlay.style.zIndex = '10001';
+                
+                // 创建编辑框
+                const editor = document.createElement('div');
+                editor.style.position = 'fixed';
+                editor.style.top = cellRect.top + 'px';
+                editor.style.left = cellRect.left + 'px';
+                editor.style.width = cellRect.width + 'px';
+                editor.style.height = cellRect.height + 'px';
+                editor.style.zIndex = '10002';
+                editor.style.backgroundColor = '#fff';
+                editor.style.boxShadow = '0 0 5px rgba(0,0,0,0.3)';
+                editor.style.padding = '0';
+                editor.style.boxSizing = 'border-box';
+                editor.style.borderRadius = '3px';
+                
+                // 创建输入框
                 const input = document.createElement('input');
                 input.type = 'text';
                 input.value = currentText;
-                input.style.width = '95%';
-                input.style.padding = '2px';
+                input.style.width = '100%';
+                input.style.height = '100%';
                 input.style.border = '1px solid #d00';
                 input.style.borderRadius = '3px';
+                input.style.padding = '0 5px';
+                input.style.boxSizing = 'border-box';
                 input.style.fontSize = '12px';
-
-                // 替换内容为输入框
-                tdRemark.textContent = '';
-                tdRemark.appendChild(input);
-
-                // 计算光标位置
-                setTimeout(function() {
-                    if (clickX !== null && !isMobile) { // 仅在PC端处理精确光标位置
-                        // 计算点击位置对应的字符索引
-                        const range = document.createRange();
-                        range.selectNodeContents(tdRemark);
-                        const rect = tdRemark.getBoundingClientRect();
-                        const x = clickX - rect.left;
-                        // 创建一个临时span用于测量字符宽度
-                        const tempSpan = document.createElement('span');
-                        tempSpan.style.visibility = 'hidden';
-                        tempSpan.style.position = 'absolute';
-                        tempSpan.style.fontSize = '12px';
-                        tempSpan.style.fontFamily = 'inherit';
-                        document.body.appendChild(tempSpan);
-                        let pos = 0;
-                        for (; pos <= currentText.length; pos++) {
-                            tempSpan.textContent = currentText.slice(0, pos);
-                            if (tempSpan.offsetWidth > x) break;
-                        }
-                        if (pos > 0 && tempSpan.offsetWidth > x) pos--;
-                        document.body.removeChild(tempSpan);
-                        input.setSelectionRange(pos, pos);
-                    } else {
-                        input.setSelectionRange(currentText.length, currentText.length);
+                input.style.outline = 'none';
+                
+                // 添加到文档
+                editor.appendChild(input);
+                overlay.appendChild(editor);
+                document.body.appendChild(overlay);
+                
+                                 // 聚焦输入框但不选择文本
+                 input.focus();
+                 // 将光标放在文本末尾
+                 const textLength = input.value.length;
+                 input.setSelectionRange(textLength, textLength);
+                
+                // 函数：关闭编辑并保存
+                const closeEditor = function(save) {
+                    const newText = save ? input.value : currentText;
+                    
+                    // 移除编辑器
+                    document.body.removeChild(overlay);
+                    
+                                         // 如果有变更且选择保存，则更新内容
+                     if (save && newText !== currentText) {
+                         // 更新显示的备注
+                         tdRemark.textContent = newText || '　';  // 使用全角空格保持宽度
+                         tdRemark.title = newText || '点击编辑备注';
+                        
+                        // 更新存储
+                        updateBlacklistRemark(username, newText);
+                        
+                        // 异步更新页面上的其他备注显示
+                        setTimeout(function() {
+                            document.querySelectorAll('a.author-name').forEach(function(a) {
+                                if (a.textContent.trim() === username) {
+                                    const oldRemark = a.parentNode.querySelector('.blacklist-remark');
+                                    if (oldRemark) oldRemark.remove();
+                                    
+                                    if (newText) {
+                                        const span = document.createElement('span');
+                                        span.className = 'blacklist-remark';
+                                        span.textContent = newText;
+                                        a.parentNode.appendChild(span);
+                                    }
+                                }
+                            });
+                        }, 100);
+                        
+                        // 更新信息对象
+                        info.remark = newText;
                     }
-                    input.focus();
-                    clickX = null;
-                }, 0);
-
-                // 失焦保存
-                input.onblur = function() {
-                    const newRemark = input.value;
-
-                    // 移除输入框
-                    input.remove();
-
-                    if (newRemark === currentText) {
-                        // 移动端和PC端不同的显示方式
-                        if (!isMobile) {
-                            tdRemark.textContent = '　' + currentText + '　';
-                        } else {
-                            tdRemark.textContent = currentText;
-                        }
-                        return;
-                    }
-
-                    // 更新黑名单列表中的显示
-                    if (!isMobile) {
-                        tdRemark.textContent = '　' + newRemark + '　';
-                    } else {
-                        tdRemark.textContent = newRemark;
-                    }
-                    tdRemark.title = newRemark || '点击编辑备注'; // 更新title属性
-
-                    // 先更新存储
-                    updateBlacklistRemark(username, newRemark);
-
-                    // 立即更新页面上所有该用户的备注显示
-                    document.querySelectorAll('a.author-name').forEach(function(a) {
-                        if (a.textContent.trim() === username) {
-                            // 先移除旧备注
-                            const oldRemark = a.parentNode.querySelector('.blacklist-remark');
-                            if (oldRemark) oldRemark.remove();
-
-                            // 添加新备注（如果有）
-                            if (newRemark) {
-                                const span = document.createElement('span');
-                                span.className = 'blacklist-remark';
-                                span.textContent = newRemark;
-                                a.parentNode.appendChild(span);
-                            }
-                        }
-                    });
-
-                    // 同步更新弹窗内信息对象，避免再次点击时恢复旧值
-                    info.remark = newRemark;
                 };
-
-                // 回车保存，ESC取消
-                input.onkeydown = function(e) {
+                
+                // 点击遮罩层关闭编辑器
+                overlay.addEventListener('mousedown', function(e) {
+                    if (e.target === overlay) {
+                        closeEditor(true);
+                    }
+                });
+                
+                // 键盘事件
+                input.addEventListener('keydown', function(e) {
                     if (e.key === 'Enter') {
-                        input.blur(); // 触发onblur事件保存
+                        e.preventDefault();
+                        closeEditor(true);
                     } else if (e.key === 'Escape') {
-                        // 恢复原始文本，不保存
-                        if (!isMobile) {
-                            tdRemark.textContent = '　' + currentText + '　';
-                        } else {
-                            tdRemark.textContent = currentText;
-                        }
-                        tdRemark.title = currentText || '点击编辑备注';
+                        e.preventDefault();
+                        closeEditor(false);
                     }
-                };
+                });
             };
             tr.appendChild(tdRemark);
             // 拉黑时间
             const tdTime = document.createElement('td');
+            tdTime.style.verticalAlign = 'bottom';
             if (info.timestamp) {
                 const date = new Date(info.timestamp);
                 tdTime.textContent = date.getFullYear() + '-' +
@@ -539,9 +573,13 @@
             }
             tdTime.style.fontSize = '11px';
             tdTime.style.whiteSpace = 'nowrap'; // 确保时间不换行
+            tdTime.style.textAlign = 'left'; // 左对齐，与表头对齐
+            tdTime.style.paddingLeft = '8px'; // 减少左边距
             tr.appendChild(tdTime);
             // 拉黑页面
             const tdUrl = document.createElement('td');
+            tdUrl.style.verticalAlign = 'bottom';
+            tdUrl.style.paddingLeft = '5px'; // 减少左边距
             if (info.url) {
                 const a = document.createElement('a');
                 // 使用拉黑时的页面链接，如果有楼层ID则添加锚点
@@ -556,7 +594,7 @@
                 }
 
                 a.href = targetUrl;
-                a.textContent = info.postId ? `　楼层#${info.postId.replace('post-', '')}` : '　页面';
+                a.textContent = info.postId ? `楼层#${info.postId.replace('post-', '')}` : '页面';
                 a.target = '_blank';
                 a.style.fontSize = '11px';
                 a.style.color = '#06c';
@@ -565,6 +603,7 @@
             tr.appendChild(tdUrl);
             // 操作
             const tdOp = document.createElement('td');
+            tdOp.style.verticalAlign = 'bottom';
             const removeBtn = document.createElement('button');
             removeBtn.textContent = '移除';
             removeBtn.className = 'blacklist-btn red';
