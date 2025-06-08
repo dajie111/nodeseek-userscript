@@ -1,4 +1,4 @@
-// 关键词过滤主函数
+// ========== 关键词过滤功能模块 ==========
 function filterPosts(keywords) {
     console.log('[NodeSeek过滤]', '开始过滤，关键词：' + keywords.join(','));
     const postItems = document.querySelectorAll('ul.post-list > li.post-list-item');
