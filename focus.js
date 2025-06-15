@@ -1279,56 +1279,183 @@
             return sortedWords;
         },
 
+        // 分析指定日期的词频统计
+        analyzeWordFrequencyByDate(targetDateStr) {
+            const wordCount = new Map();
+            let allTitles = [];
+
+            this.log(`开始分析 ${targetDateStr} 的词频...`);
+
+            if (!this.historyData || this.historyData.length === 0) {
+                this.log('没有历史数据可供分析');
+                return [];
+            }
+
+            // 转换目标日期为Date对象，用于比较
+            const targetDate = new Date(targetDateStr);
+            const targetDateStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+            const targetDateEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1);
+
+            // 使用本地保存的历史数据进行分析，但只分析指定日期的文章
+            const seenArticles = new Map(); // 使用Map存储去重的文章，key为标准化的标识符
+
+            this.historyData.forEach(record => {
+                // 支持新旧数据格式
+                const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
+
+                articles.forEach(article => {
+                    // 检查文章的发帖日期是否匹配目标日期
+                    let isTargetDate = false;
+                    if (article.pubDate) {
+                        const articleDate = new Date(article.pubDate);
+                        isTargetDate = articleDate >= targetDateStart && articleDate < targetDateEnd;
+                    } else {
+                        // 如果没有发帖时间，跳过此文章
+                        return;
+                    }
+
+                    if (!isTargetDate) {
+                        return; // 不是目标日期的文章，跳过
+                    }
+
+                    // 基于发帖时间+发帖人+标题创建唯一标识符
+                    let articleKey = '';
+                    if (article.pubDate && article.author) {
+                        // 如果有发帖时间和作者，使用它们作为主要标识
+                        const dateStr = new Date(article.pubDate).toDateString(); // 只取日期部分
+                        const authorKey = this.normalizeAuthor(article.author);
+                        const titleKey = this.normalizeTitle(article.title);
+                        articleKey = `${dateStr}_${authorKey}_${titleKey}`;
+                    } else {
+                        // 降级方案：使用标准化标题作为标识
+                        articleKey = this.normalizeTitle(article.title);
+                    }
+
+                    if (articleKey && articleKey.length > 2) {
+                        if (!seenArticles.has(articleKey)) {
+                            seenArticles.set(articleKey, article);
+                            allTitles.push(article.title); // 保留原始标题用于分析
+                        }
+                    }
+                });
+            });
+
+            this.log(`📚 ${targetDateStr} 数据分析，基于发帖时间+作者+标题去重后共 ${allTitles.length} 条标题`);
+
+            // 如果没有任何数据，直接返回空数组
+            if (allTitles.length === 0) {
+                this.log(`${targetDateStr} 没有数据可供分析，返回空结果`);
+                return [];
+            }
+
+            // 用于记录每个词的原始大小写形式（完全匹配模式）
+            const exactWordCount = new Map(); // key为小写形式，value为{word: 原始形式, count: 计数}
+
+            allTitles.forEach(title => {
+                // 预处理：移除特殊字符，但保留中文、英文、数字
+                const cleanTitle = title.replace(/[^\u4e00-\u9fff\w\s]/g, ' ');
+
+                // 分词
+                const words = this.segmentChinese(cleanTitle);
+
+                words.forEach(word => {
+                    if (this.isValidWord(word)) {
+                        // 使用完全匹配模式：只按小写进行分组，不进行其他标准化
+                        const exactKey = word.toLowerCase();
+
+                        if (!exactWordCount.has(exactKey)) {
+                            exactWordCount.set(exactKey, {word: word, count: 0});
+                        }
+
+                        // 增加计数
+                        exactWordCount.get(exactKey).count++;
+
+                        // 更新显示形式（优先保存更"标准"的形式）
+                        const current = exactWordCount.get(exactKey);
+                        if (this.isPreferredCase(word, current.word)) {
+                            current.word = word;
+                        }
+                    }
+                });
+            });
+
+            // 转换为数组并排序
+            const sortedWords = Array.from(exactWordCount.entries())
+                .map(([exactKey, data]) => [data.word, data.count])
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 50); // 取前50个
+
+            this.log(`${targetDateStr} 词频分析完成，共找到 ${exactWordCount.size} 个不同词汇（完全匹配模式）`);
+
+            return sortedWords;
+        },
+
         // 保存每日热词
         saveDailyHotWords() {
-            const today = new Date();
-            const todayStr = today.getFullYear() + '-' +
-                           String(today.getMonth() + 1).padStart(2, '0') + '-' +
-                           String(today.getDate()).padStart(2, '0');
+            // 获取最近7天的日期列表
+            const recentDates = this.getRecentDates(7);
+            let hasUpdatedData = false;
 
-            // 分析本地7天数据的热词（≥2次的才记录）
-            const wordFrequency = this.analyzeWordFrequency(true);
-            const filteredWords = wordFrequency.filter(([word, count]) => count >= 2);
+            // 为每个日期分别保存热词数据
+            recentDates.forEach(dateInfo => {
+                const dateStr = dateInfo.dateStr;
+                
+                // 分析该日期的热词（≥2次的才记录）
+                const wordFrequency = this.analyzeWordFrequencyByDate(dateStr);
+                const filteredWords = wordFrequency.filter(([word, count]) => count >= 2);
 
-            if (filteredWords.length === 0) {
-                this.log('今日无符合条件的热词（≥2次），跳过保存');
-                return;
+                // 检查该日期是否已有记录
+                const existingIndex = this.hotWordsHistory.findIndex(record => record.dateStr === dateStr);
+
+                if (filteredWords.length > 0) {
+                    if (existingIndex >= 0) {
+                        // 更新该日期记录
+                        this.hotWordsHistory[existingIndex] = {
+                            date: dateInfo.date.getTime(),
+                            dateStr: dateStr,
+                            words: filteredWords,
+                            totalTitles: filteredWords.reduce((sum, [word, count]) => sum + count, 0)
+                        };
+                        this.log(`更新 ${dateStr} 热词记录，共 ${filteredWords.length} 个热词`);
+                        hasUpdatedData = true;
+                    } else {
+                        // 新增该日期记录
+                        this.hotWordsHistory.push({
+                            date: dateInfo.date.getTime(),
+                            dateStr: dateStr,
+                            words: filteredWords,
+                            totalTitles: filteredWords.reduce((sum, [word, count]) => sum + count, 0)
+                        });
+                        this.log(`新增 ${dateStr} 热词记录，共 ${filteredWords.length} 个热词`);
+                        hasUpdatedData = true;
+                    }
+                } else {
+                    // 如果该日期没有热词，删除可能存在的记录
+                    if (existingIndex >= 0) {
+                        this.hotWordsHistory.splice(existingIndex, 1);
+                        this.log(`删除 ${dateStr} 的空热词记录`);
+                        hasUpdatedData = true;
+                    }
+                }
+            });
+
+            if (hasUpdatedData) {
+                // 按日期降序排序（最新的在前面）
+                this.hotWordsHistory.sort((a, b) => b.date - a.date);
+
+                // 保存到本地存储
+                this.saveHotWordsHistory();
             }
-
-            // 检查今日是否已有记录
-            const existingIndex = this.hotWordsHistory.findIndex(record => record.dateStr === todayStr);
-
-            const totalLocalTitles = this.historyData.reduce((sum, record) => sum + record.count, 0);
-
-            if (existingIndex >= 0) {
-                // 更新今日记录
-                this.hotWordsHistory[existingIndex] = {
-                    date: today.getTime(),
-                    dateStr: todayStr,
-                    words: filteredWords,
-                    totalTitles: totalLocalTitles
-                };
-                this.log(`更新今日热词记录，共 ${filteredWords.length} 个热词`);
-            } else {
-                // 新增今日记录
-                this.hotWordsHistory.push({
-                    date: today.getTime(),
-                    dateStr: todayStr,
-                    words: filteredWords,
-                    totalTitles: totalLocalTitles
-                });
-                this.log(`新增今日热词记录，共 ${filteredWords.length} 个热词`);
-            }
-
-            // 按日期降序排序（最新的在前面）
-            this.hotWordsHistory.sort((a, b) => b.date - a.date);
-
-            // 保存到本地存储
-            this.saveHotWordsHistory();
 
             // 同时保存时间分布和用户统计
             this.saveDailyTimeDistribution();
             this.saveDailyUserStats();
+        },
+
+        // 获取指定日期的热词统计
+        getHotWordsByDate(dateStr) {
+            // 优先从原始数据直接计算，确保数据准确性
+            return this.analyzeWordFrequencyByDate(dateStr).filter(([word, count]) => count >= 2);
         },
 
         // 获取指定天数的热词统计
@@ -2180,10 +2307,17 @@
                 const selectedRecords = [];
                 
                 selectedDates.forEach(dateStr => {
-                    const record = this.hotWordsHistory.find(r => r.dateStr === dateStr);
-                    if (record) {
-                        selectedRecords.push(record);
-                        record.words.forEach(([word, count]) => {
+                    // 使用新的按日期查询方法，确保数据准确性
+                    const hotWords = this.getHotWordsByDate(dateStr);
+                    if (hotWords.length > 0) {
+                        // 创建虚拟记录用于显示统计信息
+                        selectedRecords.push({
+                            dateStr: dateStr,
+                            words: hotWords,
+                            totalTitles: hotWords.reduce((sum, [word, count]) => sum + count, 0)
+                        });
+                        
+                        hotWords.forEach(([word, count]) => {
                             const currentCount = allWords.get(word) || 0;
                             allWords.set(word, currentCount + count);
                         });
@@ -2531,6 +2665,82 @@
             return { hourlyStats, weekdayStats, totalPosts, validTimePosts };
         },
 
+        // 分析指定日期的发帖时间分布
+        analyzeTimeDistributionByDate(targetDateStr) {
+            const hourlyStats = new Array(24).fill(0); // 24小时统计
+            const weekdayStats = new Array(7).fill(0); // 一周7天统计
+            let totalPosts = 0;
+            let validTimePosts = 0;
+
+            this.log(`开始分析 ${targetDateStr} 的发帖时间分布...`);
+
+            if (!this.historyData || this.historyData.length === 0) {
+                this.log('没有历史数据可供分析');
+                return { hourlyStats, weekdayStats, totalPosts, validTimePosts };
+            }
+
+            // 转换目标日期为Date对象，用于比较
+            const targetDate = new Date(targetDateStr);
+            const targetDateStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+            const targetDateEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1);
+
+            // 去重处理，避免重复统计
+            const seenArticles = new Map();
+
+            this.historyData.forEach(record => {
+                const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
+
+                articles.forEach(article => {
+                    // 检查文章的发帖日期是否匹配目标日期
+                    let isTargetDate = false;
+                    if (article.pubDate) {
+                        const articleDate = new Date(article.pubDate);
+                        isTargetDate = articleDate >= targetDateStart && articleDate < targetDateEnd;
+                    } else {
+                        // 如果没有发帖时间，跳过此文章
+                        return;
+                    }
+
+                    if (!isTargetDate) {
+                        return; // 不是目标日期的文章，跳过
+                    }
+
+                    // 基于发帖时间+发帖人+标题创建唯一标识符
+                    let articleKey = '';
+                    if (article.pubDate && article.author) {
+                        const dateStr = new Date(article.pubDate).toDateString();
+                        const authorKey = this.normalizeAuthor(article.author);
+                        const titleKey = this.normalizeTitle(article.title);
+                        articleKey = `${dateStr}_${authorKey}_${titleKey}`;
+                    } else {
+                        articleKey = this.normalizeTitle(article.title);
+                    }
+
+                    if (articleKey && articleKey.length > 2) {
+                        if (!seenArticles.has(articleKey)) {
+                            seenArticles.set(articleKey, article);
+                            totalPosts++;
+
+                            // 分析时间分布（只有有效时间的文章）
+                            if (article.pubDate) {
+                                const postDate = new Date(article.pubDate);
+                                const hour = postDate.getHours();
+                                const weekday = postDate.getDay(); // 0=周日, 1=周一, ..., 6=周六
+
+                                hourlyStats[hour]++;
+                                weekdayStats[weekday]++;
+                                validTimePosts++;
+                            }
+                        }
+                    }
+                });
+            });
+
+            this.log(`${targetDateStr} 时间分布分析完成：总文章 ${totalPosts} 篇，有效时间 ${validTimePosts} 篇`);
+
+            return { hourlyStats, weekdayStats, totalPosts, validTimePosts };
+        },
+
         // 分析发帖用户统计（基于本地7天数据，≥2次发帖的用户）
         analyzeUserStats() {
             const userPostCount = new Map();
@@ -2597,119 +2807,204 @@
             return sortedUsers;
         },
 
+        // 分析指定日期的发帖用户统计
+        analyzeUserStatsByDate(targetDateStr) {
+            const userPostCount = new Map();
+            let totalPosts = 0;
+
+            this.log(`开始分析 ${targetDateStr} 的发帖用户统计...`);
+
+            if (!this.historyData || this.historyData.length === 0) {
+                this.log('没有历史数据可供分析');
+                return [];
+            }
+
+            // 转换目标日期为Date对象，用于比较
+            const targetDate = new Date(targetDateStr);
+            const targetDateStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+            const targetDateEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1);
+
+            // 去重处理，避免重复统计
+            const seenArticles = new Map();
+
+            this.historyData.forEach(record => {
+                const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
+
+                articles.forEach(article => {
+                    // 检查文章的发帖日期是否匹配目标日期
+                    let isTargetDate = false;
+                    if (article.pubDate) {
+                        const articleDate = new Date(article.pubDate);
+                        isTargetDate = articleDate >= targetDateStart && articleDate < targetDateEnd;
+                    } else {
+                        // 如果没有发帖时间，跳过此文章
+                        return;
+                    }
+
+                    if (!isTargetDate) {
+                        return; // 不是目标日期的文章，跳过
+                    }
+
+                    // 基于发帖时间+发帖人+标题创建唯一标识符
+                    let articleKey = '';
+                    if (article.pubDate && article.author) {
+                        const dateStr = new Date(article.pubDate).toDateString();
+                        const authorKey = this.normalizeAuthor(article.author);
+                        const titleKey = this.normalizeTitle(article.title);
+                        articleKey = `${dateStr}_${authorKey}_${titleKey}`;
+                    } else {
+                        articleKey = this.normalizeTitle(article.title);
+                    }
+
+                    if (articleKey && articleKey.length > 2) {
+                        if (!seenArticles.has(articleKey)) {
+                            seenArticles.set(articleKey, article);
+                            totalPosts++;
+
+                            // 统计用户发帖数（只统计有作者信息的）
+                            if (article.author && article.author.trim()) {
+                                const normalizedAuthor = this.normalizeAuthor(article.author);
+                                const currentCount = userPostCount.get(normalizedAuthor) || 0;
+                                userPostCount.set(normalizedAuthor, currentCount + 1);
+                            }
+                        }
+                    }
+                });
+            });
+
+            // 转换为数组并排序，只保留≥2次发帖的用户
+            const sortedUsers = Array.from(userPostCount.entries())
+                .filter(([user, count]) => count >= 2)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 50); // 取前50个活跃用户
+
+            this.log(`${targetDateStr} 用户统计分析完成：总文章 ${totalPosts} 篇，活跃用户（≥2次发帖）${sortedUsers.length} 个`);
+
+            return sortedUsers;
+        },
+
         // 保存每日时间分布统计
         saveDailyTimeDistribution() {
-            const today = new Date();
-            const todayStr = today.getFullYear() + '-' +
-                           String(today.getMonth() + 1).padStart(2, '0') + '-' +
-                           String(today.getDate()).padStart(2, '0');
+            // 获取最近7天的日期列表
+            const recentDates = this.getRecentDates(7);
+            let hasUpdatedData = false;
 
-            // 分析时间分布
-            const timeDistribution = this.analyzeTimeDistribution();
+            // 为每个日期分别保存时间分布数据
+            recentDates.forEach(dateInfo => {
+                const dateStr = dateInfo.dateStr;
+                
+                // 分析该日期的时间分布
+                const timeDistribution = this.analyzeTimeDistributionByDate(dateStr);
 
-            if (timeDistribution.validTimePosts === 0) {
-                this.log('今日无有效时间数据，跳过时间分布保存');
-                return;
+                // 检查该日期是否已有记录
+                const existingIndex = this.timeDistributionHistory.findIndex(record => record.dateStr === dateStr);
+
+                if (timeDistribution.validTimePosts > 0) {
+                    if (existingIndex >= 0) {
+                        // 更新该日期记录
+                        this.timeDistributionHistory[existingIndex] = {
+                            date: dateInfo.date.getTime(),
+                            dateStr: dateStr,
+                            hourlyStats: timeDistribution.hourlyStats,
+                            weekdayStats: timeDistribution.weekdayStats,
+                            totalPosts: timeDistribution.totalPosts,
+                            validTimePosts: timeDistribution.validTimePosts
+                        };
+                        this.log(`更新 ${dateStr} 时间分布记录，有效时间文章 ${timeDistribution.validTimePosts} 篇`);
+                        hasUpdatedData = true;
+                    } else {
+                        // 新增该日期记录
+                        this.timeDistributionHistory.push({
+                            date: dateInfo.date.getTime(),
+                            dateStr: dateStr,
+                            hourlyStats: timeDistribution.hourlyStats,
+                            weekdayStats: timeDistribution.weekdayStats,
+                            totalPosts: timeDistribution.totalPosts,
+                            validTimePosts: timeDistribution.validTimePosts
+                        });
+                        this.log(`新增 ${dateStr} 时间分布记录，有效时间文章 ${timeDistribution.validTimePosts} 篇`);
+                        hasUpdatedData = true;
+                    }
+                } else {
+                    // 如果该日期没有有效数据，删除可能存在的记录
+                    if (existingIndex >= 0) {
+                        this.timeDistributionHistory.splice(existingIndex, 1);
+                        this.log(`删除 ${dateStr} 的空时间分布记录`);
+                        hasUpdatedData = true;
+                    }
+                }
+            });
+
+            if (hasUpdatedData) {
+                // 按日期降序排序
+                this.timeDistributionHistory.sort((a, b) => b.date - a.date);
+                
+                // 保存到本地存储
+                this.saveTimeDistributionHistory();
             }
-
-            // 检查今日是否已有记录
-            const existingIndex = this.timeDistributionHistory.findIndex(record => record.dateStr === todayStr);
-
-            if (existingIndex >= 0) {
-                // 更新今日记录
-                this.timeDistributionHistory[existingIndex] = {
-                    date: today.getTime(),
-                    dateStr: todayStr,
-                    hourlyStats: timeDistribution.hourlyStats,
-                    weekdayStats: timeDistribution.weekdayStats,
-                    totalPosts: timeDistribution.totalPosts,
-                    validTimePosts: timeDistribution.validTimePosts
-                };
-                this.log(`更新今日时间分布记录，有效时间文章 ${timeDistribution.validTimePosts} 篇`);
-            } else {
-                // 新增今日记录
-                this.timeDistributionHistory.push({
-                    date: today.getTime(),
-                    dateStr: todayStr,
-                    hourlyStats: timeDistribution.hourlyStats,
-                    weekdayStats: timeDistribution.weekdayStats,
-                    totalPosts: timeDistribution.totalPosts,
-                    validTimePosts: timeDistribution.validTimePosts
-                });
-                this.log(`新增今日时间分布记录，有效时间文章 ${timeDistribution.validTimePosts} 篇`);
-            }
-
-            // 按日期降序排序
-            this.timeDistributionHistory.sort((a, b) => b.date - a.date);
-
-            // 保存到本地存储
-            this.saveTimeDistributionHistory();
         },
 
         // 保存每日用户统计
         saveDailyUserStats() {
-            const today = new Date();
-            const todayStr = today.getFullYear() + '-' +
-                           String(today.getMonth() + 1).padStart(2, '0') + '-' +
-                           String(today.getDate()).padStart(2, '0');
+            // 获取最近7天的日期列表
+            const recentDates = this.getRecentDates(7);
+            let hasUpdatedData = false;
 
-            // 分析用户统计（≥2次发帖的用户）
-            const userStats = this.analyzeUserStats();
+            // 为每个日期分别保存用户统计数据
+            recentDates.forEach(dateInfo => {
+                const dateStr = dateInfo.dateStr;
+                
+                // 分析该日期的用户统计（≥2次发帖的用户）
+                const userStats = this.analyzeUserStatsByDate(dateStr);
 
-            if (userStats.length === 0) {
-                this.log('今日无符合条件的活跃用户（≥2次发帖），跳过用户统计保存');
-                return;
+                // 检查该日期是否已有记录
+                const existingIndex = this.userStatsHistory.findIndex(record => record.dateStr === dateStr);
+
+                if (userStats.length > 0) {
+                    if (existingIndex >= 0) {
+                        // 更新该日期记录
+                        this.userStatsHistory[existingIndex] = {
+                            date: dateInfo.date.getTime(),
+                            dateStr: dateStr,
+                            users: userStats,
+                            totalActiveUsers: userStats.length
+                        };
+                        this.log(`更新 ${dateStr} 用户统计记录，活跃用户 ${userStats.length} 个`);
+                        hasUpdatedData = true;
+                    } else {
+                        // 新增该日期记录
+                        this.userStatsHistory.push({
+                            date: dateInfo.date.getTime(),
+                            dateStr: dateStr,
+                            users: userStats,
+                            totalActiveUsers: userStats.length
+                        });
+                        this.log(`新增 ${dateStr} 用户统计记录，活跃用户 ${userStats.length} 个`);
+                        hasUpdatedData = true;
+                    }
+                } else {
+                    // 如果该日期没有活跃用户，删除可能存在的记录
+                    if (existingIndex >= 0) {
+                        this.userStatsHistory.splice(existingIndex, 1);
+                        this.log(`删除 ${dateStr} 的空用户统计记录`);
+                        hasUpdatedData = true;
+                    }
+                }
+            });
+
+            if (hasUpdatedData) {
+                // 按日期降序排序
+                this.userStatsHistory.sort((a, b) => b.date - a.date);
+                
+                // 保存到本地存储
+                this.saveUserStatsHistory();
             }
-
-            // 检查今日是否已有记录
-            const existingIndex = this.userStatsHistory.findIndex(record => record.dateStr === todayStr);
-
-            if (existingIndex >= 0) {
-                // 更新今日记录
-                this.userStatsHistory[existingIndex] = {
-                    date: today.getTime(),
-                    dateStr: todayStr,
-                    users: userStats,
-                    totalActiveUsers: userStats.length
-                };
-                this.log(`更新今日用户统计记录，活跃用户 ${userStats.length} 个`);
-            } else {
-                // 新增今日记录
-                this.userStatsHistory.push({
-                    date: today.getTime(),
-                    dateStr: todayStr,
-                    users: userStats,
-                    totalActiveUsers: userStats.length
-                });
-                this.log(`新增今日用户统计记录，活跃用户 ${userStats.length} 个`);
-            }
-
-            // 按日期降序排序
-            this.userStatsHistory.sort((a, b) => b.date - a.date);
-
-            // 保存到本地存储
-            this.saveUserStatsHistory();
         },
 
         // 获取指定日期的时间分布统计
         getTimeDistributionByDate(dateStr) {
-            if (!this.timeDistributionHistory || this.timeDistributionHistory.length === 0) {
-                return { hourlyStats: new Array(24).fill(0), weekdayStats: new Array(7).fill(0), totalPosts: 0, validTimePosts: 0 };
-            }
-
-            // 找到指定日期的记录
-            const record = this.timeDistributionHistory.find(r => r.dateStr === dateStr);
-            
-            if (record) {
-                return {
-                    hourlyStats: record.hourlyStats || new Array(24).fill(0),
-                    weekdayStats: record.weekdayStats || new Array(7).fill(0),
-                    totalPosts: record.totalPosts || 0,
-                    validTimePosts: record.validTimePosts || 0
-                };
-            } else {
-                return { hourlyStats: new Array(24).fill(0), weekdayStats: new Array(7).fill(0), totalPosts: 0, validTimePosts: 0 };
-            }
+            // 优先从原始数据直接计算，确保数据准确性
+            return this.analyzeTimeDistributionByDate(dateStr);
         },
 
         // 获取指定天数的时间分布统计
@@ -2743,18 +3038,8 @@
 
         // 获取指定日期的用户统计
         getUserStatsByDate(dateStr) {
-            if (!this.userStatsHistory || this.userStatsHistory.length === 0) {
-                return [];
-            }
-
-            // 找到指定日期的记录
-            const record = this.userStatsHistory.find(r => r.dateStr === dateStr);
-            
-            if (record && record.users) {
-                return record.users;
-            } else {
-                return [];
-            }
+            // 优先从原始数据直接计算，确保数据准确性
+            return this.analyzeUserStatsByDate(dateStr);
         },
 
         // 获取指定天数的用户统计
