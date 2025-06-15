@@ -1,508 +1,1110 @@
-// ========== 签到功能模块 ==========
+// ========== 自动签到 ==========
 (function() {
     'use strict';
 
-    // 签到功能的存储键
-    const SIGN_ENABLED_KEY = 'nodeseek_sign_enabled';
-    const SIGN_STATUS_KEY = 'nodeseek_sign_status';
-    const SIGN_LOCK_KEY = 'nodeseek_sign_lock';
-    const SIGN_TODAY_KEY = 'nodeseek_sign_today';
-    const SIGN_SUCCESS_KEY = 'nodeseek_sign_success';
-    const ACTIVE_PAGE_KEY = 'nodeseek_active_page';
-
-    // 添加日志函数引用
-    let addLog = function(message) {
-        console.log('[签到模块] ' + message);
-    };
-
-    // 设置日志函数
-    function setAddLogFunction(logFunc) {
-        if (typeof logFunc === 'function') {
-            addLog = logFunc;
-        }
-    }
-
-    // 检查签到是否启用
-    function isSignEnabled() {
-        return localStorage.getItem(SIGN_ENABLED_KEY) === 'true';
-    }
-
-    // 获取今日日期字符串
-    function getTodayString() {
-        const now = new Date();
-        return now.getFullYear() + '-' + 
-               String(now.getMonth() + 1).padStart(2, '0') + '-' + 
-               String(now.getDate()).padStart(2, '0');
-    }
-
-    // 获取当前时间的精确信息
-    function getCurrentTimeInfo() {
-        const now = new Date();
-        return {
-            hours: now.getHours(),
-            minutes: now.getMinutes(),
-            seconds: now.getSeconds(),
-            timestamp: now.getTime(),
-            dateString: getTodayString()
-        };
-    }
-
-    // 检查是否在签到时间窗口内 (00:00:00 - 00:00:10)
-    function isInSignTimeWindow() {
-        const timeInfo = getCurrentTimeInfo();
-        return timeInfo.hours === 0 && 
-               timeInfo.minutes === 0 && 
-               timeInfo.seconds >= 0 && 
-               timeInfo.seconds <= 10;
-    }
-
-    // 检查是否在预签到模式 (23:59:55 - 23:59:59)
-    function isInPreSignMode() {
-        const timeInfo = getCurrentTimeInfo();
-        return timeInfo.hours === 23 && 
-               timeInfo.minutes === 59 && 
-               timeInfo.seconds >= 55;
-    }
-
-    // 检查是否在补偿时间窗口内 (00:00:00 - 00:00:30)
-    function isInCompensationWindow() {
-        const timeInfo = getCurrentTimeInfo();
-        return timeInfo.hours === 0 && 
-               timeInfo.minutes === 0 && 
-               timeInfo.seconds >= 0 && 
-               timeInfo.seconds <= 30;
-    }
-
-    // 获取签到锁状态
-    function getSignLock() {
-        const lockData = localStorage.getItem(SIGN_LOCK_KEY);
-        if (!lockData) return null;
-        
-        try {
-            const lock = JSON.parse(lockData);
-            const now = Date.now();
+    // NodeSeek 自动签到系统
+    class NodeSeekAutoSignIn {
+        constructor() {
+            this.storageKeys = {
+                lastSignTime: 'nodeseek_last_sign_time',
+                signLock: 'nodeseek_sign_lock',
+                executingLock: 'nodeseek_executing_lock',
+                masterPageId: 'nodeseek_master_page_id',
+                pageRegistry: 'nodeseek_page_registry',
+                lastHeartbeat: 'nodeseek_last_heartbeat'
+            };
+            this.SIGN_API = '/api/attendance?random=true';
+            this.isDebug = false;
+            this.isPreSignMode = false;
+            this.lastActiveTime = Date.now();
+            this.backgroundStartTime = null;
             
-            // 锁过期时间5秒
-            if (now - lock.timestamp > 5000) {
-                localStorage.removeItem(SIGN_LOCK_KEY);
-                return null;
-            }
+            // 多标签页管理
+            this.pageId = this.generatePageId();
+            this.isMasterPage = false;
+            this.heartbeatInterval = null;
             
-            return lock;
-        } catch (e) {
-            localStorage.removeItem(SIGN_LOCK_KEY);
-            return null;
+            this.init();
         }
-    }
 
-    // 设置签到锁
-    function setSignLock(pageId) {
-        const lockData = {
-            pageId: pageId,
-            timestamp: Date.now(),
-            url: window.location.href
-        };
-        localStorage.setItem(SIGN_LOCK_KEY, JSON.stringify(lockData));
-    }
+        // 初始化
+        init() {
+            this.log(`🎲 NodeSeek自动签到系统启动 [页面ID: ${this.pageId}]`);
 
-    // 释放签到锁
-    function releaseSignLock() {
-        localStorage.removeItem(SIGN_LOCK_KEY);
-    }
+            // 清理过期数据
+            this.cleanExpiredData();
 
-    // 生成当前页面ID
-    function generatePageId() {
-        return 'page_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    }
-
-    // 检查今日是否已签到
-    function isTodayAlreadySigned() {
-        const today = getTodayString();
-        const signToday = localStorage.getItem(SIGN_TODAY_KEY);
-        const signSuccess = localStorage.getItem(SIGN_SUCCESS_KEY);
-        
-        return signToday === today && signSuccess === 'true';
-    }
-
-    // 设置今日签到状态
-    function setTodaySignStatus(success) {
-        const today = getTodayString();
-        localStorage.setItem(SIGN_TODAY_KEY, today);
-        localStorage.setItem(SIGN_SUCCESS_KEY, success.toString());
-    }
-
-    // 清理过期数据
-    function cleanupExpiredData() {
-        const now = Date.now();
-        const oneHour = 60 * 60 * 1000;
-        
-        // 清理过期锁
-        const lock = getSignLock();
-        if (!lock) {
-            localStorage.removeItem(SIGN_LOCK_KEY);
-        }
-        
-        // 清理非签到时间段的当日标记（每小时清理一次）
-        const timeInfo = getCurrentTimeInfo();
-        if (timeInfo.minutes === 0 && timeInfo.seconds < 30) {
-            if (timeInfo.hours !== 0) {
-                // 非签到小时，清理可能的错误标记
-                const signToday = localStorage.getItem(SIGN_TODAY_KEY);
-                const today = getTodayString();
-                if (signToday === today && timeInfo.hours > 1) {
-                    // 允许1小时的宽限期后再清理
-                    localStorage.removeItem(SIGN_TODAY_KEY);
-                    localStorage.removeItem(SIGN_SUCCESS_KEY);
+            // 检查当前页面是否是NodeSeek
+            if (this.isNodeSeekPage()) {
+                this.log('✅ 检测到NodeSeek页面');
+                
+                // 立即检查是否在签到时间（页面加载时）
+                if (this.isSignInTime()) {
+                    this.log('🚨 页面加载时检测到签到时间，立即执行签到');
+                    setTimeout(() => this.forceSignIn(), 2000);
                 }
+                
+                // 初始化多标签页管理
+                this.initMultiTabManagement();
+                
+                this.startSignInMonitor();
+                this.setupCompensationMechanisms();
             }
         }
-    }
 
-    // 执行签到流程
-    async function performSignIn() {
-        try {
-            addLog('开始执行签到流程');
+        // 检查是否是NodeSeek页面
+        isNodeSeekPage() {
+            return window.location.hostname === 'www.nodeseek.com';
+        }
+
+        // 启动签到监控
+        startSignInMonitor() {
+            // 立即检查一次
+            setTimeout(() => this.checkAndSignIn(), 1000);
             
-            // 检查当前页面是否是签到页面
-            const currentUrl = window.location.href;
-            const isBoardPage = currentUrl.includes('/board');
+            // 强制签到机制：每天00:00:30强制检查一次
+            this.setupForceSignIn();
             
-            if (!isBoardPage) {
-                addLog('当前不在签到页面，跳转到签到页面');
-                // 保存当前页面URL用于返回
-                sessionStorage.setItem('nodeseek_return_url', currentUrl);
-                window.location.href = 'https://www.nodeseek.com/board';
+            // 多重保险机制：确保到时间一定运行
+            this.setupMultipleInsurance();
+
+            // 主定时器：每秒检查
+            setInterval(() => {
+                const now = new Date();
+                const hour = now.getHours();
+                const minute = now.getMinutes();
+                const second = now.getSeconds();
+
+                // 预签到模式：23:59:55开始进入预签到模式
+                if (hour === 23 && minute === 59 && second >= 55) {
+                    if (!this.isPreSignMode) {
+                        this.isPreSignMode = true;
+                        this.log('🎯 进入预签到模式，强化监控中...');
+                    }
+                }
+
+                // 预签到模式状态输出
+                if (this.isPreSignMode && second % 2 === 0) {
+                    this.log(`⏰ 预签到模式 - 当前时间: ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}`);
+                }
+
+                // 精确签到时间检查：00:00:00-00:00:05
+                if (hour === 0 && minute === 0 && second <= 5) {
+                    this.checkAndSignIn();
+                }
+
+                // 退出预签到模式
+                if (hour === 0 && minute === 0 && second > 5) {
+                    if (this.isPreSignMode) {
+                        this.isPreSignMode = false;
+                        this.log('🔚 退出预签到模式');
+                    }
+                }
+            }, 1000);
+
+            // 备用定时器：防止主定时器失效
+            setInterval(() => {
+                if (this.isSignInTime() || this.isExtendedSignInTime()) {
+                    this.checkAndSignIn();
+                }
+            }, 1500);
+
+            this.log('📅 自动签到监控已启动');
+        }
+
+        // 设置强制签到机制
+        setupForceSignIn() {
+            setInterval(() => {
+                const now = new Date();
+                const hour = now.getHours();
+                const minute = now.getMinutes();
+                const second = now.getSeconds();
+                
+                // 每天00:00:30强制检查签到
+                if (hour === 0 && minute === 0 && second === 30) {
+                    this.log('🚨 强制签到检查触发');
+                    this.forceSignIn();
+                }
+            }, 1000);
+        }
+
+        // 多重保险机制：确保到时间一定运行
+        setupMultipleInsurance() {
+            // 保险机制1：使用setTimeout精确定时到00:00:00
+            this.scheduleExactSignIn();
+            
+            // 保险机制2：Web Worker（如果支持）
+            this.setupWebWorkerTimer();
+            
+            // 保险机制3：requestAnimationFrame循环检查
+            this.setupAnimationFrameChecker();
+            
+            // 保险机制4：多个setInterval交错检查
+            this.setupMultipleIntervals();
+            
+            // 保险机制5：页面可见性API强化
+            this.setupVisibilityAPIChecker();
+            
+            // 保险机制6：SharedArrayBuffer原子操作（如果支持）
+            this.setupSharedArrayBufferTimer();
+            
+            // 保险机制7：localStorage轮询检查
+            this.setupLocalStoragePoller();
+        }
+
+        // 保险机制1：精确定时到下一个00:00:00
+        scheduleExactSignIn() {
+            const now = new Date();
+            const tomorrow = new Date(now);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(0, 0, 0, 0);
+            
+            const timeUntilMidnight = tomorrow.getTime() - now.getTime();
+            
+            this.log(`⏰ 设置精确定时器，${Math.round(timeUntilMidnight/1000/60)}分钟后执行签到`);
+            
+            setTimeout(() => {
+                this.log('🎯 精确定时器触发！');
+                this.forceSignIn();
+                
+                // 递归设置下一天的定时器
+                this.scheduleExactSignIn();
+            }, timeUntilMidnight);
+        }
+
+        // 保险机制2：Web Worker定时器
+        setupWebWorkerTimer() {
+            try {
+                const workerCode = `
+                    let lastCheck = Date.now();
+                    setInterval(() => {
+                        const now = new Date();
+                        const hour = now.getHours();
+                        const minute = now.getMinutes();
+                        const second = now.getSeconds();
+                        
+                        if (hour === 0 && minute === 0 && second <= 5) {
+                            postMessage({type: 'signInTime', time: now.getTime()});
+                        }
+                        
+                        // 检测时间跳跃
+                        const currentTime = Date.now();
+                        if (currentTime - lastCheck > 10000) {
+                            postMessage({type: 'timeJump', gap: currentTime - lastCheck});
+                        }
+                        lastCheck = currentTime;
+                    }, 1000);
+                `;
+                
+                const blob = new Blob([workerCode], {type: 'application/javascript'});
+                const worker = new Worker(URL.createObjectURL(blob));
+                
+                worker.onmessage = (e) => {
+                    if (e.data.type === 'signInTime') {
+                        this.log('🔧 Web Worker检测到签到时间');
+                        this.forceSignIn();
+                    } else if (e.data.type === 'timeJump') {
+                                            this.log(`⚡ Web Worker检测到时间跳跃: ${Math.round(e.data.gap/1000)}秒`);
+                    if (this.isSignInTime()) {
+                        this.forceSignIn();
+                    }
+                    }
+                };
+                
+                this.log('🔧 Web Worker定时器已启动');
+            } catch (error) {
+                this.log('❌ Web Worker不支持:', error.message);
+            }
+        }
+
+        // 保险机制3：requestAnimationFrame循环检查
+        setupAnimationFrameChecker() {
+            let lastCheckTime = Date.now();
+            
+            const animationCheck = () => {
+                const now = Date.now();
+                const timeDiff = now - lastCheckTime;
+                
+                // 如果时间差异过大，说明可能被暂停过
+                if (timeDiff > 5000) {
+                    this.log(`🎬 AnimationFrame检测到时间跳跃: ${Math.round(timeDiff/1000)}秒`);
+                    if (this.isSignInTime()) {
+                        this.forceSignIn();
+                    }
+                }
+                
+                // 检查是否是签到时间
+                const date = new Date(now);
+                if (date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() <= 5) {
+                    if (Math.random() < 0.01) { // 1%概率执行，避免过于频繁
+                        this.log('🎬 AnimationFrame检测到签到时间');
+                        this.forceSignIn();
+                    }
+                }
+                
+                lastCheckTime = now;
+                requestAnimationFrame(animationCheck);
+            };
+            
+            requestAnimationFrame(animationCheck);
+            this.log('🎬 AnimationFrame检查器已启动');
+        }
+
+        // 保险机制4：多个setInterval交错检查
+        setupMultipleIntervals() {
+            // 1.1秒间隔的检查器
+            setInterval(() => {
+                if (this.isSignInTime()) {
+                    this.log('⏱️ 1.1秒检查器触发');
+                    this.forceSignIn();
+                }
+            }, 1100);
+            
+            // 1.3秒间隔的检查器
+            setInterval(() => {
+                if (this.isSignInTime()) {
+                    this.log('⏱️ 1.3秒检查器触发');
+                    this.forceSignIn();
+                }
+            }, 1300);
+            
+            // 2.7秒间隔的检查器
+            setInterval(() => {
+                if (this.isSignInTime()) {
+                    this.log('⏱️ 2.7秒检查器触发');
+                    this.forceSignIn();
+                }
+            }, 2700);
+            
+            this.log('⏱️ 多重间隔检查器已启动');
+        }
+
+        // 保险机制5：页面可见性API强化
+        setupVisibilityAPIChecker() {
+            let hiddenTime = null;
+            
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    hiddenTime = Date.now();
+                    this.log('👁️ 页面进入后台');
+                } else {
+                    if (hiddenTime) {
+                        const hiddenDuration = Date.now() - hiddenTime;
+                        this.log(`👁️ 页面恢复前台，后台时长: ${Math.round(hiddenDuration/1000)}秒`);
+                        
+                        // 如果后台时间跨越了签到时间，立即检查
+                        const hiddenStart = new Date(hiddenTime);
+                        const now = new Date();
+                        
+                        if (hiddenStart.getDate() !== now.getDate() || 
+                            (hiddenStart.getHours() === 23 && now.getHours() === 0 && 
+                             now.getMinutes() === 0 && now.getSeconds() <= 5)) {
+                            this.log('👁️ 检测到跨越签到时间，立即执行');
+                            this.forceSignIn();
+                        }
+                    }
+                    hiddenTime = null;
+                }
+            });
+            
+            this.log('👁️ 页面可见性检查器已启动');
+        }
+
+        // 保险机制6：SharedArrayBuffer原子操作
+        setupSharedArrayBufferTimer() {
+            try {
+                if (typeof SharedArrayBuffer !== 'undefined' && typeof Atomics !== 'undefined') {
+                    const buffer = new SharedArrayBuffer(16);
+                    const view = new Int32Array(buffer);
+                    
+                    // 在Web Worker中使用原子操作
+                    const workerCode = `
+                        self.onmessage = function(e) {
+                            const buffer = e.data.buffer;
+                            const view = new Int32Array(buffer);
+                            
+                            setInterval(() => {
+                                const now = Date.now();
+                                Atomics.store(view, 0, now);
+                                
+                                const date = new Date(now);
+                                if (date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() <= 5) {
+                                    Atomics.store(view, 1, 1); // 信号：需要签到
+                                }
+                            }, 1000);
+                        };
+                    `;
+                    
+                    const blob = new Blob([workerCode], {type: 'application/javascript'});
+                    const worker = new Worker(URL.createObjectURL(blob));
+                    worker.postMessage({buffer: buffer});
+                    
+                    // 主线程检查原子信号
+                    setInterval(() => {
+                        const signalValue = Atomics.load(view, 1);
+                        if (signalValue === 1) {
+                            this.log('⚛️ SharedArrayBuffer检测到签到信号');
+                            Atomics.store(view, 1, 0); // 重置信号
+                            this.forceSignIn();
+                        }
+                    }, 500);
+                    
+                    this.log('⚛️ SharedArrayBuffer定时器已启动');
+                } else {
+                    this.log('❌ SharedArrayBuffer不支持');
+                }
+            } catch (error) {
+                this.log('❌ SharedArrayBuffer设置失败:', error.message);
+            }
+        }
+
+        // 保险机制7：localStorage轮询检查
+        setupLocalStoragePoller() {
+            const TIMER_KEY = 'nodeseek_timer_heartbeat';
+            const SIGNAL_KEY = 'nodeseek_signin_signal';
+            
+            // 设置一个独立的定时器更新localStorage
+            setInterval(() => {
+                const now = Date.now();
+                localStorage.setItem(TIMER_KEY, now.toString());
+                
+                                            const date = new Date(now);
+                            if (date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() <= 5) {
+                                localStorage.setItem(SIGNAL_KEY, now.toString());
+                            }
+            }, 1000);
+            
+            // 监听localStorage变化
+            let lastHeartbeat = Date.now();
+            setInterval(() => {
+                const heartbeat = localStorage.getItem(TIMER_KEY);
+                const signal = localStorage.getItem(SIGNAL_KEY);
+                
+                if (heartbeat) {
+                    const heartbeatTime = parseInt(heartbeat);
+                    
+                    // 检测时间跳跃
+                    if (heartbeatTime - lastHeartbeat > 10000) {
+                        this.log(`💾 localStorage检测到时间跳跃: ${Math.round((heartbeatTime - lastHeartbeat)/1000)}秒`);
+                        if (this.isSignInTime()) {
+                            this.forceSignIn();
+                        }
+                    }
+                    lastHeartbeat = heartbeatTime;
+                }
+                
+                if (signal) {
+                    const signalTime = parseInt(signal);
+                    const now = Date.now();
+                    
+                    // 如果信号是最近5秒内的，执行签到
+                    if (now - signalTime < 5000) {
+                        this.log('💾 localStorage检测到签到信号');
+                        localStorage.removeItem(SIGNAL_KEY); // 清除信号
+                        this.forceSignIn();
+                    }
+                }
+            }, 1500);
+            
+            this.log('💾 localStorage轮询检查器已启动');
+        }
+
+        // 强制签到（绕过所有检查）
+        async forceSignIn() {
+            // 检查今日是否已签到
+            if (this.hasSignedToday()) {
+                this.log('✅ 今日已签到，跳过强制签到');
                 return;
             }
+
+            this.log('🚨 执行强制签到');
             
-            addLog('当前在签到页面，开始查找签到按钮');
+            // 临时成为主页面
+            const originalMasterStatus = this.isMasterPage;
+            this.isMasterPage = true;
             
-            // 在签到页面查找"试试手气"按钮
-            const signButton = findSignButton();
-            
-            if (signButton) {
-                addLog('找到签到按钮，准备点击');
-                
-                // 模拟人工点击，添加随机延迟
-                setTimeout(() => {
-                    try {
-                        // 使用JavaScript点击确保成功
-                        signButton.click();
-                        addLog('签到按钮点击成功');
-                        
-                        // 设置签到成功标记
-                        setTodaySignStatus(true);
-                        
-                        // 延迟返回上一页
-                        setTimeout(() => {
-                            returnToPreviousPage();
-                        }, 2000 + Math.random() * 3000); // 2-5秒随机延迟
-                        
-                    } catch (error) {
-                        addLog('点击签到按钮失败: ' + error.message);
-                        setTodaySignStatus(false);
-                        returnToPreviousPage();
-                    }
-                }, 500 + Math.random() * 1500); // 0.5-2秒随机延迟
-                
-            } else {
-                addLog('未找到签到按钮，可能已经签到过了');
-                
-                // 检查页面是否显示已签到信息
-                const pageText = document.body.textContent;
-                if (pageText.includes('今日已签到') || 
-                    pageText.includes('已经签到') || 
-                    pageText.includes('签到成功')) {
-                    addLog('检测到已签到信息，设置签到成功状态');
-                    setTodaySignStatus(true);
+            try {
+                await this.performSignIn();
+            } catch (error) {
+                this.log('❌ 强制签到失败:', error);
+            } finally {
+                // 恢复原始状态
+                this.isMasterPage = originalMasterStatus;
+            }
+        }
+
+        // 设置补偿机制
+        setupCompensationMechanisms() {
+            // 页面可见性变化监听
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) {
+                    this.handlePageRestore('页面可见性恢复');
                 } else {
-                    addLog('未检测到签到信息，签到可能失败');
-                    setTodaySignStatus(false);
+                    this.backgroundStartTime = Date.now();
+                }
+            });
+
+            // 窗口焦点变化监听
+            window.addEventListener('focus', () => {
+                this.handlePageRestore('窗口焦点恢复');
+            });
+
+            window.addEventListener('blur', () => {
+                this.backgroundStartTime = Date.now();
+            });
+
+            // 用户活动监听（节流）
+            let userActivityTimer = null;
+            const handleUserActivity = () => {
+                this.lastActiveTime = Date.now();
+                                    if (userActivityTimer) return;
+                    
+                    userActivityTimer = setTimeout(() => {
+                        userActivityTimer = null;
+                        if (this.isSignInTime()) {
+                            this.log('👆 检测到用户活动，检查补偿签到');
+                            this.checkAndSignIn();
+                        }
+                    }, 2000);
+            };
+
+            ['mousedown', 'keydown', 'scroll', 'click', 'touchstart', 'touchmove'].forEach(event => {
+                document.addEventListener(event, handleUserActivity, { passive: true });
+            });
+
+            // 页面加载补偿（仅在5秒窗口内）
+            if (this.isSignInTime()) {
+                this.log('🔄 页面在签到时间段内加载，立即检查补偿签到');
+                setTimeout(() => this.checkAndSignIn(), 2000);
+            }
+
+            // 长时间挂机补偿：高精度检查器
+            this.setupHighPrecisionChecker();
+
+            // Performance API 补偿
+            this.setupPerformanceCompensation();
+
+            // 页面卸载前处理
+            this.setupPageUnloadHandler();
+
+            // 定时器异常恢复机制
+            this.setupTimerRecovery();
+
+            // 递归检测器（最后防线）
+            this.setupRecursiveChecker();
+
+            // this.log('🛡️ 长时间挂机补偿机制已启动'); // 已删除此日志输出
+            
+            // 定期显示多标签页状态（仅主页面显示，避免日志混乱）
+            this.setupMultiTabStatusDisplay();
+        }
+
+        // 多标签页状态显示
+        setupMultiTabStatusDisplay() {
+            setInterval(() => {
+                if (this.isMasterPage) {
+                    const registry = this.getPageRegistry();
+                    const activePages = Object.keys(registry).length;
+                    const now = new Date();
+                    
+                    // 只在关键时刻显示状态，避免日志过多
+                    if ((now.getHours() === 23 && now.getMinutes() === 59 && now.getSeconds() >= 45) ||
+                        (now.getHours() === 0 && now.getMinutes() === 0 && now.getSeconds() <= 30)) {
+                        // this.log(`📊 多标签页状态 - 活跃页面: ${activePages}个 | 主页面: ${this.pageId.slice(-8)}`); // 已删除此日志输出
+                    }
+                }
+            }, 10000); // 10秒检查一次
+        }
+
+        // 高精度检查器（关键时刻强化）
+        setupHighPrecisionChecker() {
+            setInterval(() => {
+                const now = new Date();
+                const hour = now.getHours();
+                const minute = now.getMinutes();
+                const second = now.getSeconds();
+
+                // 在关键时刻（23:59:50-00:00:05）进行高频检查
+                if ((hour === 23 && minute === 59 && second >= 50) || 
+                    (hour === 0 && minute === 0 && second <= 5)) {
+                    if (this.isSignInTime()) {
+                        this.checkAndSignIn();
+                    }
+                }
+            }, 500); // 0.5秒一次高精度检查
+        }
+
+        // Performance API 补偿
+        setupPerformanceCompensation() {
+            if ('performance' in window && 'now' in performance) {
+                let lastCheckTime = performance.now();
+                
+                setInterval(() => {
+                    const currentTime = performance.now();
+                    const timeDiff = currentTime - lastCheckTime;
+                    
+                    // 如果时间差异过大（超过5秒），说明可能被暂停过
+                    if (timeDiff > 5000) {
+                        // this.log(`⚡ Performance API检测到时间跳跃: ${Math.round(timeDiff/1000)}秒`); // 已删除此日志输出
+                        if (this.isSignInTime()) {
+                            // this.log('🔄 Performance API触发补偿签到'); // 已删除此日志输出
+                            this.checkAndSignIn();
+                        }
+                    }
+                    
+                    lastCheckTime = currentTime;
+                }, 3000);
+            }
+        }
+
+        // 生成页面唯一ID
+        generatePageId() {
+            return 'page_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // 初始化多标签页管理
+        initMultiTabManagement() {
+            // 注册当前页面
+            this.registerCurrentPage();
+            
+            // 竞选主页面
+            this.electMasterPage();
+            
+            // 开始心跳检测
+            this.startHeartbeat();
+            
+            // 监听localStorage变化（页面间通信）
+            this.setupStorageListener();
+            
+            // this.log(`📋 多标签页管理初始化完成 [主页面: ${this.isMasterPage}]`); // 已删除此日志输出
+        }
+
+        // 注册当前页面
+        registerCurrentPage() {
+            const registry = this.getPageRegistry();
+            registry[this.pageId] = {
+                timestamp: Date.now(),
+                isActive: true,
+                url: window.location.href
+            };
+            this.setPageRegistry(registry);
+        }
+
+        // 竞选主页面
+        electMasterPage() {
+            const currentMasterId = localStorage.getItem(this.storageKeys.masterPageId);
+            const registry = this.getPageRegistry();
+            
+            // 如果没有主页面，或主页面已失效，或者是第一个页面
+            if (!currentMasterId || !registry[currentMasterId] || 
+                Date.now() - registry[currentMasterId].timestamp > 10000 ||
+                Object.keys(registry).length === 1) {
+                
+                this.becomeMasterPage();
+            } else {
+                this.isMasterPage = false;
+                this.log(`👥 当前页面为从页面，主页面: ${currentMasterId}`);
+            }
+        }
+
+        // 成为主页面
+        becomeMasterPage() {
+            this.isMasterPage = true;
+            localStorage.setItem(this.storageKeys.masterPageId, this.pageId);
+            localStorage.setItem(this.storageKeys.lastHeartbeat, Date.now().toString());
+            this.log(`👑 当前页面成为主页面 [${this.pageId}]`);
+        }
+
+        // 开始心跳检测
+        startHeartbeat() {
+            this.heartbeatInterval = setInterval(() => {
+                if (this.isMasterPage) {
+                    // 主页面发送心跳
+                    localStorage.setItem(this.storageKeys.lastHeartbeat, Date.now().toString());
+                    this.updatePageRegistry();
+                } else {
+                    // 从页面检查主页面是否还活着
+                    this.checkMasterPageHealth();
+                }
+            }, 3000); // 3秒心跳
+        }
+
+        // 更新页面注册信息
+        updatePageRegistry() {
+            const registry = this.getPageRegistry();
+            if (registry[this.pageId]) {
+                registry[this.pageId].timestamp = Date.now();
+                registry[this.pageId].isActive = !document.hidden;
+                this.setPageRegistry(registry);
+            }
+            
+            // 清理过期页面
+            this.cleanExpiredPages();
+        }
+
+        // 检查主页面健康状态
+        checkMasterPageHealth() {
+            const lastHeartbeat = localStorage.getItem(this.storageKeys.lastHeartbeat);
+            const currentMasterId = localStorage.getItem(this.storageKeys.masterPageId);
+            
+            if (!lastHeartbeat || !currentMasterId || 
+                Date.now() - parseInt(lastHeartbeat) > 15000) { // 15秒无心跳
+                
+                this.log('💔 检测到主页面失效，立即接管签到职责');
+                this.emergencyTakeover();
+            }
+        }
+
+        // 紧急接管机制
+        emergencyTakeover() {
+            // 立即成为主页面
+            this.becomeMasterPage();
+            
+            // 如果是在签到时间段，立即检查是否需要补偿签到（仅5秒窗口）
+            if (this.isSignInTime()) {
+                this.log('🚨 紧急接管期间检测到签到时间，立即执行补偿签到');
+                setTimeout(() => this.checkAndSignIn(), 1000);
+            }
+            
+            // 广播接管信息给其他页面
+            this.broadcastTakeover();
+        }
+
+        // 广播接管信息
+        broadcastTakeover() {
+            const takeoverInfo = {
+                newMasterId: this.pageId,
+                timestamp: Date.now(),
+                reason: 'emergency_takeover'
+            };
+            
+            localStorage.setItem('nodeseek_takeover_broadcast', JSON.stringify(takeoverInfo));
+            
+            // 清理广播信息（避免持久化）
+            setTimeout(() => {
+                localStorage.removeItem('nodeseek_takeover_broadcast');
+            }, 5000);
+        }
+
+        // 清理过期页面
+        cleanExpiredPages() {
+            const registry = this.getPageRegistry();
+            const now = Date.now();
+            let hasExpired = false;
+            
+            for (const [pageId, info] of Object.entries(registry)) {
+                if (now - info.timestamp > 30000) { // 30秒无活动
+                    delete registry[pageId];
+                    hasExpired = true;
+                    // this.log(`🗑️ 清理过期页面: ${pageId}`); // 已删除此日志输出
+                }
+            }
+            
+            if (hasExpired) {
+                this.setPageRegistry(registry);
+            }
+        }
+
+        // 获取页面注册表
+        getPageRegistry() {
+            const registry = localStorage.getItem(this.storageKeys.pageRegistry);
+            return registry ? JSON.parse(registry) : {};
+        }
+
+        // 设置页面注册表
+        setPageRegistry(registry) {
+            localStorage.setItem(this.storageKeys.pageRegistry, JSON.stringify(registry));
+        }
+
+        // 监听localStorage变化
+        setupStorageListener() {
+            window.addEventListener('storage', (e) => {
+                if (e.key === this.storageKeys.masterPageId && e.newValue !== this.pageId) {
+                    this.isMasterPage = false;
+                    // this.log(`👥 检测到新的主页面: ${e.newValue}`); // 已删除此日志输出
                 }
                 
-                // 返回上一页
-                setTimeout(() => {
-                    returnToPreviousPage();
-                }, 1000);
-            }
+                // 监听紧急接管广播
+                if (e.key === 'nodeseek_takeover_broadcast' && e.newValue) {
+                    try {
+                        const takeoverInfo = JSON.parse(e.newValue);
+                        if (takeoverInfo.newMasterId !== this.pageId) {
+                            this.isMasterPage = false;
+                            // this.log(`🚨 收到紧急接管广播，新主页面: ${takeoverInfo.newMasterId}`); // 已删除此日志输出
+                        }
+                    } catch (error) {
+                        this.log('❌ 解析接管广播失败:', error);
+                    }
+                }
+            });
+        }
+
+        // 页面卸载前处理
+        setupPageUnloadHandler() {
+            const handleUnload = () => {
+                // 清理心跳
+                if (this.heartbeatInterval) {
+                    clearInterval(this.heartbeatInterval);
+                }
+                
+                // 如果是主页面，释放主页面权限
+                if (this.isMasterPage) {
+                    localStorage.removeItem(this.storageKeys.masterPageId);
+                    localStorage.removeItem(this.storageKeys.lastHeartbeat);
+                    // this.log('👑 主页面卸载，释放主页面权限'); // 已删除此日志输出
+                }
+                
+                // 从注册表中移除当前页面
+                const registry = this.getPageRegistry();
+                delete registry[this.pageId];
+                this.setPageRegistry(registry);
+                
+                // 清理锁状态，避免影响其他页面
+                this.releaseExecutingLock();
+                this.releaseLock();
+                // this.log(`🚪 页面卸载完成 [${this.pageId}]`); // 已删除此日志输出
+            };
+
+            window.addEventListener('beforeunload', handleUnload);
+            window.addEventListener('pagehide', handleUnload);
+        }
+
+        // 定时器异常恢复机制
+        setupTimerRecovery() {
+            let recoveryCheckCount = 0;
             
-        } catch (error) {
-            addLog('签到流程执行失败: ' + error.message);
-            setTodaySignStatus(false);
-            returnToPreviousPage();
-        } finally {
-            // 释放签到锁
-            releaseSignLock();
+            setInterval(() => {
+                recoveryCheckCount++;
+                
+                // 每分钟在签到时间段内检查一次
+                if (recoveryCheckCount % 20 === 0) { // 3秒 * 20 = 60秒
+                    if (this.isSignInTime()) {
+                        this.log('🔧 定时器异常恢复检查');
+                        this.checkAndSignIn();
+                    }
+                }
+            }, 3000);
         }
-    }
 
-    // 查找签到按钮
-    function findSignButton() {
-        // 查找包含"试试手气"文本的按钮
-        const buttons = document.querySelectorAll('button, a, input[type="button"], .btn');
-        
-        for (let button of buttons) {
-            const text = button.textContent || button.value || '';
-            if (text.includes('试试手气') || 
-                text.includes('签到') || 
-                text.includes('打卡')) {
-                return button;
-            }
+        // 递归检测器（最后防线）
+        setupRecursiveChecker() {
+            const recursiveCheck = () => {
+                if (this.isSignInTime()) {
+                    this.log('🔁 递归检测器触发');
+                    this.checkAndSignIn();
+                }
+                
+                // 在关键时刻更频繁检查
+                const now = new Date();
+                const hour = now.getHours();
+                const minute = now.getMinutes();
+                const second = now.getSeconds();
+                
+                let nextDelay = 10000; // 默认10秒
+                
+                if ((hour === 23 && minute === 59 && second >= 50) || 
+                    (hour === 0 && minute === 0 && second <= 5)) {
+                    nextDelay = 2000; // 关键时刻2秒一次
+                }
+                
+                setTimeout(recursiveCheck, nextDelay);
+            };
+            
+            setTimeout(recursiveCheck, 5000);
         }
-        
-        // 如果没找到，尝试查找可能的签到元素
-        const signElements = document.querySelectorAll('[class*="sign"], [id*="sign"], [class*="checkin"], [id*="checkin"]');
-        for (let element of signElements) {
-            if (element.tagName === 'BUTTON' || 
-                element.tagName === 'A' || 
-                (element.tagName === 'INPUT' && element.type === 'button')) {
-                return element;
-            }
-        }
-        
-        return null;
-    }
 
-    // 返回上一页
-    function returnToPreviousPage() {
-        const returnUrl = sessionStorage.getItem('nodeseek_return_url');
-        
-        if (returnUrl && returnUrl !== window.location.href) {
-            addLog('返回到之前的页面: ' + returnUrl);
-            sessionStorage.removeItem('nodeseek_return_url');
-            window.location.href = returnUrl;
-        } else {
-            // 如果没有保存的返回URL，返回首页
-            addLog('返回到首页');
-            window.location.href = 'https://www.nodeseek.com/';
-        }
-    }
+        // 处理页面恢复
+        handlePageRestore(source) {
+            const now = Date.now();
+            let backgroundDuration = 0;
+            
+            if (this.backgroundStartTime) {
+                backgroundDuration = now - this.backgroundStartTime;
+                this.backgroundStartTime = null;
+            }
 
-    // 检查是否需要执行签到
-    function checkAndPerformSignIn(source = 'timer') {
-        if (!isSignEnabled()) {
-            return;
-        }
-        
-        // 清理过期数据
-        cleanupExpiredData();
-        
-        // 检查是否已经签到
-        if (isTodayAlreadySigned()) {
-            if (source !== 'timer') {
-                addLog('今日已签到完成，跳过签到检查');
+            const durationMinutes = Math.round(backgroundDuration / 60000);
+            // this.log(`🔄 ${source} (后台时长: ${durationMinutes}分钟)`); // 已删除此日志输出
+
+            // 在签到时间段内恢复时立即检查（仅5秒窗口）
+            if (this.isSignInTime()) {
+                this.log('⚡ 页面在签到时间段内恢复，立即检查补偿签到');
+                setTimeout(() => this.checkAndSignIn(), 1000);
             }
-            return;
         }
-        
-        // 检查是否在签到时间窗口内
-        if (!isInSignTimeWindow()) {
-            const timeInfo = getCurrentTimeInfo();
-            if (source !== 'timer' && isInCompensationWindow()) {
-                addLog(`补偿机制触发: 当前时间 ${String(timeInfo.hours).padStart(2, '0')}:${String(timeInfo.minutes).padStart(2, '0')}:${String(timeInfo.seconds).padStart(2, '0')}，但已超过签到窗口`);
+
+        // 安全执行签到
+        async safeExecuteSignIn() {
+            // 检查是否为主页面
+            if (!this.isMasterPage) {
+                // 从页面不执行签到，但在关键时刻显示状态
+                if (this.isSignInTime() && Math.random() < 0.1) { // 10%概率显示，避免日志过多
+                    this.log(`👥 从页面等待主页面执行签到 [${this.pageId}]`);
+                }
+                return;
             }
-            return;
+
+            // 检查执行锁
+            if (this.isExecuting()) {
+                this.log('🔒 签到正在执行中，跳过（执行锁）');
+                return;
+            }
+
+            // 检查签到锁
+            if (this.isLocked()) {
+                this.log('🔒 签到正在执行中，跳过（签到锁）');
+                return;
+            }
+
+            // 检查时间条件（仅在5秒窗口内）
+            if (!this.isSignInTime()) {
+                return;
+            }
+
+            // 检查今日是否已签到
+            if (this.hasSignedToday()) {
+                this.log('✅ 今日已签到，跳过');
+                return;
+            }
+
+            this.log(`🎯 主页面签到时间到！开始执行自动签到 [${this.pageId}]`);
+            await this.performSignIn();
         }
-        
-        // 检查是否有其他页面正在执行签到
-        const currentLock = getSignLock();
-        const currentPageId = window.nodeseekPageId || generatePageId();
-        
-        if (currentLock && currentLock.pageId !== currentPageId) {
-            addLog('其他页面正在执行签到，当前页面跳过');
-            return;
+
+        // 检查并执行签到
+        async checkAndSignIn() {
+            try {
+                await this.safeExecuteSignIn();
+            } catch (error) {
+                this.log('❌ 签到检查出错:', error);
+            }
         }
-        
-        // 设置签到锁
-        setSignLock(currentPageId);
-        
-        addLog(`签到检查通过，开始执行签到 (触发源: ${source})`);
-        
+
         // 执行签到
-        performSignIn();
-    }
+        async performSignIn() {
+            // 设置执行锁和签到锁
+            this.setExecutingLock();
+            this.setLock();
 
-    // 页面活跃状态管理
-    function updateActivePageStatus() {
-        const pageData = {
-            pageId: window.nodeseekPageId || generatePageId(),
-            url: window.location.href,
-            timestamp: Date.now()
-        };
-        
-        localStorage.setItem(ACTIVE_PAGE_KEY, JSON.stringify(pageData));
-    }
+            try {
+                this.log('🎲 发送签到请求...');
 
-    // 检查是否为活跃页面
-    function isActivePage() {
-        const activePageData = localStorage.getItem(ACTIVE_PAGE_KEY);
-        if (!activePageData) return true;
-        
-        try {
-            const data = JSON.parse(activePageData);
-            const currentPageId = window.nodeseekPageId || '';
-            
-            // 如果是当前页面，或者活跃页面超过30秒未更新，则认为当前页面可以获得控制权
-            return data.pageId === currentPageId || 
-                   (Date.now() - data.timestamp > 30000);
-        } catch (e) {
-            return true;
-        }
-    }
+                const response = await fetch(this.SIGN_API, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
 
-    // 强制获得签到控制权（用于补偿机制）
-    function forceGetSignControl() {
-        if (!isActivePage()) {
-            const currentPageId = window.nodeseekPageId || generatePageId();
-            window.nodeseekPageId = currentPageId;
-            updateActivePageStatus();
-            addLog('检测到无活跃页面或原活跃页面失效，当前页面强制获得签到控制权');
-            return true;
-        }
-        return false;
-    }
-
-    // 用户活动监听（节流）
-    let lastActivityTime = 0;
-    function onUserActivity() {
-        const now = Date.now();
-        if (now - lastActivityTime < 2000) return; // 2秒节流
-        lastActivityTime = now;
-        
-        updateActivePageStatus();
-        
-        if (isInCompensationWindow() && isSignEnabled()) {
-            forceGetSignControl();
-            checkAndPerformSignIn('user_activity');
-        }
-    }
-
-    // 页面可见性变化监听
-    function onVisibilityChange() {
-        if (document.hidden) {
-            // 页面变为后台时记录时间
-            window.nodeseekBackgroundTime = Date.now();
-        } else {
-            // 页面变为前台时检查
-            updateActivePageStatus();
-            
-            const backgroundTime = window.nodeseekBackgroundTime;
-            if (backgroundTime) {
-                const backgroundDuration = Date.now() - backgroundTime;
-                addLog(`页面从后台恢复，后台时长: ${Math.round(backgroundDuration / 1000)}秒`);
-                window.nodeseekBackgroundTime = null;
-            }
-            
-            if (isInCompensationWindow() && isSignEnabled()) {
-                forceGetSignControl();
-                checkAndPerformSignIn('visibility_change');
-            }
-        }
-    }
-
-    // 窗口焦点变化监听
-    function onWindowFocus() {
-        updateActivePageStatus();
-        
-        if (isInCompensationWindow() && isSignEnabled()) {
-            forceGetSignControl();
-            checkAndPerformSignIn('window_focus');
-        }
-    }
-
-    // 页面加载时检查
-    function onPageLoad() {
-        updateActivePageStatus();
-        
-        if (isInCompensationWindow() && isSignEnabled()) {
-            forceGetSignControl();
-            checkAndPerformSignIn('page_load');
-        }
-    }
-
-    // 主定时器
-    function startMainTimer() {
-        setInterval(() => {
-            if (!isSignEnabled()) return;
-            
-            updateActivePageStatus();
-            
-            const timeInfo = getCurrentTimeInfo();
-            const currentTime = `${String(timeInfo.hours).padStart(2, '0')}:${String(timeInfo.minutes).padStart(2, '0')}:${String(timeInfo.seconds).padStart(2, '0')}`;
-            
-            // 预签到模式 - 强化监控
-            if (isInPreSignMode()) {
-                if (timeInfo.seconds % 2 === 0) { // 每2秒输出一次状态
-                    addLog(`[本地时间 ${currentTime}] 预签到模式 - 即将进入签到时间窗口`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
-                forceGetSignControl();
+
+                const data = await response.json();
+                this.handleSignInResponse(data);
+
+            } catch (error) {
+                this.log('❌ 自动签到失败:', error);
+            } finally {
+                // 释放执行锁和签到锁
+                this.releaseExecutingLock();
+                this.releaseLock();
             }
-            
-            // 签到时间窗口检查
-            if (isInSignTimeWindow()) {
-                if (!isTodayAlreadySigned()) {
-                    addLog(`[本地时间 ${currentTime}] 进入签到时间窗口，准备执行签到`);
-                    forceGetSignControl();
-                    checkAndPerformSignIn('main_timer');
+        }
+
+        // 处理签到响应
+        handleSignInResponse(data) {
+            this.log('📥 签到响应:', data);
+
+            if (data.success) {
+                // 签到成功
+                const message = `🎲 自动签到成功！${data.message || ''}`;
+                const details = `💰 获得: ${data.gain}鸡腿 | 💳 余额: ${data.current}鸡腿`;
+
+                this.log(`✅ ${message}`);
+                this.log(`💰 ${details}`);
+
+                // 记录签到成功
+                this.recordSignInSuccess();
+
+            } else {
+                // 签到失败或已签到
+                const message = data.message || '签到失败';
+                this.log(`⚠️ ${message}`);
+
+                // 如果是已签到，记录状态
+                if (message.includes('已签到') || message.includes('已经签到')) {
+                    this.recordSignInSuccess();
                 }
             }
-            
-        }, 1000); // 每秒检查一次
-    }
+        }
 
-    // 初始化签到功能
-    function initClockIn() {
-        // 生成页面唯一ID
-        window.nodeseekPageId = generatePageId();
-        
+        // 检查是否在精确签到时间
+        isSignInTime() {
+            const now = new Date();
+            const hour = now.getHours();
+            const minute = now.getMinutes();
+            const second = now.getSeconds();
+
+            // 精确签到时间窗口：00:00:00 - 00:00:05（仅5秒窗口）
+            return hour === 0 && minute === 0 && second <= 5;
+        }
+
+        // 检查是否在扩展签到时间（补偿用）
+        isExtendedSignInTime() {
+            const now = new Date();
+            const hour = now.getHours();
+            const minute = now.getMinutes();
+            const second = now.getSeconds();
+
+            // 扩展签到时间：00:00:00 - 00:00:05（补偿机制也使用相同窗口）
+            return hour === 0 && minute === 0 && second <= 5;
+        }
+
+        // 检查今日是否已签到
+        hasSignedToday() {
+            const today = this.getTodayString();
+            const lastSignTime = localStorage.getItem(this.storageKeys.lastSignTime);
+            return lastSignTime === today;
+        }
+
+        // 记录签到成功
+        recordSignInSuccess() {
+            const today = this.getTodayString();
+            localStorage.setItem(this.storageKeys.lastSignTime, today);
+            this.log('📝 记录签到成功状态');
+        }
+
+        // 获取今日日期字符串
+        getTodayString() {
+            return new Date().toISOString().split('T')[0];
+        }
+
+        // 设置执行锁
+        setExecutingLock() {
+            const lockTime = Date.now() + 10000; // 10秒锁定
+            localStorage.setItem(this.storageKeys.executingLock, lockTime.toString());
+            this.log('🔒 设置签到执行锁');
+        }
+
+        // 检查是否正在执行
+        isExecuting() {
+            const lockTime = localStorage.getItem(this.storageKeys.executingLock);
+            if (!lockTime) return false;
+
+            const now = Date.now();
+            const lock = parseInt(lockTime);
+
+            if (now < lock) {
+                return true;
+            } else {
+                // 锁已过期，清理
+                localStorage.removeItem(this.storageKeys.executingLock);
+                return false;
+            }
+        }
+
+        // 释放执行锁
+        releaseExecutingLock() {
+            localStorage.removeItem(this.storageKeys.executingLock);
+            this.log('🔓 释放签到执行锁');
+        }
+
+        // 设置签到锁
+        setLock() {
+            const lockTime = Date.now() + 15000; // 15秒锁定
+            localStorage.setItem(this.storageKeys.signLock, lockTime.toString());
+            this.log('🔒 设置签到锁');
+        }
+
+        // 检查是否被锁定
+        isLocked() {
+            const lockTime = localStorage.getItem(this.storageKeys.signLock);
+            if (!lockTime) return false;
+
+            const now = Date.now();
+            const lock = parseInt(lockTime);
+
+            if (now < lock) {
+                return true;
+            } else {
+                // 锁已过期，清理
+                localStorage.removeItem(this.storageKeys.signLock);
+                return false;
+            }
+        }
+
+        // 释放签到锁
+        releaseLock() {
+            localStorage.removeItem(this.storageKeys.signLock);
+            this.log('🔓 释放签到锁');
+        }
+
         // 清理过期数据
-        cleanupExpiredData();
-        
-        // 更新活跃页面状态
-        updateActivePageStatus();
-        
-        // 页面加载时检查
-        onPageLoad();
-        
-        // 启动主定时器
-        startMainTimer();
-        
-        // 添加事件监听器
-        document.addEventListener('visibilitychange', onVisibilityChange);
-        window.addEventListener('focus', onWindowFocus);
-        
-        // 用户活动监听（节流）
-        ['mousedown', 'keydown', 'scroll', 'touchstart'].forEach(eventType => {
-            document.addEventListener(eventType, onUserActivity, { passive: true });
-        });
-        
-        addLog('签到功能初始化完成');
-        
-        // 输出当前状态
-        const timeInfo = getCurrentTimeInfo();
-        const currentTime = `${String(timeInfo.hours).padStart(2, '0')}:${String(timeInfo.minutes).padStart(2, '0')}:${String(timeInfo.seconds).padStart(2, '0')}`;
-        const signEnabled = isSignEnabled();
-        const todaySigned = isTodayAlreadySigned();
-        
-        addLog(`当前时间: ${currentTime}, 签到功能: ${signEnabled ? '开启' : '关闭'}, 今日签到: ${todaySigned ? '已完成' : '未完成'}`);
+        cleanExpiredData() {
+            // 清理过期的锁
+            this.isLocked();
+            this.isExecuting();
+
+            // 清理非今日的签到记录
+            const today = this.getTodayString();
+            const lastSignTime = localStorage.getItem(this.storageKeys.lastSignTime);
+            if (lastSignTime && lastSignTime !== today) {
+                localStorage.removeItem(this.storageKeys.lastSignTime);
+                this.log('🧹 清理了昨日签到记录');
+            }
+
+            // 清理过期的多标签页数据
+            this.cleanExpiredMultiTabData();
+        }
+
+        // 清理过期的多标签页数据
+        cleanExpiredMultiTabData() {
+            const registry = this.getPageRegistry();
+            const now = Date.now();
+            let hasChanges = false;
+
+            // 清理超过5分钟无活动的页面
+            for (const [pageId, info] of Object.entries(registry)) {
+                if (now - info.timestamp > 300000) { // 5分钟
+                    delete registry[pageId];
+                    hasChanges = true;
+                }
+            }
+
+            if (hasChanges) {
+                this.setPageRegistry(registry);
+                this.log('🧹 清理了过期的多标签页数据');
+            }
+
+            // 检查主页面是否过期
+            const masterPageId = localStorage.getItem(this.storageKeys.masterPageId);
+            const lastHeartbeat = localStorage.getItem(this.storageKeys.lastHeartbeat);
+            
+            if (masterPageId && (!registry[masterPageId] || 
+                (lastHeartbeat && now - parseInt(lastHeartbeat) > 300000))) {
+                localStorage.removeItem(this.storageKeys.masterPageId);
+                localStorage.removeItem(this.storageKeys.lastHeartbeat);
+                this.log('🧹 清理了过期的主页面信息');
+            }
+        }
+
+        // 日志输出（已禁用）
+        log(...args) {
+            // 不输出任何日志，保持签到功能正常运行
+            // const timestamp = new Date().toLocaleTimeString();
+            // console.log(`[${timestamp}] [NodeSeek自动签到]`, ...args);
+        }
     }
 
-    // 导出功能到全局对象
-    window.NodeSeekClockIn = {
-        init: initClockIn,
-        setAddLogFunction: setAddLogFunction,
-        checkAndPerformSignIn: checkAndPerformSignIn,
-        isSignEnabled: isSignEnabled,
-        isTodayAlreadySigned: isTodayAlreadySigned,
-        isInSignTimeWindow: isInSignTimeWindow,
-        isInPreSignMode: isInPreSignMode
-    };
-
-    // 自动初始化
+    // 启动自动签到系统
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initClockIn);
+        document.addEventListener('DOMContentLoaded', () => {
+            new NodeSeekAutoSignIn();
+        });
     } else {
-        initClockIn();
+        new NodeSeekAutoSignIn();
     }
 
 })();
