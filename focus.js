@@ -721,7 +721,7 @@
 
             // 重试配置
             const maxRetries = 3;
-            const retryDelay = 2000; // 2秒
+            const retryDelay = 10000; // 10秒
             let lastError = null;
 
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
