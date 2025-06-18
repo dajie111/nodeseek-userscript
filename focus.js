@@ -719,156 +719,32 @@
                 return this.rssCache;
             }
 
-            // 重试配置
-            const maxRetries = 3;
-            const retryDelay = 10000; // 10秒
-            let lastError = null;
-
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                try {
-                    this.log(`开始抓取RSS数据... (第${attempt}/${maxRetries}次尝试)`);
-
-                    // 使用代理服务或直接请求
-                    const proxyUrl = 'https://api.allorigins.win/raw?url=';
-                    const targetUrl = 'https://rss.nodeseek.com/';
-                    const response = await fetch(proxyUrl + encodeURIComponent(targetUrl));
-
-                    if (!response.ok) {
-                        throw new Error(`HTTP错误! 状态码: ${response.status}`);
-                    }
-
-                    const rssText = await response.text();
-                    this.log('RSS数据抓取成功，长度:', rssText.length);
-
-                    // 解析RSS
-                    const parser = new DOMParser();
-                    const xmlDoc = parser.parseFromString(rssText, 'text/xml');
-
-                    // 检查解析错误
-                    const parseError = xmlDoc.querySelector('parsererror');
-                    if (parseError) {
-                        throw new Error('RSS解析失败');
-                    }
-
-                    // 提取文章信息（不仅仅是标题）
-                    const items = xmlDoc.querySelectorAll('item');
-                    const articles = [];
-
-                    items.forEach(item => {
-                        const titleElement = item.querySelector('title');
-                        const pubDateElement = item.querySelector('pubDate');
-                        const authorElement = item.querySelector('dc\\:creator, creator');
-                        const linkElement = item.querySelector('link');
-                        const guidElement = item.querySelector('guid');
-                        const descriptionElement = item.querySelector('description');
-
-                        if (titleElement && titleElement.textContent) {
-                            // 清理CDATA标签
-                            let title = titleElement.textContent.trim();
-                            title = title.replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '');
-
-                            // 提取发帖时间
-                            let pubDate = null;
-                            if (pubDateElement && pubDateElement.textContent) {
-                                const dateStr = pubDateElement.textContent.trim();
-                                pubDate = new Date(dateStr).getTime();
-                                // 如果解析失败，尝试其他方式
-                                if (isNaN(pubDate)) {
-                                    pubDate = null;
-                                }
-                            }
-
-                            // 提取发帖人（从dc:creator元素提取）
-                            let author = '';
-                            if (authorElement && authorElement.textContent) {
-                                author = authorElement.textContent.trim();
-                                // 清理CDATA
-                                author = author.replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '');
-                            }
-
-                            // 提取链接
-                            let link = '';
-                            if (linkElement && linkElement.textContent) {
-                                link = linkElement.textContent.trim();
-                            }
-
-                            // 提取GUID作为唯一标识
-                            let guid = '';
-                            if (guidElement && guidElement.textContent) {
-                                guid = guidElement.textContent.trim();
-                            }
-
-                            // 构建文章对象
-                            if (title) {
-                                const article = {
-                                    title: title,
-                                    pubDate: pubDate,
-                                    author: author,
-                                    link: link,
-                                    guid: guid,
-                                    // 添加原始数据用于调试
-                                    rawPubDate: pubDateElement ? pubDateElement.textContent.trim() : '',
-                                    rawAuthor: authorElement ? authorElement.textContent.trim() : ''
-                                };
-                                articles.push(article);
-                            }
-                        }
-                    });
-
-                    this.log(`提取到 ${articles.length} 篇文章信息`);
-
-                    // 调试：输出前几篇文章的详细信息
-                    if (articles.length > 0) {
-                        this.log('=== RSS文章信息样例 ===');
-                        articles.slice(0, 3).forEach((article, index) => {
-                            this.log(`#${index + 1}:`);
-                            this.log(`  标题: ${article.title}`);
-                            this.log(`  发帖时间: ${article.pubDate ? new Date(article.pubDate).toLocaleString() : '未知'} (${article.rawPubDate})`);
-                            this.log(`  发帖人: ${article.author || '未知'} (${article.rawAuthor})`);
-                            this.log(`  链接: ${article.link || '无'}`);
-                            this.log(`  GUID: ${article.guid || '无'}`);
-                            this.log('---');
-                        });
-                        this.log('===================');
-                    }
-
-                    // 缓存数据
-                    this.rssCache = articles;
-                    this.rssCacheTime = now;
-
-                    // 成功了就返回
-                    if (attempt > 1) {
-                        this.log(`第${attempt}次尝试成功！`);
-                    }
-                    return articles;
-
-                } catch (error) {
-                    lastError = error;
-                    console.error(`第${attempt}次抓取RSS失败:`, error.message);
-
-                    // 如果不是最后一次尝试，等待后重试
-                    if (attempt < maxRetries) {
-                        this.log(`${retryDelay / 1000}秒后进行第${attempt + 1}次重试...`);
-                        await new Promise(resolve => setTimeout(resolve, retryDelay));
-                    }
+            // 新版：直接从服务器API拉取JSON
+            const apiUrl = 'https://cka.396663.xyz/api/articles?days=7';
+            try {
+                this.log('开始从服务器API拉取热点数据...');
+                const response = await fetch(apiUrl);
+                if (!response.ok) {
+                    throw new Error(`API HTTP错误! 状态码: ${response.status}`);
                 }
+                const articles = await response.json();
+                this.log('API数据拉取成功，数量:', articles.length);
+                // 缓存数据
+                this.rssCache = articles;
+                this.rssCacheTime = now;
+                return articles;
+            } catch (error) {
+                console.error('API采集失败:', error);
+                // 如果有缓存数据，即使过期也返回
+                if (this.rssCache) {
+                    this.log('使用过期的缓存数据作为备用');
+                    return this.rssCache;
+                }
+                if (window.addLog) {
+                    window.addLog(`热点统计API采集失败：${error.message}`);
+                }
+                throw error;
             }
-
-            // 所有重试都失败了
-            console.error(`RSS采集失败：已重试${maxRetries}次仍然失败`, lastError);
-
-            // 如果有缓存数据，即使过期也返回
-            if (this.rssCache) {
-                this.log('使用过期的缓存数据作为备用');
-                return this.rssCache;
-            }
-
-            // 记录到操作日志
-            if (window.addLog) {
-                window.addLog(`热点统计采集失败：已重试${maxRetries}次，错误: ${lastError.message}`);
-            }
-
-            throw lastError;
         },
 
         // 中文分词（简单实现）
