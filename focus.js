@@ -36,7 +36,7 @@
 
         // 自动采集定时器
         autoCollectTimer: null,
-        autoCollectInterval: 3 * 60 * 1000, // 3分钟
+        autoCollectInterval: 30 * 60 * 1000, // 30分钟
 
                 // 采集时间记录
         lastCollectTime: 0,
@@ -1770,7 +1770,7 @@
                     ${historyStats.totalFetched > historyStats.totalTitles ? `抓取总数：${historyStats.totalFetched} 篇，重复：${historyStats.totalDuplicates} 篇<br>` : ''}
                     采集次数：${historyStats.totalCollections} 次<br>
                     热门词汇：${wordFrequency.length} 个（≥2次）<br>
-                    <span style="color: #28a745;">${collectStatus} (3分钟间隔)</span><br>
+                    <span style="color: #28a745;">${collectStatus} (30分钟间隔)</span><br>
                     上次采集：${formatTime(this.lastCollectTime)}<br>
                     <span id="countdown-display" style="color: #007bff;">下次采集：${getCountdown()}</span>
                 `;
@@ -1893,6 +1893,9 @@
                 border-radius: 3px;
                 cursor: pointer;
                 font-size: 12px;
+                min-width: 90px;
+                width: 90px;
+                white-space: nowrap;
             `;
             collectBtn.onclick = async () => {
                 collectBtn.disabled = true;
@@ -1900,12 +1903,22 @@
                 try {
                     // 重置清理标记，允许重新获取数据
                     this.dataCleared = false;
-                    
                     await this.performAutoCollect(true); // 标记为手动触发
                     // 直接刷新当前弹窗内容，而不是关闭重开
                     await this.refreshHotTopicsDialog();
-                    collectBtn.disabled = false;
-                    collectBtn.textContent = '立即采集';
+                    // 进入9秒冷却
+                    let cooldown = 9;
+                    collectBtn.textContent = `冷却中(${cooldown}s)`;
+                    const timer = setInterval(() => {
+                        cooldown--;
+                        if (cooldown > 0) {
+                            collectBtn.textContent = `冷却中(${cooldown}s)`;
+                        } else {
+                            clearInterval(timer);
+                            collectBtn.disabled = false;
+                            collectBtn.textContent = '立即采集';
+                        }
+                    }, 1000);
                 } catch (error) {
                     collectBtn.textContent = '采集失败';
                     setTimeout(() => {
