@@ -14,7 +14,7 @@
                 lastHeartbeat: 'nodeseek_last_heartbeat'
             };
             this.SIGN_API = '/api/attendance?random=true';
-            this.isDebug = false;
+            this.isDebug = true;
             this.isPreSignMode = false;
             this.lastActiveTime = Date.now();
             this.backgroundStartTime = null;
@@ -38,12 +38,6 @@
             if (this.isNodeSeekPage()) {
                 this.log('✅ 检测到NodeSeek页面');
                 
-                // 立即检查是否在签到时间（页面加载时）
-                if (this.isSignInTime()) {
-                    this.log('🚨 页面加载时检测到签到时间，立即执行签到');
-                    setTimeout(() => this.forceSignIn(), 2000);
-                }
-                
                 // 初始化多标签页管理
                 this.initMultiTabManagement();
                 
@@ -61,12 +55,6 @@
         startSignInMonitor() {
             // 立即检查一次
             setTimeout(() => this.checkAndSignIn(), 1000);
-            
-            // 强制签到机制：每天00:00:30强制检查一次
-            this.setupForceSignIn();
-            
-            // 多重保险机制：确保到时间一定运行
-            this.setupMultipleInsurance();
 
             // 主定时器：每秒检查
             setInterval(() => {
@@ -88,13 +76,13 @@
                     this.log(`⏰ 预签到模式 - 当前时间: ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}`);
                 }
 
-                // 精确签到时间检查：00:00:00-00:00:05
-                if (hour === 0 && minute === 0 && second <= 5) {
+                // 精确签到时间检查：00:00:00-00:00:10
+                if (hour === 0 && minute === 0 && second <= 10) {
                     this.checkAndSignIn();
                 }
 
                 // 退出预签到模式
-                if (hour === 0 && minute === 0 && second > 5) {
+                if (hour === 0 && minute === 0 && second > 10) {
                     if (this.isPreSignMode) {
                         this.isPreSignMode = false;
                         this.log('🔚 退出预签到模式');
@@ -110,327 +98,6 @@
             }, 1500);
 
             this.log('📅 自动签到监控已启动');
-        }
-
-        // 设置强制签到机制
-        setupForceSignIn() {
-            setInterval(() => {
-                const now = new Date();
-                const hour = now.getHours();
-                const minute = now.getMinutes();
-                const second = now.getSeconds();
-                
-                // 每天00:00:30强制检查签到
-                if (hour === 0 && minute === 0 && second === 30) {
-                    this.log('🚨 强制签到检查触发');
-                    this.forceSignIn();
-                }
-            }, 1000);
-        }
-
-        // 多重保险机制：确保到时间一定运行
-        setupMultipleInsurance() {
-            // 保险机制1：使用setTimeout精确定时到00:00:00
-            this.scheduleExactSignIn();
-            
-            // 保险机制2：Web Worker（如果支持）
-            this.setupWebWorkerTimer();
-            
-            // 保险机制3：requestAnimationFrame循环检查
-            this.setupAnimationFrameChecker();
-            
-            // 保险机制4：多个setInterval交错检查
-            this.setupMultipleIntervals();
-            
-            // 保险机制5：页面可见性API强化
-            this.setupVisibilityAPIChecker();
-            
-            // 保险机制6：SharedArrayBuffer原子操作（如果支持）
-            this.setupSharedArrayBufferTimer();
-            
-            // 保险机制7：localStorage轮询检查
-            this.setupLocalStoragePoller();
-        }
-
-        // 保险机制1：精确定时到下一个00:00:00
-        scheduleExactSignIn() {
-            const now = new Date();
-            const tomorrow = new Date(now);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            tomorrow.setHours(0, 0, 0, 0);
-            
-            const timeUntilMidnight = tomorrow.getTime() - now.getTime();
-            
-            this.log(`⏰ 设置精确定时器，${Math.round(timeUntilMidnight/1000/60)}分钟后执行签到`);
-            
-            setTimeout(() => {
-                this.log('🎯 精确定时器触发！');
-                this.forceSignIn();
-                
-                // 递归设置下一天的定时器
-                this.scheduleExactSignIn();
-            }, timeUntilMidnight);
-        }
-
-        // 保险机制2：Web Worker定时器
-        setupWebWorkerTimer() {
-            try {
-                const workerCode = `
-                    let lastCheck = Date.now();
-                    setInterval(() => {
-                        const now = new Date();
-                        const hour = now.getHours();
-                        const minute = now.getMinutes();
-                        const second = now.getSeconds();
-                        
-                        if (hour === 0 && minute === 0 && second <= 5) {
-                            postMessage({type: 'signInTime', time: now.getTime()});
-                        }
-                        
-                        // 检测时间跳跃
-                        const currentTime = Date.now();
-                        if (currentTime - lastCheck > 10000) {
-                            postMessage({type: 'timeJump', gap: currentTime - lastCheck});
-                        }
-                        lastCheck = currentTime;
-                    }, 1000);
-                `;
-                
-                const blob = new Blob([workerCode], {type: 'application/javascript'});
-                const worker = new Worker(URL.createObjectURL(blob));
-                
-                worker.onmessage = (e) => {
-                    if (e.data.type === 'signInTime') {
-                        this.log('🔧 Web Worker检测到签到时间');
-                        this.forceSignIn();
-                    } else if (e.data.type === 'timeJump') {
-                                            this.log(`⚡ Web Worker检测到时间跳跃: ${Math.round(e.data.gap/1000)}秒`);
-                    if (this.isSignInTime()) {
-                        this.forceSignIn();
-                    }
-                    }
-                };
-                
-                this.log('🔧 Web Worker定时器已启动');
-            } catch (error) {
-                this.log('❌ Web Worker不支持:', error.message);
-            }
-        }
-
-        // 保险机制3：requestAnimationFrame循环检查
-        setupAnimationFrameChecker() {
-            let lastCheckTime = Date.now();
-            
-            const animationCheck = () => {
-                const now = Date.now();
-                const timeDiff = now - lastCheckTime;
-                
-                // 如果时间差异过大，说明可能被暂停过
-                if (timeDiff > 5000) {
-                    this.log(`🎬 AnimationFrame检测到时间跳跃: ${Math.round(timeDiff/1000)}秒`);
-                    if (this.isSignInTime()) {
-                        this.forceSignIn();
-                    }
-                }
-                
-                // 检查是否是签到时间
-                const date = new Date(now);
-                if (date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() <= 5) {
-                    if (Math.random() < 0.01) { // 1%概率执行，避免过于频繁
-                        this.log('🎬 AnimationFrame检测到签到时间');
-                        this.forceSignIn();
-                    }
-                }
-                
-                lastCheckTime = now;
-                requestAnimationFrame(animationCheck);
-            };
-            
-            requestAnimationFrame(animationCheck);
-            this.log('🎬 AnimationFrame检查器已启动');
-        }
-
-        // 保险机制4：多个setInterval交错检查
-        setupMultipleIntervals() {
-            // 1.1秒间隔的检查器
-            setInterval(() => {
-                if (this.isSignInTime()) {
-                    this.log('⏱️ 1.1秒检查器触发');
-                    this.forceSignIn();
-                }
-            }, 1100);
-            
-            // 1.3秒间隔的检查器
-            setInterval(() => {
-                if (this.isSignInTime()) {
-                    this.log('⏱️ 1.3秒检查器触发');
-                    this.forceSignIn();
-                }
-            }, 1300);
-            
-            // 2.7秒间隔的检查器
-            setInterval(() => {
-                if (this.isSignInTime()) {
-                    this.log('⏱️ 2.7秒检查器触发');
-                    this.forceSignIn();
-                }
-            }, 2700);
-            
-            this.log('⏱️ 多重间隔检查器已启动');
-        }
-
-        // 保险机制5：页面可见性API强化
-        setupVisibilityAPIChecker() {
-            let hiddenTime = null;
-            
-            document.addEventListener('visibilitychange', () => {
-                if (document.hidden) {
-                    hiddenTime = Date.now();
-                    this.log('👁️ 页面进入后台');
-                } else {
-                    if (hiddenTime) {
-                        const hiddenDuration = Date.now() - hiddenTime;
-                        this.log(`👁️ 页面恢复前台，后台时长: ${Math.round(hiddenDuration/1000)}秒`);
-                        
-                        // 如果后台时间跨越了签到时间，立即检查
-                        const hiddenStart = new Date(hiddenTime);
-                        const now = new Date();
-                        
-                        if (hiddenStart.getDate() !== now.getDate() || 
-                            (hiddenStart.getHours() === 23 && now.getHours() === 0 && 
-                             now.getMinutes() === 0 && now.getSeconds() <= 5)) {
-                            this.log('👁️ 检测到跨越签到时间，立即执行');
-                            this.forceSignIn();
-                        }
-                    }
-                    hiddenTime = null;
-                }
-            });
-            
-            this.log('👁️ 页面可见性检查器已启动');
-        }
-
-        // 保险机制6：SharedArrayBuffer原子操作
-        setupSharedArrayBufferTimer() {
-            try {
-                if (typeof SharedArrayBuffer !== 'undefined' && typeof Atomics !== 'undefined') {
-                    const buffer = new SharedArrayBuffer(16);
-                    const view = new Int32Array(buffer);
-                    
-                    // 在Web Worker中使用原子操作
-                    const workerCode = `
-                        self.onmessage = function(e) {
-                            const buffer = e.data.buffer;
-                            const view = new Int32Array(buffer);
-                            
-                            setInterval(() => {
-                                const now = Date.now();
-                                Atomics.store(view, 0, now);
-                                
-                                const date = new Date(now);
-                                if (date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() <= 5) {
-                                    Atomics.store(view, 1, 1); // 信号：需要签到
-                                }
-                            }, 1000);
-                        };
-                    `;
-                    
-                    const blob = new Blob([workerCode], {type: 'application/javascript'});
-                    const worker = new Worker(URL.createObjectURL(blob));
-                    worker.postMessage({buffer: buffer});
-                    
-                    // 主线程检查原子信号
-                    setInterval(() => {
-                        const signalValue = Atomics.load(view, 1);
-                        if (signalValue === 1) {
-                            this.log('⚛️ SharedArrayBuffer检测到签到信号');
-                            Atomics.store(view, 1, 0); // 重置信号
-                            this.forceSignIn();
-                        }
-                    }, 500);
-                    
-                    this.log('⚛️ SharedArrayBuffer定时器已启动');
-                } else {
-                    this.log('❌ SharedArrayBuffer不支持');
-                }
-            } catch (error) {
-                this.log('❌ SharedArrayBuffer设置失败:', error.message);
-            }
-        }
-
-        // 保险机制7：localStorage轮询检查
-        setupLocalStoragePoller() {
-            const TIMER_KEY = 'nodeseek_timer_heartbeat';
-            const SIGNAL_KEY = 'nodeseek_signin_signal';
-            
-            // 设置一个独立的定时器更新localStorage
-            setInterval(() => {
-                const now = Date.now();
-                localStorage.setItem(TIMER_KEY, now.toString());
-                
-                                            const date = new Date(now);
-                            if (date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() <= 5) {
-                                localStorage.setItem(SIGNAL_KEY, now.toString());
-                            }
-            }, 1000);
-            
-            // 监听localStorage变化
-            let lastHeartbeat = Date.now();
-            setInterval(() => {
-                const heartbeat = localStorage.getItem(TIMER_KEY);
-                const signal = localStorage.getItem(SIGNAL_KEY);
-                
-                if (heartbeat) {
-                    const heartbeatTime = parseInt(heartbeat);
-                    
-                    // 检测时间跳跃
-                    if (heartbeatTime - lastHeartbeat > 10000) {
-                        this.log(`💾 localStorage检测到时间跳跃: ${Math.round((heartbeatTime - lastHeartbeat)/1000)}秒`);
-                        if (this.isSignInTime()) {
-                            this.forceSignIn();
-                        }
-                    }
-                    lastHeartbeat = heartbeatTime;
-                }
-                
-                if (signal) {
-                    const signalTime = parseInt(signal);
-                    const now = Date.now();
-                    
-                    // 如果信号是最近5秒内的，执行签到
-                    if (now - signalTime < 5000) {
-                        this.log('💾 localStorage检测到签到信号');
-                        localStorage.removeItem(SIGNAL_KEY); // 清除信号
-                        this.forceSignIn();
-                    }
-                }
-            }, 1500);
-            
-            this.log('💾 localStorage轮询检查器已启动');
-        }
-
-        // 强制签到（绕过所有检查）
-        async forceSignIn() {
-            // 检查今日是否已签到
-            if (this.hasSignedToday()) {
-                this.log('✅ 今日已签到，跳过强制签到');
-                return;
-            }
-
-            this.log('🚨 执行强制签到');
-            
-            // 临时成为主页面
-            const originalMasterStatus = this.isMasterPage;
-            this.isMasterPage = true;
-            
-            try {
-                await this.performSignIn();
-            } catch (error) {
-                this.log('❌ 强制签到失败:', error);
-            } finally {
-                // 恢复原始状态
-                this.isMasterPage = originalMasterStatus;
-            }
         }
 
         // 设置补偿机制
@@ -457,23 +124,23 @@
             let userActivityTimer = null;
             const handleUserActivity = () => {
                 this.lastActiveTime = Date.now();
-                                    if (userActivityTimer) return;
-                    
-                    userActivityTimer = setTimeout(() => {
-                        userActivityTimer = null;
-                        if (this.isSignInTime()) {
-                            this.log('👆 检测到用户活动，检查补偿签到');
-                            this.checkAndSignIn();
-                        }
-                    }, 2000);
+                if (userActivityTimer) return;
+                
+                userActivityTimer = setTimeout(() => {
+                    userActivityTimer = null;
+                    if (this.isSignInTime() || this.isExtendedSignInTime()) {
+                        this.log('👆 检测到用户活动，检查补偿签到');
+                        this.checkAndSignIn();
+                    }
+                }, 2000);
             };
 
             ['mousedown', 'keydown', 'scroll', 'click', 'touchstart', 'touchmove'].forEach(event => {
                 document.addEventListener(event, handleUserActivity, { passive: true });
             });
 
-            // 页面加载补偿（仅在5秒窗口内）
-            if (this.isSignInTime()) {
+            // 页面加载补偿
+            if (this.isSignInTime() || this.isExtendedSignInTime()) {
                 this.log('🔄 页面在签到时间段内加载，立即检查补偿签到');
                 setTimeout(() => this.checkAndSignIn(), 2000);
             }
@@ -493,7 +160,7 @@
             // 递归检测器（最后防线）
             this.setupRecursiveChecker();
 
-            // this.log('🛡️ 长时间挂机补偿机制已启动'); // 已删除此日志输出
+            this.log('🛡️ 长时间挂机补偿机制已启动');
             
             // 定期显示多标签页状态（仅主页面显示，避免日志混乱）
             this.setupMultiTabStatusDisplay();
@@ -510,7 +177,7 @@
                     // 只在关键时刻显示状态，避免日志过多
                     if ((now.getHours() === 23 && now.getMinutes() === 59 && now.getSeconds() >= 45) ||
                         (now.getHours() === 0 && now.getMinutes() === 0 && now.getSeconds() <= 30)) {
-                        // this.log(`📊 多标签页状态 - 活跃页面: ${activePages}个 | 主页面: ${this.pageId.slice(-8)}`); // 已删除此日志输出
+                        this.log(`📊 多标签页状态 - 活跃页面: ${activePages}个 | 主页面: ${this.pageId.slice(-8)}`);
                     }
                 }
             }, 10000); // 10秒检查一次
@@ -524,10 +191,11 @@
                 const minute = now.getMinutes();
                 const second = now.getSeconds();
 
-                // 在关键时刻（23:59:50-00:00:05）进行高频检查
+                // 在关键时刻（23:59:50-00:00:30）进行高频检查
                 if ((hour === 23 && minute === 59 && second >= 50) || 
-                    (hour === 0 && minute === 0 && second <= 5)) {
-                    if (this.isSignInTime()) {
+                    (hour === 0 && minute === 0 && second <= 30)) {
+                    if (this.isSignInTime() || this.isExtendedSignInTime()) {
+                        this.log('🔍 高精度检查器触发，检查补偿签到');
                         this.checkAndSignIn();
                     }
                 }
@@ -545,9 +213,9 @@
                     
                     // 如果时间差异过大（超过5秒），说明可能被暂停过
                     if (timeDiff > 5000) {
-                        // this.log(`⚡ Performance API检测到时间跳跃: ${Math.round(timeDiff/1000)}秒`); // 已删除此日志输出
-                        if (this.isSignInTime()) {
-                            // this.log('🔄 Performance API触发补偿签到'); // 已删除此日志输出
+                        this.log(`⚡ Performance API检测到时间跳跃: ${Math.round(timeDiff/1000)}秒`);
+                        if (this.isSignInTime() || this.isExtendedSignInTime()) {
+                            this.log('🔄 Performance API触发补偿签到');
                             this.checkAndSignIn();
                         }
                     }
@@ -576,7 +244,7 @@
             // 监听localStorage变化（页面间通信）
             this.setupStorageListener();
             
-            // this.log(`📋 多标签页管理初始化完成 [主页面: ${this.isMasterPage}]`); // 已删除此日志输出
+            this.log(`📋 多标签页管理初始化完成 [主页面: ${this.isMasterPage}]`);
         }
 
         // 注册当前页面
@@ -595,10 +263,9 @@
             const currentMasterId = localStorage.getItem(this.storageKeys.masterPageId);
             const registry = this.getPageRegistry();
             
-            // 如果没有主页面，或主页面已失效，或者是第一个页面
+            // 如果没有主页面，或主页面已失效
             if (!currentMasterId || !registry[currentMasterId] || 
-                Date.now() - registry[currentMasterId].timestamp > 10000 ||
-                Object.keys(registry).length === 1) {
+                Date.now() - registry[currentMasterId].timestamp > 10000) {
                 
                 this.becomeMasterPage();
             } else {
@@ -660,8 +327,8 @@
             // 立即成为主页面
             this.becomeMasterPage();
             
-            // 如果是在签到时间段，立即检查是否需要补偿签到（仅5秒窗口）
-            if (this.isSignInTime()) {
+            // 如果是在签到时间段，立即检查是否需要补偿签到
+            if (this.isSignInTime() || this.isExtendedSignInTime()) {
                 this.log('🚨 紧急接管期间检测到签到时间，立即执行补偿签到');
                 setTimeout(() => this.checkAndSignIn(), 1000);
             }
@@ -696,7 +363,7 @@
                 if (now - info.timestamp > 30000) { // 30秒无活动
                     delete registry[pageId];
                     hasExpired = true;
-                    // this.log(`🗑️ 清理过期页面: ${pageId}`); // 已删除此日志输出
+                    this.log(`🗑️ 清理过期页面: ${pageId}`);
                 }
             }
             
@@ -721,7 +388,7 @@
             window.addEventListener('storage', (e) => {
                 if (e.key === this.storageKeys.masterPageId && e.newValue !== this.pageId) {
                     this.isMasterPage = false;
-                    // this.log(`👥 检测到新的主页面: ${e.newValue}`); // 已删除此日志输出
+                    this.log(`👥 检测到新的主页面: ${e.newValue}`);
                 }
                 
                 // 监听紧急接管广播
@@ -730,7 +397,7 @@
                         const takeoverInfo = JSON.parse(e.newValue);
                         if (takeoverInfo.newMasterId !== this.pageId) {
                             this.isMasterPage = false;
-                            // this.log(`🚨 收到紧急接管广播，新主页面: ${takeoverInfo.newMasterId}`); // 已删除此日志输出
+                            this.log(`🚨 收到紧急接管广播，新主页面: ${takeoverInfo.newMasterId}`);
                         }
                     } catch (error) {
                         this.log('❌ 解析接管广播失败:', error);
@@ -751,7 +418,7 @@
                 if (this.isMasterPage) {
                     localStorage.removeItem(this.storageKeys.masterPageId);
                     localStorage.removeItem(this.storageKeys.lastHeartbeat);
-                    // this.log('👑 主页面卸载，释放主页面权限'); // 已删除此日志输出
+                    this.log('👑 主页面卸载，释放主页面权限');
                 }
                 
                 // 从注册表中移除当前页面
@@ -762,7 +429,7 @@
                 // 清理锁状态，避免影响其他页面
                 this.releaseExecutingLock();
                 this.releaseLock();
-                // this.log(`🚪 页面卸载完成 [${this.pageId}]`); // 已删除此日志输出
+                this.log(`🚪 页面卸载完成 [${this.pageId}]`);
             };
 
             window.addEventListener('beforeunload', handleUnload);
@@ -778,7 +445,7 @@
                 
                 // 每分钟在签到时间段内检查一次
                 if (recoveryCheckCount % 20 === 0) { // 3秒 * 20 = 60秒
-                    if (this.isSignInTime()) {
+                    if (this.isSignInTime() || this.isExtendedSignInTime()) {
                         this.log('🔧 定时器异常恢复检查');
                         this.checkAndSignIn();
                     }
@@ -789,7 +456,7 @@
         // 递归检测器（最后防线）
         setupRecursiveChecker() {
             const recursiveCheck = () => {
-                if (this.isSignInTime()) {
+                if (this.isSignInTime() || this.isExtendedSignInTime()) {
                     this.log('🔁 递归检测器触发');
                     this.checkAndSignIn();
                 }
@@ -803,7 +470,7 @@
                 let nextDelay = 10000; // 默认10秒
                 
                 if ((hour === 23 && minute === 59 && second >= 50) || 
-                    (hour === 0 && minute === 0 && second <= 5)) {
+                    (hour === 0 && minute === 0 && second <= 30)) {
                     nextDelay = 2000; // 关键时刻2秒一次
                 }
                 
@@ -824,10 +491,10 @@
             }
 
             const durationMinutes = Math.round(backgroundDuration / 60000);
-            // this.log(`🔄 ${source} (后台时长: ${durationMinutes}分钟)`); // 已删除此日志输出
+            this.log(`🔄 ${source} (后台时长: ${durationMinutes}分钟)`);
 
-            // 在签到时间段内恢复时立即检查（仅5秒窗口）
-            if (this.isSignInTime()) {
+            // 在签到时间段内恢复时立即检查
+            if (this.isSignInTime() || this.isExtendedSignInTime()) {
                 this.log('⚡ 页面在签到时间段内恢复，立即检查补偿签到');
                 setTimeout(() => this.checkAndSignIn(), 1000);
             }
@@ -856,8 +523,8 @@
                 return;
             }
 
-            // 检查时间条件（仅在5秒窗口内）
-            if (!this.isSignInTime()) {
+            // 检查时间条件
+            if (!this.isSignInTime() && !this.isExtendedSignInTime()) {
                 return;
             }
 
@@ -947,8 +614,8 @@
             const minute = now.getMinutes();
             const second = now.getSeconds();
 
-            // 精确签到时间窗口：00:00:00 - 00:00:05（仅5秒窗口）
-            return hour === 0 && minute === 0 && second <= 5;
+            // 精确签到时间：00:00:00 - 00:00:10
+            return hour === 0 && minute === 0 && second <= 10;
         }
 
         // 检查是否在扩展签到时间（补偿用）
@@ -958,8 +625,8 @@
             const minute = now.getMinutes();
             const second = now.getSeconds();
 
-            // 扩展签到时间：00:00:00 - 00:00:05（补偿机制也使用相同窗口）
-            return hour === 0 && minute === 0 && second <= 5;
+            // 扩展签到时间：00:00:00 - 00:00:30（补偿机制用）
+            return hour === 0 && minute === 0 && second <= 30;
         }
 
         // 检查今日是否已签到
@@ -1090,11 +757,12 @@
             }
         }
 
-        // 日志输出（已禁用）
+        // 日志输出
         log(...args) {
-            // 不输出任何日志，保持签到功能正常运行
-            // const timestamp = new Date().toLocaleTimeString();
-            // console.log(`[${timestamp}] [NodeSeek自动签到]`, ...args);
+            if (this.isDebug) {
+                const timestamp = new Date().toLocaleTimeString();
+                console.log(`[${timestamp}] [NodeSeek自动签到]`, ...args);
+            }
         }
     }
 
