@@ -759,10 +759,7 @@
 
         // 日志输出
         log(...args) {
-            if (this.isDebug) {
-                const timestamp = new Date().toLocaleTimeString();
-                console.log(`[${timestamp}] [NodeSeek自动签到]`, ...args);
-            }
+            // 已禁用所有日志输出，保留功能静默运行
         }
     }
 
