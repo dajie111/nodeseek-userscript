@@ -2979,9 +2979,9 @@
                 border: 1px solid #ccc;
                 border-radius: 8px;
                 box-shadow: 0 2px 12px rgba(0,0,0,0.15);
-                padding: 18px 20px 12px 20px;
                 max-height: 80vh;
-                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
                 user-select: text;
                 -webkit-user-select: text;
                 -moz-user-select: text;
@@ -3001,6 +3001,13 @@
             } else {
                 dialog.style.width = '700px';
             }
+
+            // 创建固定区域（不滚动）
+            const fixedArea = document.createElement('div');
+            fixedArea.style.cssText = `
+                padding: 18px 20px 0 20px;
+                flex-shrink: 0;
+            `;
 
             // 标题和关闭按钮
             const header = document.createElement('div');
@@ -3033,7 +3040,7 @@
 
             header.appendChild(title);
             header.appendChild(closeBtn);
-            dialog.appendChild(header);
+            fixedArea.appendChild(header);
 
             // 日期选择按钮组
             const daySelector = document.createElement('div');
@@ -3115,10 +3122,15 @@
 
             // 渲染时间分布内容
             const renderTimeDistributionContent = (timeDistribution, modeLabel, periodLabel) => {
-                contentContainer.innerHTML = '';
+                // 清空固定区域中的统计信息（如果存在）
+                const existingStats = fixedArea.querySelector('.stats-info');
+                if (existingStats) {
+                    existingStats.remove();
+                }
 
-                // 统计信息
+                // 在固定区域添加统计信息
                 const statsDiv = document.createElement('div');
+                statsDiv.className = 'stats-info';
                 statsDiv.style.cssText = `
                     background: #f5f5f5;
                     padding: 10px;
@@ -3128,16 +3140,16 @@
                     color: #666;
                 `;
 
-                // 获取主弹窗的统计数据作为参考
-                const mainStats = this.getHistoryStats();
-
                 statsDiv.innerHTML = `
                     查看模式：${modeLabel}（${periodLabel}）<br>
                     统计文章：${timeDistribution.totalPosts} 篇<br>
                     有效时间：${timeDistribution.validTimePosts} 篇（含时间信息）<br>
                     时间覆盖率：${timeDistribution.totalPosts > 0 ? Math.round((timeDistribution.validTimePosts / timeDistribution.totalPosts) * 100) : 0}%
                 `;
-                contentContainer.appendChild(statsDiv);
+                fixedArea.appendChild(statsDiv);
+
+                // 清空滚动内容区域
+                contentContainer.innerHTML = '';
 
                 if (timeDistribution.validTimePosts > 0) {
                     // 24小时分布图表
@@ -3248,10 +3260,18 @@
                 }
             };
 
-            dialog.appendChild(daySelector);
+            fixedArea.appendChild(daySelector);
 
-            // 内容容器
+            // 添加固定区域到弹窗
+            dialog.appendChild(fixedArea);
+
+            // 创建可滚动内容容器
             contentContainer = document.createElement('div');
+            contentContainer.style.cssText = `
+                flex: 1;
+                overflow-y: auto;
+                padding: 0 20px 12px 20px;
+            `;
             dialog.appendChild(contentContainer);
 
             // 初始化显示
