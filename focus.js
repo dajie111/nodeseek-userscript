@@ -1448,11 +1448,10 @@
                 const emptyDiv = Array.from(dialog.querySelectorAll('div')).find(div => 
                     div.innerHTML.includes('📊 暂无热点数据'));
 
-                // 更新标题
-                if (titleElement) {
-                    const historyStats = this.getHistoryStats();
-                    titleElement.textContent = `NodeSeek热点统计`;
-                }
+                            // 更新标题
+            if (titleElement) {
+                titleElement.textContent = `NodeSeek热点统计`;
+            }
 
                 // 更新词频列表
                 if (wordFrequency.length > 0) {
@@ -1740,7 +1739,6 @@
             `;
 
             const title = document.createElement('div');
-            const historyStats = this.getHistoryStats();
             title.textContent = `NodeSeek热点统计`;
             title.style.cssText = `
                 font-weight: bold;
