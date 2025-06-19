@@ -11,15 +11,13 @@
                 executingLock: 'nodeseek_executing_lock',
                 masterPageId: 'nodeseek_master_page_id',
                 pageRegistry: 'nodeseek_page_registry',
-                lastHeartbeat: 'nodeseek_last_heartbeat',
-                signCompleted: 'nodeseek_sign_completed' // 新增：签到完成标记
+                lastHeartbeat: 'nodeseek_last_heartbeat'
             };
             this.SIGN_API = '/api/attendance?random=true';
             this.isDebug = true;
             this.isPreSignMode = false;
             this.lastActiveTime = Date.now();
             this.backgroundStartTime = null;
-            this.addLogFunction = null; // 操作日志函数
             
             // 多标签页管理
             this.pageId = this.generatePageId();
@@ -27,18 +25,6 @@
             this.heartbeatInterval = null;
             
             this.init();
-        }
-
-        // 设置操作日志函数
-        setAddLogFunction(func) {
-            this.addLogFunction = func;
-        }
-
-        // 添加操作日志
-        addLog(message) {
-            if (this.addLogFunction) {
-                this.addLogFunction(message);
-            }
         }
 
         // 初始化
@@ -57,12 +43,51 @@
                 
                 this.startSignInMonitor();
                 this.setupCompensationMechanisms();
+                
+                // 添加重置状态监控
+                this.setupDailyReset();
+                
+                // 检查今日签到状态
+                this.checkTodaySignInStatus();
             }
         }
 
         // 检查是否是NodeSeek页面
         isNodeSeekPage() {
             return window.location.hostname === 'www.nodeseek.com';
+        }
+
+        // 设置每日重置监控
+        setupDailyReset() {
+            // 每秒检查是否到了23:59:59
+            setInterval(() => {
+                const now = new Date();
+                const hour = now.getHours();
+                const minute = now.getMinutes();
+                const second = now.getSeconds();
+
+                // 在23:59:59重置状态
+                if (hour === 23 && minute === 59 && second === 59) {
+                    this.resetDailyStatus();
+                }
+            }, 1000);
+        }
+
+        // 重置每日状态
+        resetDailyStatus() {
+            localStorage.removeItem(this.storageKeys.lastSignTime);
+            this.logToOperationDialog('🔄 签到状态已重置，准备明日签到');
+            this.log('🔄 23:59:59 - 签到状态已重置');
+        }
+
+        // 检查今日签到状态
+        checkTodaySignInStatus() {
+            if (this.hasSignedToday()) {
+                this.logToOperationDialog('✅ 今日已签到');
+                this.log('✅ 系统启动 - 检测到今日已签到');
+            } else {
+                this.log('📅 系统启动 - 今日尚未签到，等待签到时间');
+            }
         }
 
         // 启动签到监控
@@ -72,6 +97,11 @@
 
             // 主定时器：每秒检查
             setInterval(() => {
+                // 如果今日已签到，跳过所有检查
+                if (this.hasSignedToday()) {
+                    return;
+                }
+
                 const now = new Date();
                 const hour = now.getHours();
                 const minute = now.getMinutes();
@@ -81,50 +111,32 @@
                 if (hour === 23 && minute === 59 && second >= 55) {
                     if (!this.isPreSignMode) {
                         this.isPreSignMode = true;
-                        this.log('🎯 进入预签到模式，强化监控中...');
                     }
                 }
 
-                // 预签到模式状态输出
-                if (this.isPreSignMode && second % 2 === 0) {
-                    this.log(`⏰ 预签到模式 - 当前时间: ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}`);
-                }
-
-                // 新增：23:59:59重置签到状态
-                if (hour === 23 && minute === 59 && second === 59) {
-                    this.resetSignInStatus();
-                }
-
-                // 精确签到时间检查：00:00:00开始执行
-                if (hour === 0 && minute === 0 && second === 0) {
+                // 签到时间检查：从00:00:00开始，全天可签到
+                if (hour >= 0) {
                     this.checkAndSignIn();
                 }
 
-                // 退出预签到模式
-                if (hour === 0 && minute === 0 && second > 5) {
+                // 退出预签到模式：00:01:00后退出
+                if (hour === 0 && minute >= 1) {
                     if (this.isPreSignMode) {
                         this.isPreSignMode = false;
-                        this.log('🔚 退出预签到模式');
                     }
                 }
             }, 1000);
 
-            // 备用定时器：防止主定时器失效
+            // 备用定时器：每10秒检查一次（降低频率）
             setInterval(() => {
-                if (this.isSignInTime()) {
-                    this.checkAndSignIn();
+                // 如果今日已签到，跳过检查
+                if (this.hasSignedToday()) {
+                    return;
                 }
-            }, 1500);
+                this.checkAndSignIn();
+            }, 10000);
 
             this.log('📅 自动签到监控已启动');
-        }
-
-        // 重置签到状态
-        resetSignInStatus() {
-            localStorage.removeItem(this.storageKeys.signCompleted);
-            localStorage.removeItem(this.storageKeys.lastSignTime);
-            this.log('🔄 23:59:59 重置签到状态，准备明日签到');
-            this.addLog('重置签到状态，准备明日签到');
         }
 
         // 设置补偿机制
@@ -155,8 +167,7 @@
                 
                 userActivityTimer = setTimeout(() => {
                     userActivityTimer = null;
-                    if (this.isSignInTime() || this.isExtendedSignInTime()) {
-                        this.log('👆 检测到用户活动，检查补偿签到');
+                    if (!this.hasSignedToday()) {
                         this.checkAndSignIn();
                     }
                 }, 2000);
@@ -166,11 +177,12 @@
                 document.addEventListener(event, handleUserActivity, { passive: true });
             });
 
-            // 页面加载补偿
-            if (this.isSignInTime() || this.isExtendedSignInTime()) {
-                this.log('🔄 页面在签到时间段内加载，立即检查补偿签到');
-                setTimeout(() => this.checkAndSignIn(), 2000);
-            }
+            // 页面加载时立即检查签到
+            setTimeout(() => {
+                if (!this.hasSignedToday()) {
+                    this.checkAndSignIn();
+                }
+            }, 1000);
 
             // 长时间挂机补偿：高精度检查器
             this.setupHighPrecisionChecker();
@@ -203,7 +215,7 @@
                     
                     // 只在关键时刻显示状态，避免日志过多
                     if ((now.getHours() === 23 && now.getMinutes() === 59 && now.getSeconds() >= 45) ||
-                        (now.getHours() === 0 && now.getMinutes() === 0 && now.getSeconds() <= 30)) {
+                        (now.getHours() === 0 && now.getMinutes() === 0)) {
                         this.log(`📊 多标签页状态 - 活跃页面: ${activePages}个 | 主页面: ${this.pageId.slice(-8)}`);
                     }
                 }
@@ -213,18 +225,20 @@
         // 高精度检查器（关键时刻强化）
         setupHighPrecisionChecker() {
             setInterval(() => {
+                // 如果今日已签到，跳过检查
+                if (this.hasSignedToday()) {
+                    return;
+                }
+
                 const now = new Date();
                 const hour = now.getHours();
                 const minute = now.getMinutes();
                 const second = now.getSeconds();
 
-                // 在关键时刻（23:59:50-00:00:30）进行高频检查
+                // 在关键时刻（23:59:50-00:01:00）进行高频检查
                 if ((hour === 23 && minute === 59 && second >= 50) || 
-                    (hour === 0 && minute === 0 && second <= 30)) {
-                    if (this.isSignInTime() || this.isExtendedSignInTime()) {
-                        this.log('🔍 高精度检查器触发，检查补偿签到');
-                        this.checkAndSignIn();
-                    }
+                    (hour === 0 && minute === 0)) {
+                    this.checkAndSignIn();
                 }
             }, 500); // 0.5秒一次高精度检查
         }
@@ -241,10 +255,8 @@
                     // 如果时间差异过大（超过5秒），说明可能被暂停过
                     if (timeDiff > 5000) {
                         this.log(`⚡ Performance API检测到时间跳跃: ${Math.round(timeDiff/1000)}秒`);
-                        if (this.isSignInTime() || this.isExtendedSignInTime()) {
-                            this.log('🔄 Performance API触发补偿签到');
-                            this.checkAndSignIn();
-                        }
+                        this.log('🔄 Performance API触发签到检查');
+                        this.checkAndSignIn();
                     }
                     
                     lastCheckTime = currentTime;
@@ -354,11 +366,9 @@
             // 立即成为主页面
             this.becomeMasterPage();
             
-            // 如果是在签到时间段，立即检查是否需要补偿签到
-            if (this.isSignInTime() || this.isExtendedSignInTime()) {
-                this.log('🚨 紧急接管期间检测到签到时间，立即执行补偿签到');
-                setTimeout(() => this.checkAndSignIn(), 1000);
-            }
+            // 立即检查签到状态
+            this.log('🚨 紧急接管期间立即检查签到状态');
+            setTimeout(() => this.checkAndSignIn(), 1000);
             
             // 广播接管信息给其他页面
             this.broadcastTakeover();
@@ -470,12 +480,10 @@
             setInterval(() => {
                 recoveryCheckCount++;
                 
-                // 每分钟在签到时间段内检查一次
+                // 每分钟检查一次签到状态
                 if (recoveryCheckCount % 20 === 0) { // 3秒 * 20 = 60秒
-                    if (this.isSignInTime() || this.isExtendedSignInTime()) {
-                        this.log('🔧 定时器异常恢复检查');
-                        this.checkAndSignIn();
-                    }
+                    this.log('🔧 定时器异常恢复检查');
+                    this.checkAndSignIn();
                 }
             }, 3000);
         }
@@ -483,10 +491,13 @@
         // 递归检测器（最后防线）
         setupRecursiveChecker() {
             const recursiveCheck = () => {
-                if (this.isSignInTime() || this.isExtendedSignInTime()) {
-                    this.log('🔁 递归检测器触发');
-                    this.checkAndSignIn();
+                // 如果今日已签到，跳过检查
+                if (this.hasSignedToday()) {
+                    setTimeout(recursiveCheck, 60000); // 已签到后每分钟检查一次即可
+                    return;
                 }
+
+                this.checkAndSignIn();
                 
                 // 在关键时刻更频繁检查
                 const now = new Date();
@@ -494,11 +505,11 @@
                 const minute = now.getMinutes();
                 const second = now.getSeconds();
                 
-                let nextDelay = 10000; // 默认10秒
+                let nextDelay = 30000; // 默认30秒
                 
                 if ((hour === 23 && minute === 59 && second >= 50) || 
-                    (hour === 0 && minute === 0 && second <= 30)) {
-                    nextDelay = 2000; // 关键时刻2秒一次
+                    (hour === 0 && minute === 0)) {
+                    nextDelay = 5000; // 关键时刻5秒一次
                 }
                 
                 setTimeout(recursiveCheck, nextDelay);
@@ -520,51 +531,42 @@
             const durationMinutes = Math.round(backgroundDuration / 60000);
             this.log(`🔄 ${source} (后台时长: ${durationMinutes}分钟)`);
 
-            // 在签到时间段内恢复时立即检查
-            if (this.isSignInTime() || this.isExtendedSignInTime()) {
-                this.log('⚡ 页面在签到时间段内恢复，立即检查补偿签到');
-                setTimeout(() => this.checkAndSignIn(), 1000);
-            }
+            // 页面恢复时立即检查签到
+            setTimeout(() => {
+                if (!this.hasSignedToday()) {
+                    this.checkAndSignIn();
+                }
+            }, 1000);
         }
 
         // 安全执行签到
         async safeExecuteSignIn() {
-            // 检查是否为主页面
-            if (!this.isMasterPage) {
-                // 从页面不执行签到，但在关键时刻显示状态
-                if (this.isSignInTime() && Math.random() < 0.1) { // 10%概率显示，避免日志过多
-                    this.log(`👥 从页面等待主页面执行签到 [${this.pageId}]`);
-                }
+            // 首先检查今日是否已签到（最重要的检查）
+            if (this.hasSignedToday()) {
+                // 今日已签到，完全跳过，不输出任何日志避免刷屏
                 return;
             }
 
-            // 检查是否已完成签到
-            if (this.hasCompletedSignIn()) {
-                // 在操作日志中显示已签到状态
-                if (this.isSignInTime()) {
-                    this.addLog('今日已签到');
-                }
+            // 检查是否为主页面
+            if (!this.isMasterPage) {
                 return;
             }
 
             // 检查执行锁
             if (this.isExecuting()) {
-                this.log('🔒 签到正在执行中，跳过（执行锁）');
                 return;
             }
 
             // 检查签到锁
             if (this.isLocked()) {
-                this.log('🔒 签到正在执行中，跳过（签到锁）');
                 return;
             }
 
-            // 检查时间条件
-            if (!this.isSignInTime()) {
+            // 执行签到前再次确认未签到
+            if (this.hasSignedToday()) {
                 return;
             }
 
-            this.log(`🎯 主页面签到时间到！开始执行自动签到 [${this.pageId}]`);
             await this.performSignIn();
         }
 
@@ -579,13 +581,20 @@
 
         // 执行签到
         async performSignIn() {
+            // 执行前最后一次检查
+            if (this.hasSignedToday()) {
+                return;
+            }
+
+            // ⚡ 关键：执行签到API前立即记录状态，防止重复执行
+            this.recordSignInSuccess();
+            this.logToOperationDialog('✅ 今日已签到');
+
             // 设置执行锁和签到锁
             this.setExecutingLock();
             this.setLock();
 
             try {
-                this.log('🎲 发送签到请求...');
-
                 const response = await fetch(this.SIGN_API, {
                     method: 'POST',
                     headers: {
@@ -594,20 +603,10 @@
                     }
                 });
 
-                // 运行过一次API代码就记录状态
-                this.markSignInCompleted();
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-
-                const data = await response.json();
-                this.handleSignInResponse(data);
-
+                // 签到API已执行，无论成功失败都不再重复
+                
             } catch (error) {
-                this.log('❌ 自动签到失败:', error);
-                // 即使失败也记录操作日志
-                this.addLog('签到尝试失败: ' + error.message);
+                // 即使失败也不重试，因为已记录状态
             } finally {
                 // 释放执行锁和签到锁
                 this.releaseExecutingLock();
@@ -615,76 +614,39 @@
             }
         }
 
-        // 处理签到响应
+        // 处理签到响应（已废弃，因为执行前已记录状态）
         handleSignInResponse(data) {
-            this.log('📥 签到响应:', data);
-
-            if (data.success) {
-                // 签到成功
-                const message = `🎲 自动签到成功！${data.message || ''}`;
-                const details = `💰 获得: ${data.gain}鸡腿 | 💳 余额: ${data.current}鸡腿`;
-
-                this.log(`✅ ${message}`);
-                this.log(`💰 ${details}`);
-
-                // 记录签到成功
-                this.recordSignInSuccess();
-                
-                // 在操作日志中记录
-                this.addLog('今日已签到');
-
-            } else {
-                // 签到失败或已签到
-                const message = data.message || '签到失败';
-                this.log(`⚠️ ${message}`);
-
-                // 如果是已签到，记录状态
-                if (message.includes('已签到') || message.includes('已经签到')) {
-                    this.recordSignInSuccess();
-                    // 在操作日志中记录
-                    this.addLog('今日已签到');
-                } else {
-                    // 其他失败情况也记录到操作日志
-                    this.addLog('签到失败: ' + message);
-                }
-            }
+            // 不再处理响应，因为在执行API前已经记录状态
+            // 无论成功失败都不影响签到状态记录
         }
 
-        // 检查是否在精确签到时间
+        // 检查是否在签到时间
         isSignInTime() {
             const now = new Date();
             const hour = now.getHours();
-            const minute = now.getMinutes();
-            const second = now.getSeconds();
 
-            // 精确签到时间：00:00:00开始
-            return hour === 0 && minute === 0 && second === 0;
+            // 签到时间：从00:00:00开始，全天可签到
+            return hour >= 0;
         }
 
-        // 检查是否已完成签到
-        hasCompletedSignIn() {
-            const today = this.getTodayString();
-            const signCompleted = localStorage.getItem(this.storageKeys.signCompleted);
-            return signCompleted === today;
+        // 检查是否在扩展签到时间（补偿用）
+        isExtendedSignInTime() {
+            // 扩展签到时间和主签到时间相同
+            return this.isSignInTime();
         }
 
-        // 标记签到已完成
-        markSignInCompleted() {
-            const today = this.getTodayString();
-            localStorage.setItem(this.storageKeys.signCompleted, today);
-            this.log('📝 标记签到已完成');
-        }
-
-        // 检查今日是否已签到（保留用于兼容性）
+        // 检查今日是否已签到
         hasSignedToday() {
-            return this.hasCompletedSignIn();
+            const today = this.getTodayString();
+            const lastSignTime = localStorage.getItem(this.storageKeys.lastSignTime);
+            return lastSignTime === today;
         }
 
         // 记录签到成功
         recordSignInSuccess() {
             const today = this.getTodayString();
             localStorage.setItem(this.storageKeys.lastSignTime, today);
-            this.log('📝 记录签到成功状态');
+            // 不输出控制台日志
         }
 
         // 获取今日日期字符串
@@ -766,13 +728,6 @@
                 this.log('🧹 清理了昨日签到记录');
             }
 
-            // 清理非今日的签到完成标记
-            const signCompleted = localStorage.getItem(this.storageKeys.signCompleted);
-            if (signCompleted && signCompleted !== today) {
-                localStorage.removeItem(this.storageKeys.signCompleted);
-                this.log('🧹 清理了昨日签到完成标记');
-            }
-
             // 清理过期的多标签页数据
             this.cleanExpiredMultiTabData();
         }
@@ -808,37 +763,28 @@
             }
         }
 
-        // 日志输出
+        // 输出到操作日志弹窗
+        logToOperationDialog(message) {
+            // 检查是否有全局的addLog函数（来自主脚本）
+            if (typeof window.addLog === 'function') {
+                window.addLog(message);
+            }
+            // 不再输出到控制台
+        }
+
+        // 日志输出（已禁用所有控制台输出）
         log(...args) {
-            // 已禁用所有日志输出，保留功能静默运行
-        }
-
-        // 兼容性方法：供主文件调用
-        isTodayAlreadySigned() {
-            return this.hasCompletedSignIn();
-        }
-
-        isInSignTimeWindow() {
-            return this.isSignInTime();
-        }
-
-        isInPreSignMode() {
-            return this.isPreSignMode;
+            // 完全禁用控制台输出
         }
     }
 
     // 启动自动签到系统
-    let autoSignInInstance;
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
-            autoSignInInstance = new NodeSeekAutoSignIn();
-            // 暴露到全局以便设置操作日志函数
-            window.NodeSeekClockIn = autoSignInInstance;
+            new NodeSeekAutoSignIn();
         });
     } else {
-        autoSignInInstance = new NodeSeekAutoSignIn();
-        // 暴露到全局以便设置操作日志函数
-        window.NodeSeekClockIn = autoSignInInstance;
+        new NodeSeekAutoSignIn();
     }
 
 })();
