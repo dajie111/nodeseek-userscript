@@ -51,6 +51,10 @@
         isMainWindow: false,
         heartbeatInterval: null,
         heartbeatFrequency: 3000, // 3秒心跳
+        
+        // 冷却状态管理
+        cooldownStorageKey: 'nodeseek_focus_cooldown',
+        cooldownDuration: 9000, // 9秒冷却
 
         // 常用停止词列表（中文）
         stopWords: new Set([
@@ -640,6 +644,9 @@
                     const currentTime = Date.now();
                     this.rssCache = null; // 清除缓存
                     
+                    // 清空本地历史数据，直接使用服务器数据
+                    this.historyData = [];
+                    
                     // 更新采集时间记录
                     this.lastCollectTime = currentTime;
 
@@ -652,46 +659,33 @@
 
                     const articles = await this.fetchRSSData();
 
-                    // 过滤出新文章（未保存过的文章）
-                    const newArticles = this.filterNewArticles(articles);
+                    // 直接使用服务器返回的7天数据，不需要复杂的去重逻辑
+                    // 保存到历史数据
+                    const historyRecord = {
+                        timestamp: currentTime,
+                        articles: articles, // 直接保存服务器返回的所有文章
+                        titles: articles.map(a => a.title), // 向后兼容，保留titles字段
+                        count: articles.length,
+                        source: isManualTrigger ? 'manual' : 'auto',
+                        totalFetched: articles.length, // 记录本次总共抓取的文章数
+                        duplicateCount: 0 // 服务器已处理去重，无重复
+                    };
 
-                    // 只有当有新文章时才保存
-                    if (newArticles.length > 0) {
-                        // 保存到历史数据
-                        const historyRecord = {
-                            timestamp: currentTime,
-                            articles: newArticles, // 只保存新文章
-                            titles: newArticles.map(a => a.title), // 向后兼容，保留titles字段
-                            count: newArticles.length,
-                            source: isManualTrigger ? 'manual' : 'auto',
-                            totalFetched: articles.length, // 记录本次总共抓取的文章数
-                            duplicateCount: articles.length - newArticles.length // 记录重复文章数
-                        };
+                    this.historyData.push(historyRecord);
+                    this.saveHistoryData();
 
-                        this.historyData.push(historyRecord);
-                        this.saveHistoryData();
+                    this.log(`${isManualTrigger ? '手动' : '自动'}采集完成：获取服务器7天数据 ${articles.length} 篇文章`);
 
-                        this.log(`${isManualTrigger ? '手动' : '自动'}采集完成：抓取 ${articles.length} 篇，保存 ${newArticles.length} 篇新文章，跳过 ${articles.length - newArticles.length} 篇重复文章`);
-                        this.log(`历史总计：${this.historyData.length} 次采集，${this.getAllSavedArticles().length} 篇文章`);
-                    } else {
-                        this.log(`${isManualTrigger ? '手动' : '自动'}采集完成：抓取 ${articles.length} 篇文章，全部为重复内容，未保存新数据`);
-                    }
-
-                    // 清理旧数据
-                    this.cleanOldData();
-
-                    // 自动保存每日热词和统计（无论是否有新文章，都基于最新RSS数据进行统计）
-                        this.saveDailyHotWords();
+                    // 自动保存每日热词和统计（基于服务器返回的7天数据进行统计）
+                    this.saveDailyHotWords();
                     this.saveDailyTimeDistribution();
                     this.saveDailyUserStats();
 
-                    // 通知弹窗更新（无论是否重复，弹窗都需要显示最新RSS数据）
+                    // 通知弹窗更新
                     this.notifyDialogUpdate();
 
                     // 记录到日志（仅在控制台输出，不保存到操作日志）
-                    const newCount = newArticles ? newArticles.length : 0;
-                    const duplicateCount = articles.length - newCount;
-                    this.log(`[${new Date(currentTime).toLocaleString()}] 热点统计${isManualTrigger ? '手动' : '自动'}采集：抓取${articles.length}篇，新增${newCount}篇${duplicateCount > 0 ? `，重复${duplicateCount}篇` : ''}`);
+                    this.log(`[${new Date(currentTime).toLocaleString()}] 热点统计${isManualTrigger ? '手动' : '自动'}采集：获取${articles.length}篇服务器数据`);
 
                     // 采集成功，退出重试循环
                     return;
@@ -1457,7 +1451,7 @@
                 // 更新标题
                 if (titleElement) {
                     const historyStats = this.getHistoryStats();
-                    titleElement.textContent = `NodeSeek热点统计 (7天${historyStats.totalTitles}篇新增)`;
+                    titleElement.textContent = `NodeSeek热点统计 (7天${historyStats.totalTitles}篇)`;
                 }
 
                 // 更新词频列表
@@ -1552,7 +1546,7 @@
                             <div style="font-size: 12px; color: #999;">
                                 ${this.getHistoryStats().totalTitles > 0 ?
                                     '当前7天数据中无出现≥2次的热词' :
-                                    '点击"立即采集"开始收集RSS数据'}
+                                    '点击"立即采集"获取服务器RSS数据'}
                             </div>
                         `;
                         
@@ -1747,7 +1741,7 @@
 
             const title = document.createElement('div');
             const historyStats = this.getHistoryStats();
-            title.textContent = `NodeSeek热点统计 (7天${historyStats.totalTitles}篇新增)`;
+            title.textContent = `NodeSeek热点统计 (7天${historyStats.totalTitles}篇)`;
             title.style.cssText = `
                 font-weight: bold;
                 font-size: 16px;
@@ -1810,10 +1804,8 @@
                 const historyStats = this.getHistoryStats();
                 
                 statsDiv.innerHTML = `
-                    数据来源：本地保存的7天RSS数据<br>
-                    保存文章：${historyStats.totalTitles} 篇（新增）<br>
-                    ${historyStats.totalFetched > historyStats.totalTitles ? `抓取总数：${historyStats.totalFetched} 篇，重复：${historyStats.totalDuplicates} 篇<br>` : ''}
-                    采集次数：${historyStats.totalCollections} 次<br>
+                    数据来源：服务器7天RSS数据<br>
+                    文章总数：${historyStats.totalTitles} 篇<br>
                     热门词汇：${wordFrequency.length} 个（≥2次）<br>
                     <span style="color: #28a745;">${collectStatus} (30分钟间隔)</span><br>
                     上次采集：${formatTime(this.lastCollectTime)}<br>
@@ -1907,14 +1899,14 @@
                     border-radius: 5px;
                 `;
                 const historyStats = this.getHistoryStats();
-                emptyDiv.innerHTML = `
-                    <div style="font-size: 14px; margin-bottom: 8px;">📊 暂无热点数据</div>
-                    <div style="font-size: 12px; color: #999;">
-                        ${historyStats.totalTitles === 0 ?
-                            '点击"立即采集"开始收集RSS数据' :
-                            '当前7天数据中无出现≥2次的热词'}
-                    </div>
-                `;
+                                    emptyDiv.innerHTML = `
+                        <div style="font-size: 14px; margin-bottom: 8px;">📊 暂无热点数据</div>
+                        <div style="font-size: 12px; color: #999;">
+                            ${historyStats.totalTitles === 0 ?
+                                '点击"立即采集"获取服务器RSS数据' :
+                                '当前7天数据中无出现≥2次的热词'}
+                        </div>
+                    `;
                 dialog.appendChild(emptyDiv);
             }
 
@@ -1942,7 +1934,29 @@
                 width: 90px;
                 white-space: nowrap;
             `;
+
+            // 检查并恢复冷却状态
+            const cooldownState = this.getCooldownState();
+            if (cooldownState.isInCooldown) {
+                collectBtn.disabled = true;
+                collectBtn.textContent = `冷却中(${cooldownState.remainingSeconds}s)`;
+                
+                // 继续冷却倒计时
+                const timer = setInterval(() => {
+                    const currentState = this.getCooldownState();
+                    if (currentState.isInCooldown) {
+                        collectBtn.textContent = `冷却中(${currentState.remainingSeconds}s)`;
+                    } else {
+                        clearInterval(timer);
+                        collectBtn.disabled = false;
+                        collectBtn.textContent = '立即采集';
+                    }
+                }, 1000);
+            }
+
             collectBtn.onclick = async () => {
+                if (collectBtn.disabled) return; // 防止冷却期间重复点击
+                
                 collectBtn.disabled = true;
                 collectBtn.textContent = '采集中...';
                 try {
@@ -1951,13 +1965,18 @@
                     await this.performAutoCollect(true); // 标记为手动触发
                     // 直接刷新当前弹窗内容，而不是关闭重开
                     await this.refreshHotTopicsDialog();
+                    
+                    // 设置冷却状态
+                    const cooldownStartTime = Date.now();
+                    this.setCooldownState(cooldownStartTime);
+                    
                     // 进入9秒冷却
                     let cooldown = 9;
                     collectBtn.textContent = `冷却中(${cooldown}s)`;
                     const timer = setInterval(() => {
-                        cooldown--;
-                        if (cooldown > 0) {
-                            collectBtn.textContent = `冷却中(${cooldown}s)`;
+                        const currentState = this.getCooldownState();
+                        if (currentState.isInCooldown) {
+                            collectBtn.textContent = `冷却中(${currentState.remainingSeconds}s)`;
                         } else {
                             clearInterval(timer);
                             collectBtn.disabled = false;
@@ -1965,6 +1984,7 @@
                         }
                     }, 1000);
                 } catch (error) {
+                    this.clearCooldownState(); // 失败时清除冷却状态
                     collectBtn.textContent = '采集失败';
                     setTimeout(() => {
                         collectBtn.disabled = false;
@@ -2454,6 +2474,55 @@
             ];
 
             return validPatterns.some(pattern => pattern.test(word));
+        },
+
+        // 设置冷却状态
+        setCooldownState(startTime) {
+            try {
+                localStorage.setItem(this.cooldownStorageKey, JSON.stringify({
+                    startTime: startTime,
+                    duration: this.cooldownDuration
+                }));
+            } catch (error) {
+                console.error('保存冷却状态失败:', error);
+            }
+        },
+
+        // 获取冷却状态
+        getCooldownState() {
+            try {
+                const stored = localStorage.getItem(this.cooldownStorageKey);
+                if (stored) {
+                    const cooldownData = JSON.parse(stored);
+                    const now = Date.now();
+                    const elapsed = now - cooldownData.startTime;
+                    const remaining = cooldownData.duration - elapsed;
+                    
+                    if (remaining > 0) {
+                        return {
+                            isInCooldown: true,
+                            remaining: remaining,
+                            remainingSeconds: Math.ceil(remaining / 1000)
+                        };
+                    } else {
+                        // 冷却已结束，清除存储
+                        this.clearCooldownState();
+                        return { isInCooldown: false };
+                    }
+                }
+            } catch (error) {
+                console.error('获取冷却状态失败:', error);
+            }
+            return { isInCooldown: false };
+        },
+
+        // 清除冷却状态
+        clearCooldownState() {
+            try {
+                localStorage.removeItem(this.cooldownStorageKey);
+            } catch (error) {
+                console.error('清除冷却状态失败:', error);
+            }
         },
 
         // 加载发帖时间分布历史数据
