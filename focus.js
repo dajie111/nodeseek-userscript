@@ -288,15 +288,18 @@
         filterNewArticles(currentArticles) {
             const savedArticles = this.getAllSavedArticles();
 
+            // 首先对当前文章进行内部去重（即使没有历史数据也要去重）
+            const deduplicatedCurrentArticles = this.deduplicateCurrentBatch(currentArticles);
+
             if (savedArticles.length === 0) {
-                if (this.isDebug) console.log('本地无历史数据，所有文章都是新的');
-                return currentArticles;
+                if (this.isDebug) console.log(`本地无历史数据，对当前批次进行内部去重：${currentArticles.length} → ${deduplicatedCurrentArticles.length} 篇`);
+                return deduplicatedCurrentArticles;
             }
 
             const newArticles = [];
             let duplicateCount = 0;
 
-            currentArticles.forEach(currentArticle => {
+            deduplicatedCurrentArticles.forEach(currentArticle => {
                 let isNew = true;
 
                 // 检查是否与已保存的文章重复
@@ -313,7 +316,7 @@
                 }
             });
 
-            if (this.isDebug) console.log(`文章去重结果：总计 ${currentArticles.length} 篇，新文章 ${newArticles.length} 篇，重复 ${duplicateCount} 篇`);
+            if (this.isDebug) console.log(`文章去重结果：当前批次 ${currentArticles.length} 篇 → 内部去重后 ${deduplicatedCurrentArticles.length} 篇 → 最终新文章 ${newArticles.length} 篇，历史重复 ${duplicateCount} 篇`);
 
                             // 输出新文章的标题（用于调试）
                 if (newArticles.length > 0 && newArticles.length <= 10) {
@@ -330,6 +333,38 @@
                 }
 
             return newArticles;
+        },
+
+        // 对当前批次文章进行内部去重
+        deduplicateCurrentBatch(articles) {
+            const seenArticles = new Map();
+            const uniqueArticles = [];
+
+            articles.forEach(article => {
+                // 基于发帖时间+发帖人+标题创建唯一标识符
+                let articleKey = '';
+                if (article.pubDate && article.author) {
+                    const dateStr = new Date(article.pubDate).toDateString();
+                    const authorKey = this.normalizeAuthor(article.author);
+                    const titleKey = this.normalizeTitle(article.title);
+                    articleKey = `${dateStr}_${authorKey}_${titleKey}`;
+                } else {
+                    // 降级方案：使用标准化标题作为标识
+                    articleKey = this.normalizeTitle(article.title);
+                }
+
+                if (articleKey && articleKey.length > 2) {
+                    if (!seenArticles.has(articleKey)) {
+                        seenArticles.set(articleKey, article);
+                        uniqueArticles.push(article);
+                    }
+                } else {
+                    // 如果无法生成有效的标识符，仍然保留文章
+                    uniqueArticles.push(article);
+                }
+            });
+
+            return uniqueArticles;
         },
 
         // 初始化多窗口协调
