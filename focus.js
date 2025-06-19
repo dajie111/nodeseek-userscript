@@ -585,81 +585,94 @@
 
                 // 执行自动采集
         async performAutoCollect(isManualTrigger = false) {
-            try {
-                // 如果不是手动触发且不是主窗口，跳过采集
-                if (!isManualTrigger && !this.isMainWindow) {
-                    this.log('非主窗口，跳过自动采集');
+            const maxRetries = 3;
+            const retryDelay = 60 * 1000; // 1分钟
+
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    // 如果不是手动触发且不是主窗口，跳过采集
+                    if (!isManualTrigger && !this.isMainWindow) {
+                        this.log('非主窗口，跳过自动采集');
+                        return;
+                    }
+                    
+                    this.log(`${this.isMainWindow ? '主窗口' : ''}执行${isManualTrigger ? '手动' : '自动'}采集RSS数据${attempt > 1 ? `(第${attempt}次重试)` : ''}...`);
+                    
+                    // 重置清理标记（无论手动还是自动采集）
+                    this.dataCleared = false;
+                    
+                    // 强制重新获取数据（绕过缓存）
+                    const currentTime = Date.now();
+                    this.rssCache = null; // 清除缓存
+                    
+                    // 更新采集时间记录
+                    this.lastCollectTime = currentTime;
+
+                    // 无论自动采集还是手动采集，都重置下次采集时间
+                    this.nextCollectTime = currentTime + this.autoCollectInterval;
+                    this.log(`${isManualTrigger ? '手动' : '自动'}采集：更新下次采集时间为`, new Date(this.nextCollectTime).toLocaleString());
+                    
+                    // 保存全局状态（同步到其他窗口）
+                    this.saveGlobalState();
+
+                    const articles = await this.fetchRSSData();
+
+                    // 过滤出新文章（未保存过的文章）
+                    const newArticles = this.filterNewArticles(articles);
+
+                    // 只有当有新文章时才保存
+                    if (newArticles.length > 0) {
+                        // 保存到历史数据
+                        const historyRecord = {
+                            timestamp: currentTime,
+                            articles: newArticles, // 只保存新文章
+                            titles: newArticles.map(a => a.title), // 向后兼容，保留titles字段
+                            count: newArticles.length,
+                            source: isManualTrigger ? 'manual' : 'auto',
+                            totalFetched: articles.length, // 记录本次总共抓取的文章数
+                            duplicateCount: articles.length - newArticles.length // 记录重复文章数
+                        };
+
+                        this.historyData.push(historyRecord);
+                        this.saveHistoryData();
+
+                        this.log(`${isManualTrigger ? '手动' : '自动'}采集完成：抓取 ${articles.length} 篇，保存 ${newArticles.length} 篇新文章，跳过 ${articles.length - newArticles.length} 篇重复文章`);
+                        this.log(`历史总计：${this.historyData.length} 次采集，${this.getAllSavedArticles().length} 篇文章`);
+                    } else {
+                        this.log(`${isManualTrigger ? '手动' : '自动'}采集完成：抓取 ${articles.length} 篇文章，全部为重复内容，未保存新数据`);
+                    }
+
+                    // 清理旧数据
+                    this.cleanOldData();
+
+                    // 自动保存每日热词和统计（无论是否有新文章，都基于最新RSS数据进行统计）
+                        this.saveDailyHotWords();
+                    this.saveDailyTimeDistribution();
+                    this.saveDailyUserStats();
+
+                    // 通知弹窗更新（无论是否重复，弹窗都需要显示最新RSS数据）
+                    this.notifyDialogUpdate();
+
+                    // 记录到日志（仅在控制台输出，不保存到操作日志）
+                    const newCount = newArticles ? newArticles.length : 0;
+                    const duplicateCount = articles.length - newCount;
+                    this.log(`[${new Date(currentTime).toLocaleString()}] 热点统计${isManualTrigger ? '手动' : '自动'}采集：抓取${articles.length}篇，新增${newCount}篇${duplicateCount > 0 ? `，重复${duplicateCount}篇` : ''}`);
+
+                    // 采集成功，退出重试循环
                     return;
-                }
-                
-                this.log(`${this.isMainWindow ? '主窗口' : ''}执行${isManualTrigger ? '手动' : '自动'}采集RSS数据...`);
-                
-                // 重置清理标记（无论手动还是自动采集）
-                this.dataCleared = false;
-                
-                // 强制重新获取数据（绕过缓存）
-                const currentTime = Date.now();
-                this.rssCache = null; // 清除缓存
-                
-                // 更新采集时间记录
-                this.lastCollectTime = currentTime;
 
-                // 无论自动采集还是手动采集，都重置下次采集时间
-                this.nextCollectTime = currentTime + this.autoCollectInterval;
-                this.log(`${isManualTrigger ? '手动' : '自动'}采集：更新下次采集时间为`, new Date(this.nextCollectTime).toLocaleString());
-                
-                // 保存全局状态（同步到其他窗口）
-                this.saveGlobalState();
+                } catch (error) {
+                    // 如果是最后一次尝试，记录到操作日志
+                    if (attempt === maxRetries) {
+                        if (window.addLog) {
+                            window.addLog(`热点统计${isManualTrigger ? '手动' : '自动'}采集失败，已重试${maxRetries}次: ` + error.message);
+                        }
+                        return;
+                    }
 
-                const articles = await this.fetchRSSData();
-
-                // 过滤出新文章（未保存过的文章）
-                const newArticles = this.filterNewArticles(articles);
-
-                // 只有当有新文章时才保存
-                if (newArticles.length > 0) {
-                    // 保存到历史数据
-                    const historyRecord = {
-                        timestamp: currentTime,
-                        articles: newArticles, // 只保存新文章
-                        titles: newArticles.map(a => a.title), // 向后兼容，保留titles字段
-                        count: newArticles.length,
-                        source: isManualTrigger ? 'manual' : 'auto',
-                        totalFetched: articles.length, // 记录本次总共抓取的文章数
-                        duplicateCount: articles.length - newArticles.length // 记录重复文章数
-                    };
-
-                    this.historyData.push(historyRecord);
-                    this.saveHistoryData();
-
-                    this.log(`${isManualTrigger ? '手动' : '自动'}采集完成：抓取 ${articles.length} 篇，保存 ${newArticles.length} 篇新文章，跳过 ${articles.length - newArticles.length} 篇重复文章`);
-                    this.log(`历史总计：${this.historyData.length} 次采集，${this.getAllSavedArticles().length} 篇文章`);
-                } else {
-                    this.log(`${isManualTrigger ? '手动' : '自动'}采集完成：抓取 ${articles.length} 篇文章，全部为重复内容，未保存新数据`);
-                }
-
-                // 清理旧数据
-                this.cleanOldData();
-
-                // 自动保存每日热词和统计（无论是否有新文章，都基于最新RSS数据进行统计）
-                    this.saveDailyHotWords();
-                this.saveDailyTimeDistribution();
-                this.saveDailyUserStats();
-
-                // 通知弹窗更新（无论是否重复，弹窗都需要显示最新RSS数据）
-                this.notifyDialogUpdate();
-
-                // 记录到日志（仅在控制台输出，不保存到操作日志）
-                const newCount = newArticles ? newArticles.length : 0;
-                const duplicateCount = articles.length - newCount;
-                this.log(`[${new Date(currentTime).toLocaleString()}] 热点统计${isManualTrigger ? '手动' : '自动'}采集：抓取${articles.length}篇，新增${newCount}篇${duplicateCount > 0 ? `，重复${duplicateCount}篇` : ''}`);
-
-            } catch (error) {
-                console.error(`${isManualTrigger ? '手动' : '自动'}采集失败:`, error);
-
-                // 错误才记录到操作日志
-                if (window.addLog) {
-                    window.addLog(`热点统计${isManualTrigger ? '手动' : '自动'}采集失败: ` + error.message);
+                    // 不是最后一次尝试，等待后重试
+                    this.log(`第${attempt}次采集失败，${retryDelay / 1000}秒后重试: ${error.message}`);
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
                 }
             }
         },
@@ -734,15 +747,12 @@
                 this.rssCacheTime = now;
                 return articles;
             } catch (error) {
-                console.error('API采集失败:', error);
                 // 如果有缓存数据，即使过期也返回
                 if (this.rssCache) {
                     this.log('使用过期的缓存数据作为备用');
                     return this.rssCache;
                 }
-                if (window.addLog) {
-                    window.addLog(`热点统计API采集失败：${error.message}`);
-                }
+                // 直接抛出错误，让上层重试机制处理
                 throw error;
             }
         },
