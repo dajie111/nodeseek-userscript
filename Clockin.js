@@ -334,25 +334,34 @@
 
         // 设置每日重置监控
         setupDailyReset() {
-            // 每秒检查是否到了23:59:59
+            // 每秒检查重置和启动时机
             setInterval(() => {
                 const now = new Date();
                 const hour = now.getHours();
                 const minute = now.getMinutes();
                 const second = now.getSeconds();
 
-                // 在23:59:59重置状态
+                // 在23:59:59重置状态（仅重置，不启动检测）
                 if (hour === 23 && minute === 59 && second === 59) {
-                    this.resetDailyStatus();
+                    this.resetDailyStatusOnly();
+                }
+                
+                // 在00:00:00启动检测机制
+                if (hour === 0 && minute === 0 && second === 0) {
+                    this.startNewDayDetection();
                 }
             }, 1000);
         }
 
-        // 重置每日状态
-        resetDailyStatus() {
+        // 重置每日状态（仅重置，不启动检测）
+        resetDailyStatusOnly() {
             localStorage.removeItem(this.storageKeys.lastSignTime);
-            this.logToOperationDialog('🔄 签到状态已重置，准备明日签到');
-            // 重新启动所有检测机制
+            this.logToOperationDialog('🔄 签到状态已重置，等待00:00:00启动检测机制');
+        }
+
+        // 启动新一天的检测
+        startNewDayDetection() {
+            this.logToOperationDialog('🚀 新的一天开始，签到检测机制已启动');
             this.startAllDetectionMechanisms();
         }
 
