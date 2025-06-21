@@ -211,12 +211,9 @@
         setupDailyReset() {
             const resetTimer = setInterval(() => {
                 const now = new Date();
-                if (now.getHours() === 23 && now.getMinutes() === 59 && now.getSeconds() === 59) {
-                    this.resetDailyStatus();
-                }
-                // 在00:00:00立即开始签到
+                // 在00:00:00清除状态后立即执行签到
                 if (now.getHours() === 0 && now.getMinutes() === 0 && now.getSeconds() === 0) {
-                    this.immediateSignInCheck();
+                    this.resetDailyStatusAndSignIn();
                 }
             }, 1000);
             
@@ -226,6 +223,17 @@
         // 重置每日状态
         resetDailyStatus() {
             localStorage.removeItem(CONFIG.STORAGE_KEYS.signedToday);
+        }
+
+        // 00:00:00清除状态后立即执行签到
+        resetDailyStatusAndSignIn() {
+            if (!this.isMasterPage) return;
+            
+            // 先清除今日签到状态
+            this.resetDailyStatus();
+            
+            // 立即执行签到，无延迟
+            this.performSignIn();
         }
 
         // 立即执行签到（新的一天开始时）
