@@ -151,7 +151,7 @@
             }, CONFIG.INTERVALS.signCheck);
             
             this.timers.push(signTimer);
-            }
+        }
 
         // 检查并执行签到
         async checkSignIn() {
@@ -306,15 +306,15 @@
             const signedDate = localStorage.getItem(CONFIG.STORAGE_KEYS.signedToday);
             if (signedDate && signedDate !== today) {
                 localStorage.removeItem(CONFIG.STORAGE_KEYS.signedToday);
-        }
+            }
 
             // 清理过期的主页面信息
             const lastHeartbeat = localStorage.getItem(CONFIG.STORAGE_KEYS.lastHeartbeat);
             if (lastHeartbeat && Date.now() - parseInt(lastHeartbeat) > 300000) { // 5分钟
                 localStorage.removeItem(CONFIG.STORAGE_KEYS.masterPageId);
                 localStorage.removeItem(CONFIG.STORAGE_KEYS.lastHeartbeat);
-                }
             }
+        }
 
         // 页面卸载处理
         setupPageUnloadHandler() {
