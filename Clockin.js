@@ -11,13 +11,15 @@
             this.pageId = this.generatePageId();
             this.isMasterPage = false;
             this.timers = [];
+            this.isExecuting = false; // 执行锁
             
             // 存储键名
             this.keys = {
                 signedToday: 'nodeseek_signed_today',
                 masterPageId: 'nodeseek_master_page',
                 pageRegistry: 'nodeseek_page_registry',
-                lastHeartbeat: 'nodeseek_heartbeat'
+                lastHeartbeat: 'nodeseek_heartbeat',
+                executingLock: 'nodeseek_executing_lock'
             };
             
             this.init();
@@ -228,16 +230,26 @@
 
         // 设置长时间挂机保障机制
         setupAntiHangMechanisms() {
+            let lastRecoveryTime = 0; // 防止短时间内多次恢复触发
+            
+            // 页面恢复检查（带防抖）
+            const delayedCheck = () => {
+                const now = Date.now();
+                if (now - lastRecoveryTime < 5000) return; // 5秒内只触发一次
+                lastRecoveryTime = now;
+                setTimeout(() => this.checkAndSign(), 2000);
+            };
+
             // 页面可见性变化监听
             document.addEventListener('visibilitychange', () => {
                 if (!document.hidden) {
-                    setTimeout(() => this.checkAndSign(), 1000);
+                    delayedCheck();
                 }
             });
 
             // 窗口焦点变化监听
             window.addEventListener('focus', () => {
-                setTimeout(() => this.checkAndSign(), 1000);
+                delayedCheck();
             });
 
             // 用户活动监听（节流处理）
@@ -247,17 +259,17 @@
                 userActivityTimer = setTimeout(() => {
                     userActivityTimer = null;
                     this.checkAndSign();
-                }, 3000);
+                }, 5000); // 增加到5秒防止频繁触发
             };
 
             ['mousedown', 'keydown', 'scroll', 'touchstart'].forEach(event => {
                 document.addEventListener(event, handleUserActivity, { passive: true });
             });
 
-            // 高频检查器 - 每10秒检查一次
+            // 高频检查器 - 每15秒检查一次（降低频率）
             const highFreqTimer = setInterval(() => {
                 this.checkAndSign();
-            }, 10000);
+            }, 15000);
             this.timers.push(highFreqTimer);
 
             // Performance API 时间跳跃检测
@@ -268,20 +280,20 @@
                     const timeDiff = currentTime - lastTime;
                     
                     // 如果时间差异过大，说明可能被暂停过
-                    if (timeDiff > 15000) {
-                        this.checkAndSign();
+                    if (timeDiff > 20000) { // 增加到20秒防止误触发
+                        delayedCheck();
                     }
                     lastTime = currentTime;
-                }, 5000);
+                }, 8000); // 降低检查频率
                 this.timers.push(perfTimer);
             }
 
             // 递归检测器（最后防线）
             const recursiveCheck = () => {
                 this.checkAndSign();
-                setTimeout(recursiveCheck, 45000); // 45秒递归检查
+                setTimeout(recursiveCheck, 60000); // 增加到60秒
             };
-            setTimeout(recursiveCheck, 10000);
+            setTimeout(recursiveCheck, 15000);
         }
 
         // 检查并执行签到
@@ -296,13 +308,32 @@
                 return;
             }
 
+            // 检查是否正在执行（本地锁）
+            if (this.isExecuting) {
+                return;
+            }
+
+            // 检查全局执行锁
+            if (this.isGloballyExecuting()) {
+                return;
+            }
+
             // 执行签到
             await this.performSignIn();
         }
 
         // 执行签到
         async performSignIn() {
+            // 最后一次检查，确保不重复执行
+            if (this.hasSignedToday() || this.isExecuting || this.isGloballyExecuting()) {
+                return;
+            }
+
             try {
+                // 设置执行锁
+                this.isExecuting = true;
+                this.setGlobalExecutingLock();
+                
                 // 立即记录签到状态，防止重复执行
                 this.recordSignedToday();
                 this.log('🎯 正在执行签到...');
@@ -324,6 +355,10 @@
                 }
             } catch (error) {
                 this.log('❌ 签到失败：网络错误');
+            } finally {
+                // 释放执行锁
+                this.isExecuting = false;
+                this.clearGlobalExecutingLock();
             }
         }
 
@@ -350,6 +385,34 @@
             this.timers.forEach(timer => clearInterval(timer));
             this.timers = [];
             this.log('⏸️ 签到完成，监控已停止');
+        }
+
+        // 检查是否全局正在执行
+        isGloballyExecuting() {
+            const lockTime = localStorage.getItem(this.keys.executingLock);
+            if (!lockTime) return false;
+
+            const now = Date.now();
+            const lock = parseInt(lockTime);
+
+            if (now < lock) {
+                return true;
+            } else {
+                // 锁已过期，清理
+                localStorage.removeItem(this.keys.executingLock);
+                return false;
+            }
+        }
+
+        // 设置全局执行锁
+        setGlobalExecutingLock() {
+            const lockTime = Date.now() + 10000; // 10秒锁定
+            localStorage.setItem(this.keys.executingLock, lockTime.toString());
+        }
+
+        // 清理全局执行锁
+        clearGlobalExecutingLock() {
+            localStorage.removeItem(this.keys.executingLock);
         }
 
         // 设置每日重置
@@ -389,6 +452,10 @@
                 // 清理所有定时器
                 this.timers.forEach(timer => clearInterval(timer));
                 
+                // 清理执行锁
+                this.isExecuting = false;
+                this.clearGlobalExecutingLock();
+                
                 // 如果是主页面，释放主页面权限
                 if (this.isMasterPage) {
                     localStorage.removeItem(this.keys.masterPageId);
@@ -413,6 +480,9 @@
             if (signedDate && signedDate !== today) {
                 localStorage.removeItem(this.keys.signedToday);
             }
+
+            // 清理过期的执行锁
+            this.isGloballyExecuting(); // 这个方法会自动清理过期锁
 
             // 清理过期的页面注册数据
             this.cleanExpiredPages();
