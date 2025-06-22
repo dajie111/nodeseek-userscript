@@ -163,7 +163,6 @@
                 if (e.key === STORAGE_KEYS.masterWindow && e.newValue !== this.windowId) {
                     // 其他窗口成为主窗口，当前窗口变为从窗口
                     this.isMaster = false;
-                    this.logMessage('📤 主窗口权限转移');
                 }
             });
         }
