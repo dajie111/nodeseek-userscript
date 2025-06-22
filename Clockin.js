@@ -41,6 +41,9 @@
             
             // 监听按钮事件
             this.setupButtonListener();
+            
+            // 启动浏览器保活机制
+            this.setupBrowserKeepAlive();
         }
 
         // 设置全局接口
@@ -306,11 +309,19 @@
                 this.timers.forEach(timer => clearInterval(timer));
                 this.timers = [];
                 
+                // 清理保活元素
+                if (this.keepAliveElement && this.keepAliveElement.parentNode) {
+                    this.keepAliveElement.parentNode.removeChild(this.keepAliveElement);
+                }
+                
                 // 如果是主窗口，释放权限
                 if (this.isMaster) {
                     localStorage.removeItem(STORAGE_KEYS.masterWindow);
                     localStorage.removeItem(STORAGE_KEYS.lastHeartbeat);
                 }
+                
+                // 清理保活心跳记录
+                localStorage.removeItem('nodeseek_keepalive_heartbeat');
             };
 
             window.addEventListener('beforeunload', cleanup);
@@ -323,6 +334,205 @@
             if (typeof window.addLog === 'function') {
                 window.addLog(message);
             }
+        }
+
+        // 浏览器保活机制
+        setupBrowserKeepAlive() {
+            // 1. 创建隐形保活元素
+            this.createKeepAliveElement();
+            
+            // 2. 启动多重保活机制
+            this.startMultipleKeepAlive();
+            
+            // 3. 监听页面状态变化
+            this.setupPageVisibilityHandlers();
+            
+            // 4. 防止浏览器节能模式
+            this.preventPowerSaving();
+        }
+
+        // 创建隐形保活元素
+        createKeepAliveElement() {
+            // 创建一个完全隐形的div
+            this.keepAliveElement = document.createElement('div');
+            this.keepAliveElement.style.cssText = `
+                position: fixed;
+                top: -10px;
+                left: -10px;
+                width: 1px;
+                height: 1px;
+                opacity: 0.001;
+                pointer-events: none;
+                z-index: -9999;
+                background: transparent;
+                overflow: hidden;
+            `;
+            
+            // 添加到页面
+            if (document.body) {
+                document.body.appendChild(this.keepAliveElement);
+            } else {
+                document.addEventListener('DOMContentLoaded', () => {
+                    document.body.appendChild(this.keepAliveElement);
+                });
+            }
+        }
+
+        // 启动多重保活机制
+        startMultipleKeepAlive() {
+            // 方法1: 微调透明度 (每30-60秒)
+            const opacityKeepAlive = setInterval(() => {
+                if (this.keepAliveElement) {
+                    const opacity = 0.001 + Math.random() * 0.002;
+                    this.keepAliveElement.style.opacity = opacity.toFixed(4);
+                }
+            }, 30000 + Math.random() * 30000);
+            this.timers.push(opacityKeepAlive);
+
+            // 方法2: 微调位置 (每45-90秒)
+            const positionKeepAlive = setInterval(() => {
+                if (this.keepAliveElement) {
+                    const top = -10 + Math.random() * 5;
+                    const left = -10 + Math.random() * 5;
+                    this.keepAliveElement.style.top = `${top.toFixed(1)}px`;
+                    this.keepAliveElement.style.left = `${left.toFixed(1)}px`;
+                }
+            }, 45000 + Math.random() * 45000);
+            this.timers.push(positionKeepAlive);
+
+            // 方法3: 创建无害的微任务 (每60-120秒)
+            const taskKeepAlive = setInterval(() => {
+                // 创建一个微任务来保持引擎活跃
+                Promise.resolve().then(() => {
+                    const now = Date.now();
+                    // 执行一个轻量级计算
+                    Math.random() * now;
+                });
+            }, 60000 + Math.random() * 60000);
+            this.timers.push(taskKeepAlive);
+
+            // 方法4: localStorage心跳 (每2-5分钟)
+            const storageKeepAlive = setInterval(() => {
+                const heartbeat = Date.now().toString();
+                localStorage.setItem('nodeseek_keepalive_heartbeat', heartbeat);
+                // 立即删除，避免存储污染
+                setTimeout(() => {
+                    localStorage.removeItem('nodeseek_keepalive_heartbeat');
+                }, 1000);
+            }, 120000 + Math.random() * 180000);
+            this.timers.push(storageKeepAlive);
+
+            // 方法5: 虚拟鼠标活动模拟 (每3-8分钟)
+            const mouseKeepAlive = setInterval(() => {
+                // 创建虚拟鼠标移动事件（不会被用户感知）
+                const virtualEvent = new MouseEvent('mousemove', {
+                    clientX: -100,
+                    clientY: -100,
+                    bubbles: false,
+                    cancelable: false
+                });
+                if (this.keepAliveElement) {
+                    this.keepAliveElement.dispatchEvent(virtualEvent);
+                }
+            }, 180000 + Math.random() * 300000);
+            this.timers.push(mouseKeepAlive);
+        }
+
+        // 页面可见性处理
+        setupPageVisibilityHandlers() {
+            // 监听页面可见性变化
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    // 页面重新可见时，强制检查签到状态
+                    setTimeout(() => {
+                        if (this.isMaster) {
+                            this.checkAndSignIn();
+                        }
+                    }, 1000);
+                }
+            });
+
+            // 监听窗口焦点变化
+            window.addEventListener('focus', () => {
+                // 窗口重新获得焦点时检查
+                setTimeout(() => {
+                    if (this.isMaster) {
+                        this.checkAndSignIn();
+                    }
+                }, 500);
+            });
+
+            // 监听页面恢复事件
+            window.addEventListener('pageshow', (e) => {
+                if (e.persisted) {
+                    // 从缓存恢复时重新检查
+                    setTimeout(() => {
+                        if (this.isMaster) {
+                            this.checkAndSignIn();
+                        }
+                    }, 2000);
+                }
+            });
+        }
+
+        // 防止浏览器节能模式
+        preventPowerSaving() {
+            // 方法1: 使用Web Audio API保持活跃
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                // 设置为静音
+                gainNode.gain.value = 0;
+                oscillator.frequency.value = 20000; // 超高频，人耳听不到
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                // 每10分钟重启一次，防止被浏览器暂停
+                const audioKeepAlive = setInterval(() => {
+                    try {
+                        oscillator.start();
+                        setTimeout(() => {
+                            oscillator.stop();
+                        }, 100);
+                    } catch (e) {
+                        // 忽略错误，避免重复启动
+                    }
+                }, 600000);
+                this.timers.push(audioKeepAlive);
+            } catch (e) {
+                // 如果Audio API不可用，跳过
+            }
+
+            // 方法2: 使用requestAnimationFrame保持活跃
+            let rafId;
+            const rafKeepAlive = () => {
+                // 执行轻量级操作
+                if (this.keepAliveElement) {
+                    const opacity = parseFloat(this.keepAliveElement.style.opacity) || 0.001;
+                    // 微调透明度（变化极小，不可见）
+                    this.keepAliveElement.style.opacity = (opacity + 0.0001).toFixed(4);
+                }
+                
+                // 每5分钟执行一次
+                setTimeout(() => {
+                    rafId = requestAnimationFrame(rafKeepAlive);
+                }, 300000);
+            };
+            
+            // 启动RAF保活
+            rafId = requestAnimationFrame(rafKeepAlive);
+            
+            // 清理时取消RAF
+            const originalCleanup = this.setupCleanup;
+            this.setupCleanup = () => {
+                if (rafId) {
+                    cancelAnimationFrame(rafId);
+                }
+                originalCleanup.call(this);
+            };
         }
     }
 
