@@ -11,7 +11,7 @@
             lastHeartbeat: 'nodeseek_last_heartbeat'
         },
         INTERVALS: {
-            signCheck: 60000,      // 签到检查间隔：1分钟
+            signCheck: 1000,       // 签到检查间隔：1秒
             heartbeat: 5000,       // 心跳间隔：5秒
             keepAlive: 35000       // 保活间隔：30-40秒随机
         }
@@ -23,6 +23,9 @@
             this.isMasterPage = false;
             this.timers = [];
             this.keepAliveElement = null;
+            this.isSigningIn = false; // 签到执行锁
+            this.hasResetToday = false; // 今日是否已重置状态的标记
+            this.signInTimer = null; // 签到检查定时器
             
             this.init();
         }
@@ -142,15 +145,20 @@
 
         // 开始签到检查
         startSignInCheck() {
+            // 如果已经有定时器在运行，先清除
+            if (this.signInTimer) {
+                clearInterval(this.signInTimer);
+            }
+            
             // 立即检查一次
             this.checkSignIn();
             
             // 定期检查签到
-            const signTimer = setInterval(() => {
+            this.signInTimer = setInterval(() => {
                 this.checkSignIn();
             }, CONFIG.INTERVALS.signCheck);
             
-            this.timers.push(signTimer);
+            this.timers.push(this.signInTimer);
         }
 
         // 检查并执行签到
@@ -166,7 +174,22 @@
 
         // 执行签到API
         async performSignIn() {
+            // 防重复执行检查
+            if (this.hasSignedToday()) {
+                return;
+            }
+
+            // 执行锁检查
+            if (this.isSigningIn) {
+                return;
+            }
+
+            this.isSigningIn = true;
+
             try {
+                // 先记录已执行状态，不管成功失败
+                this.recordSignInAttempt();
+
                 const response = await fetch(CONFIG.SIGN_API, {
                     method: 'POST',
                     headers: {
@@ -177,7 +200,6 @@
 
                 if (response.ok) {
                     // 签到成功
-                    this.recordSignInSuccess();
                     this.logToOperationDialog('✅ 自动签到成功！');
                 } else {
                     // 签到失败
@@ -186,6 +208,8 @@
             } catch (error) {
                 // 签到异常
                 this.logToOperationDialog(`❌ 签到异常：${error.message}`);
+            } finally {
+                this.isSigningIn = false;
             }
         }
 
@@ -196,10 +220,26 @@
             return signedDate === today;
         }
 
-        // 记录签到成功
-        recordSignInSuccess() {
+        // 记录签到尝试（不管成功失败，只要执行过就记录）
+        recordSignInAttempt() {
             const today = this.getTodayString();
             localStorage.setItem(CONFIG.STORAGE_KEYS.signedToday, today);
+            
+            // 停止签到检查定时器
+            this.stopSignInCheck();
+        }
+
+        // 停止签到检查
+        stopSignInCheck() {
+            if (this.signInTimer) {
+                clearInterval(this.signInTimer);
+                this.signInTimer = null;
+                // 从timers数组中移除
+                const index = this.timers.indexOf(this.signInTimer);
+                if (index > -1) {
+                    this.timers.splice(index, 1);
+                }
+            }
         }
 
         // 获取今日日期字符串
@@ -211,9 +251,19 @@
         setupDailyReset() {
             const resetTimer = setInterval(() => {
                 const now = new Date();
-                // 在00:00:00清除状态后立即执行签到
+                // 在00:00:00精确重置状态
                 if (now.getHours() === 0 && now.getMinutes() === 0 && now.getSeconds() === 0) {
-                    this.resetDailyStatusAndSignIn();
+                    if (!this.hasResetToday) {
+                        this.hasResetToday = true;
+                        this.resetDailyStatus();
+                        this.logToOperationDialog('🔄 签到状态已重置，立即开始签到');
+                        // 立即开始新一天的签到检查
+                        this.startSignInCheck();
+                        // 30秒后重置标记，防止重复
+                        setTimeout(() => {
+                            this.hasResetToday = false;
+                        }, 30000);
+                    }
                 }
             }, 1000);
             
@@ -225,24 +275,7 @@
             localStorage.removeItem(CONFIG.STORAGE_KEYS.signedToday);
         }
 
-        // 00:00:00清除状态后立即执行签到
-        resetDailyStatusAndSignIn() {
-            if (!this.isMasterPage) return;
-            
-            // 先清除今日签到状态
-            this.resetDailyStatus();
-            
-            // 立即执行签到，无延迟
-            this.performSignIn();
-        }
 
-        // 立即执行签到（新的一天开始时）
-        immediateSignInCheck() {
-            if (!this.isMasterPage) return;
-            
-            // 00:00:00立即执行签到，无延迟
-            this.performSignIn();
-        }
 
         // 创建保活元素
         createKeepAliveElement() {
