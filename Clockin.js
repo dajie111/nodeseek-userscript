@@ -168,28 +168,22 @@
             // 检查今日是否已签到
             if (this.hasSignedToday()) return;
 
+            // 检查是否正在签到
+            if (this.isSigningIn) return;
+
+            // 立即记录状态，防止重复执行
+            this.recordSignInAttempt();
+
             // 执行签到
             await this.performSignIn();
         }
 
         // 执行签到API
         async performSignIn() {
-            // 防重复执行检查
-            if (this.hasSignedToday()) {
-                return;
-            }
-
-            // 执行锁检查
-            if (this.isSigningIn) {
-                return;
-            }
-
+            // 设置签到锁
             this.isSigningIn = true;
 
             try {
-                // 先记录已执行状态，不管成功失败
-                this.recordSignInAttempt();
-
                 const response = await fetch(CONFIG.SIGN_API, {
                     method: 'POST',
                     headers: {
@@ -224,6 +218,9 @@
         recordSignInAttempt() {
             const today = this.getTodayString();
             localStorage.setItem(CONFIG.STORAGE_KEYS.signedToday, today);
+            
+            // 设置签到锁，防止其他页面同时执行
+            this.isSigningIn = true;
             
             // 停止签到检查定时器
             this.stopSignInCheck();
