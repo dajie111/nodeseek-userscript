@@ -27,6 +27,9 @@
                 return;
             }
 
+            // Edge浏览器兼容性检测和处理
+            this.setupEdgeCompatibility();
+
             // 清理过期数据
             this.cleanExpiredData();
             
@@ -314,6 +317,11 @@
                     this.keepAliveElement.parentNode.removeChild(this.keepAliveElement);
                 }
                 
+                // 清理Edge专用资源
+                if (this.isEdge && this.edgeWorker) {
+                    this.edgeWorker.terminate();
+                }
+                
                 // 如果是主窗口，释放权限
                 if (this.isMaster) {
                     localStorage.removeItem(STORAGE_KEYS.masterWindow);
@@ -326,6 +334,17 @@
 
             window.addEventListener('beforeunload', cleanup);
             window.addEventListener('pagehide', cleanup);
+            
+            // Edge专用的清理事件
+            if (this.isEdge) {
+                window.addEventListener('unload', cleanup);
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'hidden') {
+                        // Edge在隐藏时可能需要特殊处理
+                        setTimeout(cleanup, 100);
+                    }
+                });
+            }
         }
 
         // 输出日志消息
@@ -477,9 +496,20 @@
 
         // 防止浏览器节能模式
         preventPowerSaving() {
+            // Edge浏览器需要更强的保活机制
+            if (this.isEdge) {
+                this.setupEdgeEnhancedKeepAlive();
+            }
+            
             // 方法1: 使用Web Audio API保持活跃
             try {
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Edge浏览器需要特殊处理
+                if (this.isEdge && audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                
                 const oscillator = audioContext.createOscillator();
                 const gainNode = audioContext.createGain();
                 
@@ -490,9 +520,13 @@
                 oscillator.connect(gainNode);
                 gainNode.connect(audioContext.destination);
                 
-                // 每10分钟重启一次，防止被浏览器暂停
+                // Edge需要更频繁的重启
+                const audioInterval = this.isEdge ? 300000 : 600000; // Edge: 5分钟，其他: 10分钟
                 const audioKeepAlive = setInterval(() => {
                     try {
+                        if (audioContext.state === 'suspended') {
+                            audioContext.resume();
+                        }
                         oscillator.start();
                         setTimeout(() => {
                             oscillator.stop();
@@ -500,10 +534,13 @@
                     } catch (e) {
                         // 忽略错误，避免重复启动
                     }
-                }, 600000);
+                }, audioInterval);
                 this.timers.push(audioKeepAlive);
             } catch (e) {
                 // 如果Audio API不可用，跳过
+                if (this.isEdge) {
+                    this.logMessage('⚠️ Edge Audio API不可用，使用替代方案');
+                }
             }
 
             // 方法2: 使用requestAnimationFrame保持活跃
@@ -516,10 +553,11 @@
                     this.keepAliveElement.style.opacity = (opacity + 0.0001).toFixed(4);
                 }
                 
-                // 每5分钟执行一次
+                // Edge需要更频繁的执行
+                const rafInterval = this.isEdge ? 180000 : 300000; // Edge: 3分钟，其他: 5分钟
                 setTimeout(() => {
                     rafId = requestAnimationFrame(rafKeepAlive);
-                }, 300000);
+                }, rafInterval);
             };
             
             // 启动RAF保活
@@ -533,6 +571,176 @@
                 }
                 originalCleanup.call(this);
             };
+        }
+
+        // Edge增强保活机制
+        setupEdgeEnhancedKeepAlive() {
+            // 1. Worker保活（Edge专用）
+            try {
+                const workerCode = `
+                    setInterval(() => {
+                        self.postMessage('keepalive');
+                    }, 60000);
+                `;
+                const blob = new Blob([workerCode], { type: 'application/javascript' });
+                const worker = new Worker(URL.createObjectURL(blob));
+                
+                worker.onmessage = () => {
+                    // Worker心跳确认
+                };
+                
+                this.edgeWorker = worker;
+            } catch (e) {
+                this.logMessage('⚠️ Edge Worker保活失败');
+            }
+
+            // 2. 网络心跳保活（Edge专用）
+            const networkKeepAlive = setInterval(() => {
+                // 发送HEAD请求保持网络连接活跃
+                fetch(window.location.href, { 
+                    method: 'HEAD',
+                    cache: 'no-cache'
+                }).catch(() => {
+                    // 忽略网络错误
+                });
+            }, 180000); // 每3分钟
+            this.timers.push(networkKeepAlive);
+
+            // 3. 强制事件循环保活
+            const eventLoopKeepAlive = setInterval(() => {
+                // 创建强制事件循环
+                const channel = new MessageChannel();
+                channel.port1.postMessage('keepalive');
+                channel.port1.close();
+                channel.port2.close();
+            }, 90000); // 每1.5分钟
+            this.timers.push(eventLoopKeepAlive);
+        }
+
+        // Edge浏览器兼容性处理
+        setupEdgeCompatibility() {
+            // 检测Edge浏览器
+            this.isEdge = this.detectEdgeBrowser();
+            
+            if (this.isEdge) {
+                this.logMessage('🔧 检测到Edge浏览器，启用兼容模式');
+                
+                // Edge特殊处理
+                this.setupEdgeSpecificHandlers();
+                
+                // 增强的初始化延迟
+                this.edgeInitDelay = 2000;
+            } else {
+                this.edgeInitDelay = 100;
+            }
+        }
+
+        // 检测Edge浏览器
+        detectEdgeBrowser() {
+            const userAgent = navigator.userAgent.toLowerCase();
+            return userAgent.includes('edg/') || 
+                   userAgent.includes('edge/') || 
+                   window.navigator.userAgentData?.brands?.some(brand => 
+                       brand.brand.toLowerCase().includes('edge')
+                   );
+        }
+
+        // Edge浏览器特殊处理
+        setupEdgeSpecificHandlers() {
+            // 1. 强制启用Promise兼容
+            if (!window.Promise.resolve().finally) {
+                Promise.prototype.finally = function(callback) {
+                    return this.then(
+                        value => Promise.resolve(callback()).then(() => value),
+                        reason => Promise.resolve(callback()).then(() => { throw reason; })
+                    );
+                };
+            }
+
+            // 2. 增强的DOM就绪检测
+            this.setupEnhancedDOMReady();
+
+            // 3. Edge专用错误处理
+            window.addEventListener('error', (e) => {
+                if (e.error && e.error.message) {
+                    this.logMessage(`⚠️ Edge错误处理: ${e.error.message}`);
+                }
+            });
+
+            // 4. 更频繁的状态检查（Edge可能需要）
+            this.edgeStatusCheckInterval = setInterval(() => {
+                if (this.isMaster && !this.hasSignedToday()) {
+                    // Edge专用签到检查
+                    this.edgeSpecificSignInCheck();
+                }
+            }, 3000); // 每3秒检查一次
+
+            this.timers.push(this.edgeStatusCheckInterval);
+        }
+
+        // 增强的DOM就绪检测
+        setupEnhancedDOMReady() {
+            let domReady = false;
+            
+            const checkDOMReady = () => {
+                if (domReady) return;
+                
+                if (document.readyState === 'complete' || 
+                    (document.readyState === 'interactive' && document.body)) {
+                    domReady = true;
+                    this.logMessage('🎯 Edge DOM就绪确认');
+                }
+            };
+
+            // 多种DOM就绪检测
+            document.addEventListener('DOMContentLoaded', checkDOMReady);
+            document.addEventListener('readystatechange', checkDOMReady);
+            window.addEventListener('load', checkDOMReady);
+            
+            // 定时检查
+            const domCheckInterval = setInterval(() => {
+                checkDOMReady();
+                if (domReady) {
+                    clearInterval(domCheckInterval);
+                }
+            }, 100);
+        }
+
+        // Edge专用签到检查
+        async edgeSpecificSignInCheck() {
+            try {
+                // Edge可能需要更长的网络超时
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
+
+                const response = await fetch(SIGN_API, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
+                    },
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                // 立即记录签到状态
+                this.recordSignIn();
+
+                if (response.ok) {
+                    this.logMessage('✅ Edge专用签到成功');
+                } else {
+                    this.logMessage(`⚠️ Edge签到响应: ${response.status}`);
+                }
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    this.logMessage('⏰ Edge签到超时，将重试');
+                } else {
+                    this.logMessage(`❌ Edge签到异常: ${error.message}`);
+                }
+            }
         }
     }
 
