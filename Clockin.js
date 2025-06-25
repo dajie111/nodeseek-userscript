@@ -599,27 +599,18 @@
                     return;
                 }
 
-                // 在特殊时间段记录成功日志
-                if (this.isSpecialTimeRange()) {
-                    if (response.ok) {
-                        this.addLog('✅ 签到成功');
-                    }
+                // 签到成功时提示
+                if (response.ok) {
+                    this.addLog('✅ 签到成功');
                 }
+                // 签到失败不提示，静默处理
 
             } catch (error) {
                 // 静默处理错误，不输出日志
             }
         }
 
-        // 检查是否在特殊时间范围 (00:00:00-00:00:05)
-        isSpecialTimeRange() {
-            const now = new Date();
-            const hours = now.getHours();
-            const minutes = now.getMinutes();
-            const seconds = now.getSeconds();
-            
-            return hours === 0 && minutes === 0 && seconds <= 5;
-        }
+
 
         // 启动状态清理监控 (每60分钟)
         startClearMonitor() {
