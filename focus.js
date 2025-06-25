@@ -7,7 +7,7 @@
     const NodeSeekFocus = {
         // 调试模式控制
         isDebug: false,
-        
+
         // 内部日志方法
         log(...args) {
             // 已禁用所有日志输出
@@ -41,17 +41,17 @@
                 // 采集时间记录
         lastCollectTime: 0,
         nextCollectTime: 0,
-        
+
         // 数据保留期限
         dataRetentionDays: 7,
-        
+
         // 多窗口协调相关
         globalStateKey: 'nodeseek_focus_global_state',
         windowId: null,
         isMainWindow: false,
         heartbeatInterval: null,
         heartbeatFrequency: 3000, // 3秒心跳
-        
+
         // 冷却状态管理
         cooldownStorageKey: 'nodeseek_focus_cooldown',
         cooldownDuration: 9000, // 9秒冷却
@@ -67,11 +67,11 @@
                 // 初始化模块
         init() {
             // console.log('热点统计模块初始化完成'); // 已删除此日志输出
-            
+
             // 生成唯一窗口ID
             this.windowId = 'window_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             // console.log('窗口ID:', this.windowId); // 已删除此日志输出
-            
+
             this.loadHistoryData();
             this.loadHotWordsHistory();
             this.loadTimeDistributionHistory();
@@ -288,55 +288,11 @@
             return allArticles;
         },
 
-        // 过滤出新文章（未保存过的文章）
+        // 直接返回所有文章，不进行去重处理
         filterNewArticles(currentArticles) {
-            const savedArticles = this.getAllSavedArticles();
-
-            // 首先对当前文章进行内部去重（即使没有历史数据也要去重）
-            const deduplicatedCurrentArticles = this.deduplicateCurrentBatch(currentArticles);
-
-            if (savedArticles.length === 0) {
-                if (this.isDebug) console.log(`本地无历史数据，对当前批次进行内部去重：${currentArticles.length} → ${deduplicatedCurrentArticles.length} 篇`);
-                return deduplicatedCurrentArticles;
-            }
-
-            const newArticles = [];
-            let duplicateCount = 0;
-
-            deduplicatedCurrentArticles.forEach(currentArticle => {
-                let isNew = true;
-
-                // 检查是否与已保存的文章重复
-                for (const savedArticle of savedArticles) {
-                    if (this.isArticleDuplicate(currentArticle, savedArticle)) {
-                        isNew = false;
-                        duplicateCount++;
-                        break;
-                    }
-                }
-
-                if (isNew) {
-                    newArticles.push(currentArticle);
-                }
-            });
-
-            if (this.isDebug) console.log(`文章去重结果：当前批次 ${currentArticles.length} 篇 → 内部去重后 ${deduplicatedCurrentArticles.length} 篇 → 最终新文章 ${newArticles.length} 篇，历史重复 ${duplicateCount} 篇`);
-
-                            // 输出新文章的标题（用于调试）
-                if (newArticles.length > 0 && newArticles.length <= 10) {
-                    this.log('新文章标题：');
-                    newArticles.forEach((article, index) => {
-                        this.log(`  ${index + 1}. ${article.title}`);
-                    });
-                } else if (newArticles.length > 10) {
-                    this.log(`新文章标题（前10篇）：`);
-                    newArticles.slice(0, 10).forEach((article, index) => {
-                        this.log(`  ${index + 1}. ${article.title}`);
-                    });
-                    this.log(`  ... 还有 ${newArticles.length - 10} 篇新文章`);
-                }
-
-            return newArticles;
+            // 直接返回服务器拉取的所有文章，不进行任何去重处理
+            if (this.isDebug) console.log(`直接使用服务器数据：${currentArticles.length} 篇文章`);
+            return currentArticles;
         },
 
         // 对当前批次文章进行内部去重
@@ -375,22 +331,22 @@
         initMultiWindowCoordination() {
             // 加载全局状态
             this.loadGlobalState();
-            
+
             // 尝试成为主窗口
             this.tryBecomeMainWindow();
-            
+
             // 监听storage变化（窗口间通信）
             window.addEventListener('storage', (e) => {
                 if (e.key === this.globalStateKey) {
                     this.handleGlobalStateChange();
                 }
             });
-            
+
             // 监听页面卸载
             window.addEventListener('beforeunload', () => {
                 this.onWindowUnload();
             });
-            
+
             // console.log(`窗口 ${this.windowId} 初始化完成，主窗口状态: ${this.isMainWindow}`); // 已删除此日志输出
         },
 
@@ -400,11 +356,11 @@
                 const stored = localStorage.getItem(this.globalStateKey);
                 if (stored) {
                     const globalState = JSON.parse(stored);
-                    
+
                     // 恢复采集时间信息
                     this.lastCollectTime = globalState.lastCollectTime || Date.now();
                     this.nextCollectTime = globalState.nextCollectTime || (Date.now() + this.autoCollectInterval);
-                    
+
                     if (!silent) {
                         // console.log('加载全局状态成功'); // 已删除此日志输出
                         // console.log('上次采集时间:', new Date(this.lastCollectTime).toLocaleString()); // 已删除此日志输出
@@ -449,22 +405,22 @@
             try {
                 const stored = localStorage.getItem(this.globalStateKey);
                 let shouldBecomeMain = false;
-                
+
                 if (!stored) {
                     // 没有全局状态，成为主窗口
                     shouldBecomeMain = true;
                 } else {
                     const globalState = JSON.parse(stored);
                     const now = Date.now();
-                    
+
                     // 检查主窗口心跳是否超时（10秒无心跳认为主窗口已关闭）
-                    if (!globalState.mainWindowHeartbeat || 
+                    if (!globalState.mainWindowHeartbeat ||
                         (now - globalState.mainWindowHeartbeat) > 10000) {
                         shouldBecomeMain = true;
                         // console.log('检测到主窗口心跳超时，接管主窗口角色'); // 已删除此日志输出
                     }
                 }
-                
+
                 if (shouldBecomeMain) {
                     this.becomeMainWindow();
                 } else {
@@ -498,7 +454,7 @@
             if (this.heartbeatInterval) {
                 clearInterval(this.heartbeatInterval);
             }
-            
+
             this.heartbeatInterval = setInterval(() => {
                 if (this.isMainWindow) {
                     this.saveGlobalState(); // 更新心跳时间
@@ -519,9 +475,9 @@
             try {
                 const stored = localStorage.getItem(this.globalStateKey);
                 if (!stored) return;
-                
+
                 const globalState = JSON.parse(stored);
-                
+
                 // 更新采集时间
                 if (globalState.lastCollectTime) {
                     this.lastCollectTime = globalState.lastCollectTime;
@@ -529,18 +485,18 @@
                 if (globalState.nextCollectTime) {
                     this.nextCollectTime = globalState.nextCollectTime;
                 }
-                
+
                 // 检查主窗口变化
                 const now = Date.now();
-                const isMainWindowActive = globalState.mainWindowId && 
-                    globalState.mainWindowHeartbeat && 
+                const isMainWindowActive = globalState.mainWindowId &&
+                    globalState.mainWindowHeartbeat &&
                     (now - globalState.mainWindowHeartbeat) < 10000;
-                
+
                 if (!isMainWindowActive && !this.isMainWindow) {
                     // 主窗口失效且当前不是主窗口，尝试接管
                     this.log('检测到主窗口失效，尝试接管');
                     this.tryBecomeMainWindow();
-                } else if (isMainWindowActive && this.isMainWindow && 
+                } else if (isMainWindowActive && this.isMainWindow &&
                           globalState.mainWindowId !== this.windowId) {
                     // 有其他主窗口，退为从窗口
                     this.log('检测到其他主窗口，退为从窗口');
@@ -586,7 +542,7 @@
             // 计算首次采集的延迟时间
             const now = Date.now();
             let firstCollectDelay = 0;
-            
+
             // 如果下次采集时间还没到，等待到指定时间
             if (this.nextCollectTime > now) {
                 firstCollectDelay = this.nextCollectTime - now;
@@ -599,7 +555,7 @@
             // 设置首次采集
             setTimeout(() => {
                 this.performAutoCollect(false);
-                
+
                 // 设置定期采集定时器
                 this.autoCollectTimer = setInterval(() => {
                     this.performAutoCollect(false);
@@ -607,7 +563,7 @@
             }, firstCollectDelay);
 
             // console.log(`主窗口开始自动采集RSS数据，间隔：3分钟`); // 已删除此日志输出
-            
+
 
         },
 
@@ -634,32 +590,32 @@
                         this.log('非主窗口，跳过自动采集');
                         return;
                     }
-                    
+
                     this.log(`${this.isMainWindow ? '主窗口' : ''}执行${isManualTrigger ? '手动' : '自动'}采集RSS数据${attempt > 1 ? `(第${attempt}次重试)` : ''}...`);
-                    
+
                     // 重置清理标记（无论手动还是自动采集）
                     this.dataCleared = false;
-                    
+
                     // 强制重新获取数据（绕过缓存）
                     const currentTime = Date.now();
                     this.rssCache = null; // 清除缓存
-                    
+
                     // 清空本地历史数据，直接使用服务器数据
                     this.historyData = [];
-                    
+
                     // 更新采集时间记录
                     this.lastCollectTime = currentTime;
 
                     // 无论自动采集还是手动采集，都重置下次采集时间
                     this.nextCollectTime = currentTime + this.autoCollectInterval;
                     this.log(`${isManualTrigger ? '手动' : '自动'}采集：更新下次采集时间为`, new Date(this.nextCollectTime).toLocaleString());
-                    
+
                     // 保存全局状态（同步到其他窗口）
                     this.saveGlobalState();
 
                     const articles = await this.fetchRSSData();
 
-                    // 直接使用服务器返回的7天数据，不需要复杂的去重逻辑
+                    // 直接使用服务器返回的7天数据，不进行去重处理
                     // 保存到历史数据
                     const historyRecord = {
                         timestamp: currentTime,
@@ -668,13 +624,13 @@
                         count: articles.length,
                         source: isManualTrigger ? 'manual' : 'auto',
                         totalFetched: articles.length, // 记录本次总共抓取的文章数
-                        duplicateCount: 0 // 服务器已处理去重，无重复
+                        duplicateCount: 0 // 不进行去重处理
                     };
 
                     this.historyData.push(historyRecord);
                     this.saveHistoryData();
 
-                    this.log(`${isManualTrigger ? '手动' : '自动'}采集完成：获取服务器7天数据 ${articles.length} 篇文章`);
+                    this.log(`${isManualTrigger ? '手动' : '自动'}采集完成：获取服务器7天数据 ${articles.length} 篇文章（不进行去重）`);
 
                     // 自动保存每日热词和统计（基于服务器返回的7天数据进行统计）
                     this.saveDailyHotWords();
@@ -685,7 +641,7 @@
                     this.notifyDialogUpdate();
 
                     // 记录到日志（仅在控制台输出，不保存到操作日志）
-                    this.log(`[${new Date(currentTime).toLocaleString()}] 热点统计${isManualTrigger ? '手动' : '自动'}采集：获取${articles.length}篇服务器数据`);
+                    this.log(`[${new Date(currentTime).toLocaleString()}] 热点统计${isManualTrigger ? '手动' : '自动'}采集：获取${articles.length}篇服务器数据（不去重）`);
 
                     // 采集成功，退出重试循环
                     return;
@@ -905,21 +861,21 @@
             // 2. 全大写的形式 (如 API > api)
             // 3. 有更多大写字母的形式
             // 4. 字母顺序较前的形式
-            
+
             const newUpperCount = (newWord.match(/[A-Z]/g) || []).length;
             const existingUpperCount = (existingWord.match(/[A-Z]/g) || []).length;
-            
+
             // 首字母大写优先
             const newFirstUpper = /^[A-Z]/.test(newWord);
             const existingFirstUpper = /^[A-Z]/.test(existingWord);
-            
+
             if (newFirstUpper && !existingFirstUpper) return true;
             if (!newFirstUpper && existingFirstUpper) return false;
-            
+
             // 大写字母多的优先
             if (newUpperCount > existingUpperCount) return true;
             if (newUpperCount < existingUpperCount) return false;
-            
+
             // 字母顺序优先
             return newWord < existingWord;
         },
@@ -931,20 +887,20 @@
                 '六': '6', '七': '7', '八': '8', '九': '9', '十': '10',
                 '零': '0', '○': '0'
             };
-            
+
             let normalized = word;
-            
+
             // 替换单个中文数字
             for (const [chinese, arabic] of Object.entries(chineseToArabic)) {
                 normalized = normalized.replace(new RegExp(chinese, 'g'), arabic);
             }
-            
+
             // 处理特殊组合（如：十一 -> 11, 二十 -> 20）
             normalized = normalized
                 .replace(/10([1-9])/g, '1$1')  // 十一 -> 11
                 .replace(/([2-9])10/g, '$10')  // 二十 -> 20
                 .replace(/([2-9])10([1-9])/g, '$1$2'); // 二十一 -> 21
-            
+
             return normalized;
         },
 
@@ -962,43 +918,19 @@
             this.log('开始分析词频...');
 
             if (useLocalData && this.historyData && this.historyData.length > 0) {
-                // 使用本地保存的7天历史数据进行分析
-                const seenArticles = new Map(); // 使用Map存储去重的文章，key为标准化的标识符
-
+                // 使用本地保存的7天历史数据进行分析，不进行去重处理
                 this.historyData.forEach(record => {
                     // 支持新旧数据格式
                     const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
 
                     articles.forEach(article => {
-                        // 基于发帖时间+发帖人+标题创建唯一标识符
-                        let articleKey = '';
-                        if (article.pubDate && article.author) {
-                            // 如果有发帖时间和作者，使用它们作为主要标识
-                            const dateStr = new Date(article.pubDate).toDateString(); // 只取日期部分
-                            const authorKey = this.normalizeAuthor(article.author);
-                            const titleKey = this.normalizeTitle(article.title);
-                            articleKey = `${dateStr}_${authorKey}_${titleKey}`;
-                        } else {
-                            // 降级方案：使用标准化标题作为标识
-                            articleKey = this.normalizeTitle(article.title);
-                        }
-
-                        if (articleKey && articleKey.length > 2) {
-                            if (!seenArticles.has(articleKey)) {
-                                seenArticles.set(articleKey, article);
-                                allTitles.push(article.title); // 保留原始标题用于分析
-                            }
-                        }
+                        // 直接添加所有标题，不进行去重
+                        allTitles.push(article.title);
                     });
                 });
 
-                this.log(`📚 使用本地7天数据进行分析，基于发帖时间+作者+标题去重后共 ${allTitles.length} 条标题`);
+                this.log(`📚 使用本地7天数据进行分析，直接统计所有标题共 ${allTitles.length} 条`);
                 this.log(`原始历史记录：${this.historyData.length} 次采集，${this.historyData.reduce((sum, r) => sum + (r.articles ? r.articles.length : r.titles?.length || 0), 0)} 条原始标题`);
-
-                // 调试信息：显示去重效果
-                const totalOriginal = this.historyData.reduce((sum, r) => sum + (r.articles ? r.articles.length : r.titles?.length || 0), 0);
-                const duplicatesRemoved = totalOriginal - allTitles.length;
-                this.log(`📊 去重效果：原始 ${totalOriginal} 条 → 去重后 ${allTitles.length} 条（移除 ${duplicatesRemoved} 条重复）`);
             } else {
                 this.log('⚠️ 没有本地历史数据，无法进行分析');
                 return [];
@@ -1043,7 +975,7 @@
                         this.log(`  - 有效性检查: ${this.isValidWord(word)}`);
                         this.log(`  - 完全匹配键值: "${word.toLowerCase()}"`);
                     }
-                    
+
                     if (this.isValidWord(word)) {
                         // 使用完全匹配模式：只按小写进行分组，不进行其他标准化
                         const exactKey = word.toLowerCase();
@@ -1083,7 +1015,7 @@
                 .slice(0, 50); // 取前50个
 
             this.log(`词频分析完成，共找到 ${exactWordCount.size} 个不同词汇（完全匹配模式）`);
-            
+
             // 调试：输出高频词汇的详细信息
             if (sortedWords.length > 0) {
                 this.log('=== 热词统计调试信息（完全匹配模式）===');
@@ -1102,9 +1034,9 @@
                     }
                 });
                 this.log('========================');
-                
+
                 // 特别检查alist是否在结果中
-                const alistResult = sortedWords.find(([word, count]) => 
+                const alistResult = sortedWords.find(([word, count]) =>
                     word.toLowerCase().includes('alist'));
                 if (alistResult) {
                     this.log(`🎯 找到alist相关词汇: "${alistResult[0]}" = ${alistResult[1]}次`);
@@ -1211,9 +1143,7 @@
             const targetDateStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
             const targetDateEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1);
 
-            // 使用本地保存的历史数据进行分析，但只分析指定日期的文章
-            const seenArticles = new Map(); // 使用Map存储去重的文章，key为标准化的标识符
-
+            // 使用本地保存的历史数据进行分析，但只分析指定日期的文章，不进行去重
             this.historyData.forEach(record => {
                 // 支持新旧数据格式
                 const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
@@ -1233,29 +1163,12 @@
                         return; // 不是目标日期的文章，跳过
                     }
 
-                    // 基于发帖时间+发帖人+标题创建唯一标识符
-                    let articleKey = '';
-                    if (article.pubDate && article.author) {
-                        // 如果有发帖时间和作者，使用它们作为主要标识
-                        const dateStr = new Date(article.pubDate).toDateString(); // 只取日期部分
-                        const authorKey = this.normalizeAuthor(article.author);
-                        const titleKey = this.normalizeTitle(article.title);
-                        articleKey = `${dateStr}_${authorKey}_${titleKey}`;
-                    } else {
-                        // 降级方案：使用标准化标题作为标识
-                        articleKey = this.normalizeTitle(article.title);
-                    }
-
-                    if (articleKey && articleKey.length > 2) {
-                        if (!seenArticles.has(articleKey)) {
-                            seenArticles.set(articleKey, article);
-                            allTitles.push(article.title); // 保留原始标题用于分析
-                        }
-                    }
+                    // 直接添加所有标题，不进行去重
+                    allTitles.push(article.title);
                 });
             });
 
-            this.log(`📚 ${targetDateStr} 数据分析，基于发帖时间+作者+标题去重后共 ${allTitles.length} 条标题`);
+            this.log(`📚 ${targetDateStr} 数据分析，直接统计所有标题共 ${allTitles.length} 条`);
 
             // 如果没有任何数据，直接返回空数组
             if (allTitles.length === 0) {
@@ -1314,7 +1227,7 @@
             // 为每个日期分别保存热词数据
             recentDates.forEach(dateInfo => {
                 const dateStr = dateInfo.dateStr;
-                
+
                 // 分析该日期的热词（≥2次的才记录）
                 const wordFrequency = this.analyzeWordFrequencyByDate(dateStr);
                 const filteredWords = wordFrequency.filter(([word, count]) => count >= 2);
@@ -1385,13 +1298,13 @@
             // 合并所有词汇（使用标准化键值）
             const allWords = new Map();
             const originalFormMap = new Map();
-            
+
             recentRecords.forEach(record => {
                 record.words.forEach(([word, count]) => {
                     const wordKey = this.getWordKey(word);
                     const currentCount = allWords.get(wordKey) || 0;
                     allWords.set(wordKey, currentCount + count);
-                    
+
                     // 记录更优的显示形式
                     if (!originalFormMap.has(wordKey) || this.isPreferredCase(word, originalFormMap.get(wordKey))) {
                         originalFormMap.set(wordKey, word);
@@ -1445,7 +1358,7 @@
                 const titleElement = dialog.querySelector('div[style*="font-weight: bold"][style*="color: #FF5722"]');
                 const listContainer = dialog.querySelector('div[style*="max-height: 50vh"][style*="overflow-y: auto"]');
                 // 查找包含"暂无热点数据"文本的空状态div
-                const emptyDiv = Array.from(dialog.querySelectorAll('div')).find(div => 
+                const emptyDiv = Array.from(dialog.querySelectorAll('div')).find(div =>
                     div.innerHTML.includes('📊 暂无热点数据'));
 
                             // 更新标题
@@ -1548,7 +1461,7 @@
                                     '点击"立即采集"获取服务器RSS数据'}
                             </div>
                         `;
-                        
+
                         // 插入到按钮组前面
                         const buttonGroup = dialog.querySelector('div[style*="margin-top: 15px"][style*="display: flex"]');
                         if (buttonGroup) {
@@ -1592,7 +1505,7 @@
 
             try {
                 let wordFrequency = [];
-                
+
                 // 检查是否已手动清理数据
                 if (this.dataCleared) {
                     this.log('数据已被手动清理，显示空状态');
@@ -1800,7 +1713,7 @@
             const updateStatsContent = () => {
                 const collectStatus = this.isMainWindow ? '⭕ 主窗口采集中' : '⚪ 从窗口同步中';
                 const historyStats = this.getHistoryStats();
-                
+
                 statsDiv.innerHTML = `
                     数据来源：服务器7天RSS数据<br>
                     文章总数：${historyStats.totalTitles} 篇<br>
@@ -1823,7 +1736,7 @@
                         this.loadGlobalState(true); // 静默更新
                     }
                     countdownElement.innerHTML = `下次采集：${getCountdown()}`;
-                    
+
                     // 实时更新窗口状态显示
                     updateStatsContent();
                 } else {
@@ -1938,7 +1851,7 @@
             if (cooldownState.isInCooldown) {
                 collectBtn.disabled = true;
                 collectBtn.textContent = `冷却中(${cooldownState.remainingSeconds}s)`;
-                
+
                 // 继续冷却倒计时
                 const timer = setInterval(() => {
                     const currentState = this.getCooldownState();
@@ -1954,7 +1867,7 @@
 
             collectBtn.onclick = async () => {
                 if (collectBtn.disabled) return; // 防止冷却期间重复点击
-                
+
                 collectBtn.disabled = true;
                 collectBtn.textContent = '采集中...';
                 try {
@@ -1963,11 +1876,11 @@
                     await this.performAutoCollect(true); // 标记为手动触发
                     // 直接刷新当前弹窗内容，而不是关闭重开
                     await this.refreshHotTopicsDialog();
-                    
+
                     // 设置冷却状态
                     const cooldownStartTime = Date.now();
                     this.setCooldownState(cooldownStartTime);
-                    
+
                     // 进入9秒冷却
                     let cooldown = 9;
                     collectBtn.textContent = `冷却中(${cooldown}s)`;
@@ -2103,18 +2016,18 @@
         getRecentDates(days = 7) {
             const dates = [];
             const today = new Date();
-            
+
             for (let i = 0; i < days; i++) {
                 const date = new Date(today);
                 date.setDate(today.getDate() - i);
-                
+
                 const dateStr = date.getFullYear() + '-' +
                               String(date.getMonth() + 1).padStart(2, '0') + '-' +
                               String(date.getDate()).padStart(2, '0');
-                
+
                 const displayStr = String(date.getMonth() + 1).padStart(2, '0') + '-' +
                                  String(date.getDate()).padStart(2, '0');
-                
+
                 dates.push({
                     date: date,
                     dateStr: dateStr,
@@ -2122,7 +2035,7 @@
                     timestamp: date.getTime()
                 });
             }
-            
+
             return dates;
         },
 
@@ -2212,14 +2125,14 @@
             `;
 
             const dateOptions = this.getRecentDates(7);
-            
+
             let selectedDates = new Set([dateOptions[0].dateStr]); // 默认选择今天
             let contentContainer = null;
 
             // 渲染选择按钮
             const renderSelectionButtons = () => {
                 daySelector.innerHTML = '';
-                
+
                 // 显示日期按钮，支持多选
                 dateOptions.forEach(dateOption => {
                     const btn = document.createElement('button');
@@ -2253,11 +2166,11 @@
                     renderContent([], [], '多选', '未选择日期');
                     return;
                 }
-                
+
                 // 获取选中日期的热词数据
                 const allWords = new Map();
                 const selectedRecords = [];
-                
+
                 selectedDates.forEach(dateStr => {
                     // 使用新的按日期查询方法，确保数据准确性
                     const hotWords = this.getHotWordsByDate(dateStr);
@@ -2268,25 +2181,25 @@
                             words: hotWords,
                             totalTitles: hotWords.reduce((sum, [word, count]) => sum + count, 0)
                         });
-                        
+
                         hotWords.forEach(([word, count]) => {
                             const currentCount = allWords.get(word) || 0;
                             allWords.set(word, currentCount + count);
                         });
                     }
                 });
-                
+
                 // 转换为排序数组
                 const hotWords = Array.from(allWords.entries())
                     .filter(([word, count]) => count >= 2)
                     .sort((a, b) => b[1] - a[1])
                     .slice(0, 50);
-                
+
                 const selectedDateLabels = Array.from(selectedDates).sort().map(dateStr => {
                     const date = dateOptions.find(d => d.dateStr === dateStr);
                     return date ? date.displayStr : dateStr;
                 }).join(', ');
-                
+
                 renderContent(hotWords, selectedRecords, '多选', selectedDateLabels);
             };
 
@@ -2331,7 +2244,7 @@
                  const updateHistoryStats = () => {
                      const windowStatus = this.isMainWindow ? '主窗口' : '从窗口';
                      const collectStatus = this.isMainWindow ? '⭕ 主窗口采集中' : '⚪ 从窗口同步中';
-                     
+
                      statsDiv.innerHTML = `
                          查看模式：${modeLabel}（${periodLabel}）<br>
                          数据记录：${historyRecords.length > 0 ? '有' : '无'}<br>
@@ -2355,7 +2268,7 @@
                              this.loadGlobalState(true); // 静默更新
                          }
                          countdownElement.innerHTML = `下次采集：${getCountdown()}`;
-                         
+
                          // 实时更新窗口状态显示
                          updateHistoryStats();
                      } else {
@@ -2495,7 +2408,7 @@
                     const now = Date.now();
                     const elapsed = now - cooldownData.startTime;
                     const remaining = cooldownData.duration - elapsed;
-                    
+
                     if (remaining > 0) {
                         return {
                             isInCooldown: true,
@@ -2621,40 +2534,22 @@
                 return { hourlyStats, weekdayStats, totalPosts, validTimePosts };
             }
 
-            // 去重处理，避免重复统计
-            const seenArticles = new Map();
-
+            // 直接统计所有文章，不进行去重处理
             this.historyData.forEach(record => {
                 const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
 
                 articles.forEach(article => {
-                    // 基于发帖时间+发帖人+标题创建唯一标识符
-                    let articleKey = '';
-                    if (article.pubDate && article.author) {
-                        const dateStr = new Date(article.pubDate).toDateString();
-                        const authorKey = this.normalizeAuthor(article.author);
-                        const titleKey = this.normalizeTitle(article.title);
-                        articleKey = `${dateStr}_${authorKey}_${titleKey}`;
-                    } else {
-                        articleKey = this.normalizeTitle(article.title);
-                    }
+                    totalPosts++;
 
-                    if (articleKey && articleKey.length > 2) {
-                        if (!seenArticles.has(articleKey)) {
-                            seenArticles.set(articleKey, article);
-                            totalPosts++;
+                    // 分析时间分布（只有有效时间的文章）
+                    if (article.pubDate) {
+                        const postDate = new Date(article.pubDate);
+                        const hour = postDate.getHours();
+                        const weekday = postDate.getDay(); // 0=周日, 1=周一, ..., 6=周六
 
-                            // 分析时间分布（只有有效时间的文章）
-                            if (article.pubDate) {
-                                const postDate = new Date(article.pubDate);
-                                const hour = postDate.getHours();
-                                const weekday = postDate.getDay(); // 0=周日, 1=周一, ..., 6=周六
-
-                                hourlyStats[hour]++;
-                                weekdayStats[weekday]++;
-                                validTimePosts++;
-                            }
-                        }
+                        hourlyStats[hour]++;
+                        weekdayStats[weekday]++;
+                        validTimePosts++;
                     }
                 });
             });
@@ -2685,9 +2580,7 @@
             const targetDateStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
             const targetDateEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1);
 
-            // 去重处理，避免重复统计
-            const seenArticles = new Map();
-
+            // 直接统计所有文章，不进行去重处理
             this.historyData.forEach(record => {
                 const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
 
@@ -2706,33 +2599,17 @@
                         return; // 不是目标日期的文章，跳过
                     }
 
-                    // 基于发帖时间+发帖人+标题创建唯一标识符
-                    let articleKey = '';
-                    if (article.pubDate && article.author) {
-                        const dateStr = new Date(article.pubDate).toDateString();
-                        const authorKey = this.normalizeAuthor(article.author);
-                        const titleKey = this.normalizeTitle(article.title);
-                        articleKey = `${dateStr}_${authorKey}_${titleKey}`;
-                    } else {
-                        articleKey = this.normalizeTitle(article.title);
-                    }
+                    totalPosts++;
 
-                    if (articleKey && articleKey.length > 2) {
-                        if (!seenArticles.has(articleKey)) {
-                            seenArticles.set(articleKey, article);
-                            totalPosts++;
+                    // 分析时间分布（只有有效时间的文章）
+                    if (article.pubDate) {
+                        const postDate = new Date(article.pubDate);
+                        const hour = postDate.getHours();
+                        const weekday = postDate.getDay(); // 0=周日, 1=周一, ..., 6=周六
 
-                            // 分析时间分布（只有有效时间的文章）
-                            if (article.pubDate) {
-                                const postDate = new Date(article.pubDate);
-                                const hour = postDate.getHours();
-                                const weekday = postDate.getDay(); // 0=周日, 1=周一, ..., 6=周六
-
-                                hourlyStats[hour]++;
-                                weekdayStats[weekday]++;
-                                validTimePosts++;
-                            }
-                        }
+                        hourlyStats[hour]++;
+                        weekdayStats[weekday]++;
+                        validTimePosts++;
                     }
                 });
             });
@@ -2754,36 +2631,18 @@
                 return [];
             }
 
-            // 去重处理，避免重复统计
-            const seenArticles = new Map();
-
+            // 直接统计所有文章，不进行去重处理
             this.historyData.forEach(record => {
                 const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
 
                 articles.forEach(article => {
-                    // 基于发帖时间+发帖人+标题创建唯一标识符
-                    let articleKey = '';
-                    if (article.pubDate && article.author) {
-                        const dateStr = new Date(article.pubDate).toDateString();
-                        const authorKey = this.normalizeAuthor(article.author);
-                        const titleKey = this.normalizeTitle(article.title);
-                        articleKey = `${dateStr}_${authorKey}_${titleKey}`;
-                    } else {
-                        articleKey = this.normalizeTitle(article.title);
-                    }
+                    totalPosts++;
 
-                    if (articleKey && articleKey.length > 2) {
-                        if (!seenArticles.has(articleKey)) {
-                            seenArticles.set(articleKey, article);
-                            totalPosts++;
-
-                            // 统计用户发帖数（只统计有作者信息的）
-                            if (article.author && article.author.trim()) {
-                                const normalizedAuthor = this.normalizeAuthor(article.author);
-                                const currentCount = userPostCount.get(normalizedAuthor) || 0;
-                                userPostCount.set(normalizedAuthor, currentCount + 1);
-                            }
-                        }
+                    // 统计用户发帖数（只统计有作者信息的）
+                    if (article.author && article.author.trim()) {
+                        const normalizedAuthor = this.normalizeAuthor(article.author);
+                        const currentCount = userPostCount.get(normalizedAuthor) || 0;
+                        userPostCount.set(normalizedAuthor, currentCount + 1);
                     }
                 });
             });
@@ -2825,9 +2684,7 @@
             const targetDateStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
             const targetDateEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1);
 
-            // 去重处理，避免重复统计
-            const seenArticles = new Map();
-
+            // 直接统计所有文章，不进行去重处理
             this.historyData.forEach(record => {
                 const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
 
@@ -2846,29 +2703,13 @@
                         return; // 不是目标日期的文章，跳过
                     }
 
-                    // 基于发帖时间+发帖人+标题创建唯一标识符
-                    let articleKey = '';
-                    if (article.pubDate && article.author) {
-                        const dateStr = new Date(article.pubDate).toDateString();
-                        const authorKey = this.normalizeAuthor(article.author);
-                        const titleKey = this.normalizeTitle(article.title);
-                        articleKey = `${dateStr}_${authorKey}_${titleKey}`;
-                    } else {
-                        articleKey = this.normalizeTitle(article.title);
-                    }
+                    totalPosts++;
 
-                    if (articleKey && articleKey.length > 2) {
-                        if (!seenArticles.has(articleKey)) {
-                            seenArticles.set(articleKey, article);
-                            totalPosts++;
-
-                            // 统计用户发帖数（只统计有作者信息的）
-                            if (article.author && article.author.trim()) {
-                                const normalizedAuthor = this.normalizeAuthor(article.author);
-                                const currentCount = userPostCount.get(normalizedAuthor) || 0;
-                                userPostCount.set(normalizedAuthor, currentCount + 1);
-                            }
-                        }
+                    // 统计用户发帖数（只统计有作者信息的）
+                    if (article.author && article.author.trim()) {
+                        const normalizedAuthor = this.normalizeAuthor(article.author);
+                        const currentCount = userPostCount.get(normalizedAuthor) || 0;
+                        userPostCount.set(normalizedAuthor, currentCount + 1);
                     }
                 });
             });
@@ -2893,7 +2734,7 @@
             // 为每个日期分别保存时间分布数据
             recentDates.forEach(dateInfo => {
                 const dateStr = dateInfo.dateStr;
-                
+
                 // 分析该日期的时间分布
                 const timeDistribution = this.analyzeTimeDistributionByDate(dateStr);
 
@@ -2939,7 +2780,7 @@
             if (hasUpdatedData) {
                 // 按日期降序排序
                 this.timeDistributionHistory.sort((a, b) => b.date - a.date);
-                
+
                 // 保存到本地存储
                 this.saveTimeDistributionHistory();
             }
@@ -2954,7 +2795,7 @@
             // 为每个日期分别保存用户统计数据
             recentDates.forEach(dateInfo => {
                 const dateStr = dateInfo.dateStr;
-                
+
                 // 分析该日期的用户统计（≥2次发帖的用户）
                 const userStats = this.analyzeUserStatsByDate(dateStr);
 
@@ -2996,7 +2837,7 @@
             if (hasUpdatedData) {
                 // 按日期降序排序
                 this.userStatsHistory.sort((a, b) => b.date - a.date);
-                
+
                 // 保存到本地存储
                 this.saveUserStatsHistory();
             }
@@ -3164,14 +3005,14 @@
             `;
 
             const dateOptions = this.getRecentDates(7);
-            
+
             let selectedDates = new Set([dateOptions[0].dateStr]); // 默认选择今天
             let contentContainer = null;
 
             // 渲染选择按钮
             const renderSelectionButtons = () => {
                 daySelector.innerHTML = '';
-                
+
                 // 显示日期按钮，支持多选
                 dateOptions.forEach(dateOption => {
                     const btn = document.createElement('button');
@@ -3205,13 +3046,13 @@
                     renderTimeDistributionContent({ hourlyStats: new Array(24).fill(0), weekdayStats: new Array(7).fill(0), totalPosts: 0, validTimePosts: 0 }, '多选', '未选择日期');
                     return;
                 }
-                
+
                 // 获取选中日期的时间分布数据
                 const mergedHourlyStats = new Array(24).fill(0);
                 const mergedWeekdayStats = new Array(7).fill(0);
                 let totalPosts = 0;
                 let validTimePosts = 0;
-                
+
                 selectedDates.forEach(dateStr => {
                     const timeDistribution = this.getTimeDistributionByDate(dateStr);
                     timeDistribution.hourlyStats.forEach((count, hour) => {
@@ -3223,12 +3064,12 @@
                     totalPosts += timeDistribution.totalPosts;
                     validTimePosts += timeDistribution.validTimePosts;
                 });
-                
+
                 const selectedDateLabels = Array.from(selectedDates).sort().map(dateStr => {
                     const date = dateOptions.find(d => d.dateStr === dateStr);
                     return date ? date.displayStr : dateStr;
                 }).join(', ');
-                
+
                 renderTimeDistributionContent({ hourlyStats: mergedHourlyStats, weekdayStats: mergedWeekdayStats, totalPosts, validTimePosts }, '多选', selectedDateLabels);
             };
 
@@ -3484,14 +3325,14 @@
             `;
 
             const dateOptions = this.getRecentDates(7);
-            
+
             let selectedDates = new Set([dateOptions[0].dateStr]); // 默认选择今天
             let contentContainer = null;
 
             // 渲染选择按钮
             const renderSelectionButtons = () => {
                 daySelector.innerHTML = '';
-                
+
                 // 显示日期按钮，支持多选
                 dateOptions.forEach(dateOption => {
                     const btn = document.createElement('button');
@@ -3525,10 +3366,10 @@
                     renderUserStatsContent([], '多选', '未选择日期');
                     return;
                 }
-                
+
                 // 获取选中日期的用户统计数据
                 const allUsers = new Map();
-                
+
                 selectedDates.forEach(dateStr => {
                     const userStats = this.getUserStatsByDate(dateStr);
                     userStats.forEach(([user, count]) => {
@@ -3536,18 +3377,18 @@
                         allUsers.set(user, currentCount + count);
                     });
                 });
-                
+
                 // 转换为排序数组
                 const mergedUserStats = Array.from(allUsers.entries())
                     .filter(([user, count]) => count >= 2)
                     .sort((a, b) => b[1] - a[1])
                     .slice(0, 50);
-                
+
                 const selectedDateLabels = Array.from(selectedDates).sort().map(dateStr => {
                     const date = dateOptions.find(d => d.dateStr === dateStr);
                     return date ? date.displayStr : dateStr;
                 }).join(', ');
-                
+
                 renderUserStatsContent(mergedUserStats, '多选', selectedDateLabels);
             };
 
