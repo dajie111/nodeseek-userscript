@@ -947,10 +947,16 @@
 
             // 用于调试：记录每个词汇的来源标题
             const wordSourceMap = new Map();
+            
+            // 用于记录标题中已统计过的词汇，确保每个标题中的相同词汇只统计一次
+            const processedWordsInTitle = new Map();
 
             allTitles.forEach(title => {
                 // 预处理：移除特殊字符，但保留中文、英文、数字
                 const cleanTitle = title.replace(/[^\u4e00-\u9fff\w\s]/g, ' ');
+                
+                // 当前标题中已处理的词汇集合
+                const titleProcessedWords = new Set();
 
                 // 分词
                 const words = this.segmentChinese(cleanTitle);
@@ -965,9 +971,11 @@
                     const isHgcWord = word.toLowerCase().includes('hgc');
                     // 新增：追踪"包push"相关词汇
                     const isPushWord = word.includes('包push') || word.includes('push');
+                    // 新增：追踪"PHX"相关词汇
+                    const isPhxWord = word.toLowerCase().includes('phx');
 
-                    if (isTargetWord || (isEnglishWord && word.length >= 4) || isCargoWord || isHgcWord || isPushWord) {
-                        this.log(`🔍 追踪词汇 "${word}" (${isTargetWord ? 'alist目标' : isEnglishWord ? '英文词汇' : isCargoWord ? '放货相关' : isHgcWord ? 'hgc相关' : 'push相关'}):`);
+                    if (isTargetWord || (isEnglishWord && word.length >= 4) || isCargoWord || isHgcWord || isPushWord || isPhxWord) {
+                        this.log(`🔍 追踪词汇 "${word}" (${isPhxWord ? 'PHX目标' : isTargetWord ? 'alist目标' : isEnglishWord ? '英文词汇' : isCargoWord ? '放货相关' : isHgcWord ? 'hgc相关' : 'push相关'}):`);
                         this.log(`  - 来源标题: "${title}"`);
                         this.log(`  - 长度: ${word.length}`);
                         this.log(`  - 停止词检查: ${this.stopWords.has(word.toLowerCase())}`);
@@ -979,6 +987,14 @@
                     if (this.isValidWord(word)) {
                         // 使用完全匹配模式：只按小写进行分组，不进行其他标准化
                         const exactKey = word.toLowerCase();
+                        
+                        // 确保每个标题中的相同词汇只统计一次
+                        if (titleProcessedWords.has(exactKey)) {
+                            return; // 跳过已处理的词汇
+                        }
+                        
+                        // 标记该词在当前标题中已处理
+                        titleProcessedWords.add(exactKey);
 
                         if (!exactWordCount.has(exactKey)) {
                             exactWordCount.set(exactKey, {word: word, count: 0});
@@ -997,12 +1013,12 @@
                             current.word = word;
                         }
 
-                        if (isTargetWord || (isEnglishWord && word.length >= 4) || isCargoWord || isHgcWord || isPushWord) {
+                        if (isPhxWord || isTargetWord || (isEnglishWord && word.length >= 4) || isCargoWord || isHgcWord || isPushWord) {
                             this.log(`  ✅ "${word}" 被统计，当前计数: ${current.count}`);
                             this.log(`  - 完全匹配键值: "${exactKey}"`);
                             this.log(`  - 累计来源: ${wordSourceMap.get(exactKey).length} 个标题`);
                         }
-                    } else if (isTargetWord || (isEnglishWord && word.length >= 4) || isCargoWord || isHgcWord || isPushWord) {
+                    } else if (isPhxWord || isTargetWord || (isEnglishWord && word.length >= 4) || isCargoWord || isHgcWord || isPushWord) {
                         this.log(`  ❌ "${word}" 被过滤掉`);
                     }
                 });
@@ -1178,10 +1194,16 @@
 
             // 用于记录每个词的原始大小写形式（完全匹配模式）
             const exactWordCount = new Map(); // key为小写形式，value为{word: 原始形式, count: 计数}
+            
+            // 用于调试：记录每个词汇的来源标题
+            const wordSourceMap = new Map();
 
             allTitles.forEach(title => {
                 // 预处理：移除特殊字符，但保留中文、英文、数字
                 const cleanTitle = title.replace(/[^\u4e00-\u9fff\w\s]/g, ' ');
+                
+                // 当前标题中已处理的词汇集合
+                const titleProcessedWords = new Set();
 
                 // 分词
                 const words = this.segmentChinese(cleanTitle);
@@ -1190,13 +1212,25 @@
                     if (this.isValidWord(word)) {
                         // 使用完全匹配模式：只按小写进行分组，不进行其他标准化
                         const exactKey = word.toLowerCase();
+                        
+                        // 确保每个标题中的相同词汇只统计一次
+                        if (titleProcessedWords.has(exactKey)) {
+                            return; // 跳过已处理的词汇
+                        }
+                        
+                        // 标记该词在当前标题中已处理
+                        titleProcessedWords.add(exactKey);
 
                         if (!exactWordCount.has(exactKey)) {
                             exactWordCount.set(exactKey, {word: word, count: 0});
+                            wordSourceMap.set(exactKey, []);
                         }
 
                         // 增加计数
                         exactWordCount.get(exactKey).count++;
+                        
+                        // 记录来源
+                        wordSourceMap.get(exactKey).push(title);
 
                         // 更新显示形式（优先保存更"标准"的形式）
                         const current = exactWordCount.get(exactKey);
