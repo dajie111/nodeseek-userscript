@@ -27,7 +27,7 @@
 
             // 启动网页保活机制
             this.setupKeepAlive();
-
+            
             // 多窗口协调
             this.setupMultiWindow();
             
@@ -573,11 +573,11 @@
             
             const signStatus = localStorage.getItem(STORAGE_KEYS.signStatus);
             
-            // 如果状态是500，停止签到
+            // 如果状态是500，停止签到（静默处理）
             if (signStatus === '500') {
                 return;
             }
-            
+
             // 执行签到
             await this.performSignIn();
         }
@@ -593,20 +593,19 @@
                     }
                 });
 
-                // 如果返回500，记录状态并停止签到
+                // 如果返回500，记录状态并停止签到（静默处理）
                 if (response.status === 500) {
                     localStorage.setItem(STORAGE_KEYS.signStatus, '500');
                     return;
                 }
 
-                // 签到成功时提示
+                // 根据响应状态处理，只在成功时输出日志
                 if (response.ok) {
                     this.addLog('✅ 签到成功');
                 }
-                // 签到失败不提示，静默处理
 
             } catch (error) {
-                // 静默处理错误，不输出日志
+                // 签到异常时静默处理
             }
         }
 
@@ -635,9 +634,10 @@
         // 清除状态并立即签到
         async clearStatusAndSign() {
             localStorage.removeItem(STORAGE_KEYS.signStatus);
+            localStorage.removeItem('nodeseek_last_status_notify'); // 清除状态提示记录
             localStorage.setItem(STORAGE_KEYS.lastClearTime, Date.now().toString());
             
-            // 立即执行签到
+            // 静默重置状态，立即执行签到
             await this.performSignIn();
         }
 
@@ -666,9 +666,10 @@
         // 特殊时间清理状态并签到
         async specialClearAndSign() {
             localStorage.removeItem(STORAGE_KEYS.signStatus);
+            localStorage.removeItem('nodeseek_last_status_notify'); // 清除状态提示记录
             localStorage.setItem(STORAGE_KEYS.lastClearTime, Date.now().toString());
             
-            // 立即执行签到
+            // 静默重置状态，立即执行签到
             await this.performSignIn();
         }
 
