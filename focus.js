@@ -1024,9 +1024,10 @@
                 });
             });
 
-            // 转换为数组并排序
+            // 转换为数组并排序，只保留≥3次的热词
             const sortedWords = Array.from(exactWordCount.entries())
                 .map(([exactKey, data]) => [data.word, data.count])
+                .filter(([word, count]) => count >= 3)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 50); // 取前50个
 
@@ -1241,9 +1242,10 @@
                 });
             });
 
-            // 转换为数组并排序
+            // 转换为数组并排序，只保留≥3次的热词
             const sortedWords = Array.from(exactWordCount.entries())
                 .map(([exactKey, data]) => [data.word, data.count])
+                .filter(([word, count]) => count >= 3)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 50); // 取前50个
 
@@ -1262,9 +1264,9 @@
             recentDates.forEach(dateInfo => {
                 const dateStr = dateInfo.dateStr;
 
-                // 分析该日期的热词（≥2次的才记录）
+                // 分析该日期的热词（≥3次的才记录）
                 const wordFrequency = this.analyzeWordFrequencyByDate(dateStr);
-                const filteredWords = wordFrequency.filter(([word, count]) => count >= 2);
+                const filteredWords = wordFrequency.filter(([word, count]) => count >= 3);
 
                 // 检查该日期是否已有记录
                 const existingIndex = this.hotWordsHistory.findIndex(record => record.dateStr === dateStr);
@@ -1317,7 +1319,7 @@
         // 获取指定日期的热词统计
         getHotWordsByDate(dateStr) {
             // 优先从原始数据直接计算，确保数据准确性
-            return this.analyzeWordFrequencyByDate(dateStr).filter(([word, count]) => count >= 2);
+            return this.analyzeWordFrequencyByDate(dateStr).filter(([word, count]) => count >= 3);
         },
 
         // 获取指定天数的热词统计
@@ -1346,10 +1348,10 @@
                 });
             });
 
-            // 转换为数组并排序，只保留大于2次的，恢复原始形式
+            // 转换为数组并排序，只保留≥3次的，恢复原始形式
             const sortedWords = Array.from(allWords.entries())
                 .map(([wordKey, count]) => [originalFormMap.get(wordKey), count])
-                .filter(([word, count]) => count >= 2)
+                .filter(([word, count]) => count >= 3)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 50);
 
@@ -1384,9 +1386,9 @@
                 // 分析词频（基于本地7天数据）
                 let wordFrequency = this.analyzeWordFrequency(true);
                 this.log('refreshHotTopicsDialog - 分析结果（过滤前）:', wordFrequency.length, '个词汇');
-                // 过滤出现次数≥2的热词
-                wordFrequency = wordFrequency.filter(([word, count]) => count >= 2);
-                this.log('refreshHotTopicsDialog - 过滤后（≥2次）:', wordFrequency.length, '个热词');
+                // 过滤出现次数≥3的热词
+                wordFrequency = wordFrequency.filter(([word, count]) => count >= 3);
+                this.log('refreshHotTopicsDialog - 过滤后（≥3次）:', wordFrequency.length, '个热词');
 
                 // 找到需要更新的元素
                 const titleElement = dialog.querySelector('div[style*="font-weight: bold"][style*="color: #FF5722"]');
@@ -1551,9 +1553,9 @@
                     // 分析词频（基于本地7天数据）
                     wordFrequency = this.analyzeWordFrequency(true);
                     this.log('showHotTopicsDialog - 分析结果（过滤前）:', wordFrequency.length, '个词汇');
-                    // 过滤出现次数≥2的热词
-                    wordFrequency = wordFrequency.filter(([word, count]) => count >= 2);
-                    this.log('showHotTopicsDialog - 过滤后（≥2次）:', wordFrequency.length, '个热词');
+                    // 过滤出现次数≥3的热词
+                    wordFrequency = wordFrequency.filter(([word, count]) => count >= 3);
+                    this.log('showHotTopicsDialog - 过滤后（≥3次）:', wordFrequency.length, '个热词');
                 }
 
                 // 移除加载提示
@@ -1751,7 +1753,7 @@
                 statsDiv.innerHTML = `
                     数据来源：服务器7天RSS数据<br>
                     文章总数：${historyStats.totalTitles} 篇<br>
-                    热门词汇：${wordFrequency.length} 个（≥2次）<br>
+                    热门词汇：${wordFrequency.length} 个（≥3次）<br>
                     <span style="color: #28a745;">${collectStatus} (30分钟间隔)</span><br>
                     上次采集：${formatTime(this.lastCollectTime)}<br>
                     <span id="countdown-display" style="color: #007bff;">下次采集：${getCountdown()}</span>
@@ -1849,7 +1851,7 @@
                         <div style="font-size: 12px; color: #999;">
                             ${historyStats.totalTitles === 0 ?
                                 '点击"立即采集"获取服务器RSS数据' :
-                                '当前7天数据中无出现≥2次的热词'}
+                                '当前7天数据中无出现≥3次的热词'}
                         </div>
                     `;
                 dialog.appendChild(emptyDiv);
@@ -2282,7 +2284,7 @@
                      statsDiv.innerHTML = `
                          查看模式：${modeLabel}（${periodLabel}）<br>
                          数据记录：${historyRecords.length > 0 ? '有' : '无'}<br>
-                         热门词汇：${hotWords.length} 个（≥2次）<br>
+                         热门词汇：${hotWords.length} 个（≥3次）<br>
                          数据更新：${historyRecords.length > 0 ? (historyRecords[0].dateStr || '未知') : '无数据'}<br>
                          ${collectStatus}<br>
                          上次采集：${formatTime(this.lastCollectTime)}<br>
@@ -2376,7 +2378,7 @@
                     emptyDiv.innerHTML = `
                         <div style="font-size: 14px; margin-bottom: 8px;">📊 ${periodLabel}暂无热词数据</div>
                         <div style="font-size: 12px; color: #999;">
-                            热词需要出现≥2次才会被记录
+                            热词需要出现≥3次才会被记录
                         </div>
                     `;
                     contentContainer.appendChild(emptyDiv);
@@ -2681,13 +2683,13 @@
                 });
             });
 
-            // 转换为数组并排序，只保留≥2次发帖的用户
+            // 转换为数组并排序，只保留≥3次发帖的用户
             const sortedUsers = Array.from(userPostCount.entries())
-                .filter(([user, count]) => count >= 2)
+                .filter(([user, count]) => count >= 3)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 50); // 取前50个活跃用户
 
-            this.log(`用户统计分析完成：总文章 ${totalPosts} 篇，活跃用户（≥2次发帖）${sortedUsers.length} 个`);
+            this.log(`用户统计分析完成：总文章 ${totalPosts} 篇，活跃用户（≥3次发帖）${sortedUsers.length} 个`);
 
             // 调试：输出前几个活跃用户
             if (sortedUsers.length > 0) {
@@ -2748,13 +2750,13 @@
                 });
             });
 
-            // 转换为数组并排序，只保留≥2次发帖的用户
+            // 转换为数组并排序，只保留≥3次发帖的用户
             const sortedUsers = Array.from(userPostCount.entries())
-                .filter(([user, count]) => count >= 2)
+                .filter(([user, count]) => count >= 3)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 50); // 取前50个活跃用户
 
-            this.log(`${targetDateStr} 用户统计分析完成：总文章 ${totalPosts} 篇，活跃用户（≥2次发帖）${sortedUsers.length} 个`);
+            this.log(`${targetDateStr} 用户统计分析完成：总文章 ${totalPosts} 篇，活跃用户（≥3次发帖）${sortedUsers.length} 个`);
 
             return sortedUsers;
         },
@@ -2830,7 +2832,7 @@
             recentDates.forEach(dateInfo => {
                 const dateStr = dateInfo.dateStr;
 
-                // 分析该日期的用户统计（≥2次发帖的用户）
+                // 分析该日期的用户统计（≥3次发帖的用户）
                 const userStats = this.analyzeUserStatsByDate(dateStr);
 
                 // 检查该日期是否已有记录
@@ -2937,9 +2939,9 @@
                 });
             });
 
-            // 转换为数组并排序，只保留≥2次发帖的用户
+            // 转换为数组并排序，只保留≥3次发帖的用户
             const sortedUsers = Array.from(allUsers.entries())
-                .filter(([user, count]) => count >= 2)
+                .filter(([user, count]) => count >= 3)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 50);
 
@@ -3448,7 +3450,7 @@
                 statsDiv.innerHTML = `
                     查看模式：${modeLabel}（${periodLabel}）<br>
                     统计数据：${userStats.length > 0 ? '有' : '无'}<br>
-                    活跃用户：${userStats.length} 个（≥2次发帖）<br>
+                    活跃用户：${userStats.length} 个（≥3次发帖）<br>
                     活跃发帖：${totalPosts} 篇<br>
                     平均发帖：${userStats.length > 0 ? Math.round(totalPosts / userStats.length) : 0} 篇/用户
                 `;
@@ -3517,7 +3519,7 @@
                     emptyDiv.innerHTML = `
                         <div style="font-size: 14px; margin-bottom: 8px;">👥 ${periodLabel}暂无活跃用户数据</div>
                         <div style="font-size: 12px; color: #999;">
-                            活跃用户需要发帖≥2次才会被统计
+                            活跃用户需要发帖≥3次才会被统计
                         </div>
                     `;
                     contentContainer.appendChild(emptyDiv);
