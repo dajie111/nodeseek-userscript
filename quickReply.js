@@ -3,694 +3,1199 @@
     'use strict';
 
     // 存储键
-    const QUICK_REPLY_KEY = 'nodeseek_quick_replies';
-    
-    // 默认的预设回复文本
-    const DEFAULT_REPLIES = [
-        '感谢分享！',
-        '支持楼主！',
-        '学到了，谢谢！',
-        '同求！',
-        '已收藏，感谢！',
-        '期待更多分享！',
-        '赞同楼主观点',
-        '很实用的内容',
-        '楼主辛苦了！',
-        '有用的信息，mark一下'
-    ];
+    const QUICK_REPLY_KEY = 'nodeseek_quick_reply';
+    const QUICK_REPLY_CATEGORIES_KEY = 'nodeseek_quick_reply_categories';
 
-    // 获取快捷回复列表
+    // 默认预设回复文本和分类
+    const DEFAULT_REPLIES = {
+        '抽奖板块': [
+            '感谢分享，参与抽奖！',
+            '楼主好人！支持抽奖活动！',
+            '参与抽奖，感谢楼主！',
+            '好活动，支持一下！',
+            '感谢楼主的慷慨分享！'
+        ],
+        '感谢板块': [
+            '感谢楼主的无私分享！',
+            '非常感谢，收藏了！',
+            '楼主好人，感谢分享！',
+            '谢谢分享，很有用！',
+            '感谢提供，学习了！'
+        ],
+        '学习板块': [
+            '学习了，感谢分享经验！',
+            '很有用的内容，收藏学习！',
+            '感谢楼主的详细教程！',
+            '学到了新知识，谢谢！',
+            '非常实用，马克学习！'
+        ],
+        '发问板块': [
+            '遇到同样问题，关注答案',
+            '同求解答，感谢！',
+            '我也想知道，坐等大神！',
+            '期待有经验的朋友分享！',
+            '关注问题，学习一下！'
+        ],
+        '通用回复': [
+            '感谢分享！',
+            '支持楼主！',
+            '很不错的内容！',
+            '学习了！',
+            '收藏了，谢谢！'
+        ]
+    };
+
+    // 获取快捷回复数据
     function getQuickReplies() {
         const stored = localStorage.getItem(QUICK_REPLY_KEY);
         if (stored) {
             try {
-                const parsed = JSON.parse(stored);
-                // 确保数据格式正确，包含默认回复和自定义回复
-                return {
-                    preset: parsed.preset || DEFAULT_REPLIES,
-                    custom: parsed.custom || []
-                };
+                return JSON.parse(stored);
             } catch (e) {
-                console.log('快捷回复数据格式错误，使用默认数据');
+                console.error('解析快捷回复数据失败:', e);
             }
         }
-        return {
-            preset: DEFAULT_REPLIES,
-            custom: []
-        };
+        // 返回默认数据
+        return JSON.parse(JSON.stringify(DEFAULT_REPLIES));
     }
 
-    // 保存快捷回复列表
-    function saveQuickReplies(replies) {
-        localStorage.setItem(QUICK_REPLY_KEY, JSON.stringify(replies));
+    // 保存快捷回复数据
+    function setQuickReplies(data) {
+        localStorage.setItem(QUICK_REPLY_KEY, JSON.stringify(data));
     }
 
-    // 添加自定义回复
-    function addCustomReply(text) {
-        if (!text || !text.trim()) return false;
+    // 获取分类列表
+    function getCategories() {
+        const replies = getQuickReplies();
+        return Object.keys(replies);
+    }
+
+    // 添加新分类
+    function addCategory(categoryName) {
+        if (!categoryName || categoryName.trim() === '') return false;
         
         const replies = getQuickReplies();
-        const trimmedText = text.trim();
+        const trimmedName = categoryName.trim();
         
-        // 检查是否已存在
-        const allReplies = [...replies.preset, ...replies.custom];
-        if (allReplies.includes(trimmedText)) {
-            return false; // 已存在
+        if (replies[trimmedName]) {
+            return false; // 分类已存在
         }
         
-        replies.custom.push(trimmedText);
-        saveQuickReplies(replies);
+        replies[trimmedName] = [];
+        setQuickReplies(replies);
         return true;
     }
 
-    // 删除自定义回复
-    function removeCustomReply(text) {
+    // 删除分类
+    function deleteCategory(categoryName) {
         const replies = getQuickReplies();
-        const index = replies.custom.indexOf(text);
-        if (index > -1) {
-            replies.custom.splice(index, 1);
-            saveQuickReplies(replies);
+        if (replies[categoryName]) {
+            delete replies[categoryName];
+            setQuickReplies(replies);
             return true;
         }
         return false;
     }
 
-    // 重置预设回复为默认值
-    function resetPresetReplies() {
+    // 重命名分类
+    function renameCategory(oldName, newName) {
+        if (!newName || newName.trim() === '' || oldName === newName) return false;
+        
         const replies = getQuickReplies();
-        replies.preset = [...DEFAULT_REPLIES];
-        saveQuickReplies(replies);
+        const trimmedNewName = newName.trim();
+        
+        if (!replies[oldName] || replies[trimmedNewName]) {
+            return false; // 原分类不存在或新分类名已存在
+        }
+        
+        replies[trimmedNewName] = replies[oldName];
+        delete replies[oldName];
+        setQuickReplies(replies);
+        return true;
     }
 
-    // 获取CodeMirror实例
-    function getCodeMirrorInstance() {
-        const editorWrapper = document.querySelector('#cm-editor-wrapper');
-        if (editorWrapper && editorWrapper.__codemirror) {
-            return editorWrapper.__codemirror;
+    // 获取分类下的回复列表
+    function getCategoryReplies(categoryName) {
+        const replies = getQuickReplies();
+        return replies[categoryName] || [];
+    }
+
+    // 添加回复到分类
+    function addReplyToCategory(categoryName, replyText) {
+        if (!replyText || replyText.trim() === '') return false;
+        
+        const replies = getQuickReplies();
+        if (!replies[categoryName]) {
+            replies[categoryName] = [];
         }
         
-        // 尝试从CodeMirror元素获取
-        const codeMirrorElement = document.querySelector('.CodeMirror');
-        if (codeMirrorElement && codeMirrorElement.CodeMirror) {
-            return codeMirrorElement.CodeMirror;
+        const trimmedText = replyText.trim();
+        
+        // 检查是否已存在相同回复
+        if (replies[categoryName].includes(trimmedText)) {
+            return false;
         }
         
+        replies[categoryName].push(trimmedText);
+        setQuickReplies(replies);
+        return true;
+    }
+
+    // 删除分类中的回复
+    function deleteReplyFromCategory(categoryName, replyText) {
+        const replies = getQuickReplies();
+        if (!replies[categoryName]) return false;
+        
+        const index = replies[categoryName].indexOf(replyText);
+        if (index > -1) {
+            replies[categoryName].splice(index, 1);
+            setQuickReplies(replies);
+            return true;
+        }
+        return false;
+    }
+
+    // 编辑回复文本
+    function editReplyText(categoryName, oldText, newText) {
+        if (!newText || newText.trim() === '' || oldText === newText) return false;
+        
+        const replies = getQuickReplies();
+        if (!replies[categoryName]) return false;
+        
+        const trimmedNewText = newText.trim();
+        const index = replies[categoryName].indexOf(oldText);
+        
+        if (index > -1 && !replies[categoryName].includes(trimmedNewText)) {
+            replies[categoryName][index] = trimmedNewText;
+            setQuickReplies(replies);
+            return true;
+        }
+        return false;
+    }
+
+    // 查找编辑器元素
+    function findEditor() {
+        // 查找CodeMirror编辑器
+        const codeMirror = document.querySelector('.CodeMirror');
+        if (codeMirror && codeMirror.CodeMirror) {
+            return {
+                type: 'codemirror',
+                element: codeMirror,
+                setValue: (text) => codeMirror.CodeMirror.setValue(text),
+                getValue: () => codeMirror.CodeMirror.getValue(),
+                focus: () => codeMirror.CodeMirror.focus()
+            };
+        }
+
+        // 查找普通文本框
+        const textarea = document.querySelector('textarea[placeholder*="鼓励友善发言"]') ||
+                        document.querySelector('#code-mirror-editor textarea') ||
+                        document.querySelector('.content-area textarea');
+        
+        if (textarea) {
+            return {
+                type: 'textarea',
+                element: textarea,
+                setValue: (text) => {
+                    textarea.value = text;
+                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                },
+                getValue: () => textarea.value,
+                focus: () => textarea.focus()
+            };
+        }
+
         return null;
     }
 
-    // 插入文本到编辑器
-    function insertTextToEditor(text) {
-        const cm = getCodeMirrorInstance();
+    // 插入回复文本到编辑器
+    function insertReplyText(text) {
+        const editor = findEditor();
+        if (!editor) {
+            console.error('未找到编辑器');
+            return false;
+        }
+
+        const currentText = editor.getValue();
+        let newText;
         
-        if (cm) {
-            // 使用CodeMirror API插入文本
-            const cursor = cm.getCursor();
-            cm.replaceRange(text, cursor);
-            cm.focus();
-            // 将光标移动到插入文本的末尾
-            const newCursor = {
-                line: cursor.line,
-                ch: cursor.ch + text.length
-            };
-            cm.setCursor(newCursor);
+        if (currentText.trim() === '') {
+            newText = text;
         } else {
-            // 备用方案：尝试找到textarea
-            const textarea = document.querySelector('#cm-editor-wrapper textarea');
-            if (textarea) {
-                const startPos = textarea.selectionStart;
-                const endPos = textarea.selectionEnd;
-                const textBefore = textarea.value.substring(0, startPos);
-                const textAfter = textarea.value.substring(endPos);
-                
-                textarea.value = textBefore + text + textAfter;
-                textarea.setSelectionRange(startPos + text.length, startPos + text.length);
-                textarea.focus();
-                
-                // 触发input事件，让编辑器感知到变化
-                textarea.dispatchEvent(new Event('input', { bubbles: true }));
-            } else {
-                console.log('无法找到编辑器，直接复制到剪贴板');
-                // 最后的备用方案：复制到剪贴板
-                navigator.clipboard.writeText(text).then(() => {
-                    alert('文本已复制到剪贴板，请手动粘贴');
-                }).catch(() => {
-                    prompt('请复制以下文本：', text);
-                });
+            // 如果已有内容，在末尾添加
+            newText = currentText + '\n\n' + text;
+        }
+        
+        editor.setValue(newText);
+        editor.focus();
+        
+        return true;
+    }
+
+    // 重置为默认回复
+    function resetToDefault() {
+        setQuickReplies(JSON.parse(JSON.stringify(DEFAULT_REPLIES)));
+    }
+
+    // ========== 快捷回复UI功能 ==========
+    
+    // 快捷回复弹窗样式
+    function addQuickReplyStyles() {
+        if (document.getElementById('quick-reply-styles')) return;
+        
+        const style = document.createElement('style');
+        style.id = 'quick-reply-styles';
+        style.textContent = `
+            .quick-reply-dialog {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             }
-        }
-    }
-
-    // 添加文本到编辑器（在现有内容后追加）
-    function appendTextToEditor(text) {
-        const cm = getCodeMirrorInstance();
-        
-        if (cm) {
-            const content = cm.getValue();
-            const newContent = content + (content ? '\n' : '') + text;
-            cm.setValue(newContent);
-            cm.focus();
-            // 将光标移动到末尾
-            const lines = cm.lineCount();
-            cm.setCursor({ line: lines - 1, ch: cm.getLine(lines - 1).length });
-        } else {
-            // 备用方案
-            const textarea = document.querySelector('#cm-editor-wrapper textarea');
-            if (textarea) {
-                const currentValue = textarea.value;
-                textarea.value = currentValue + (currentValue ? '\n' : '') + text;
-                textarea.focus();
-                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            
+            .quick-reply-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding-bottom: 15px;
+                border-bottom: 1px solid #e0e0e0;
+                margin-bottom: 15px;
             }
-        }
-    }
-
-    // 替换编辑器内容
-    function replaceEditorContent(text) {
-        const cm = getCodeMirrorInstance();
-        
-        if (cm) {
-            cm.setValue(text);
-            cm.focus();
-            // 将光标移动到末尾
-            const lines = cm.lineCount();
-            cm.setCursor({ line: lines - 1, ch: cm.getLine(lines - 1).length });
-        } else {
-            // 备用方案
-            const textarea = document.querySelector('#cm-editor-wrapper textarea');
-            if (textarea) {
-                textarea.value = text;
-                textarea.focus();
-                textarea.setSelectionRange(text.length, text.length);
-                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            
+            .quick-reply-title {
+                font-size: 18px;
+                font-weight: 600;
+                color: #333;
+                margin: 0;
             }
-        }
-    }
-
-    // 获取编辑器当前内容
-    function getEditorContent() {
-        const cm = getCodeMirrorInstance();
-        
-        if (cm) {
-            return cm.getValue();
-        } else {
-            const textarea = document.querySelector('#cm-editor-wrapper textarea');
-            if (textarea) {
-                return textarea.value;
-            }
-        }
-        return '';
-    }
-
-    // 检查是否在评论页面
-    function isCommentPage() {
-        return document.querySelector('#cm-editor-wrapper') !== null ||
-               document.querySelector('.CodeMirror') !== null ||
-               document.querySelector('button.submit.btn') !== null;
-    }
-
-    // 创建快捷回复按钮容器
-    function createQuickReplyContainer() {
-        // 检查是否已存在
-        let container = document.getElementById('quick-reply-container');
-        if (container) {
-            return container;
-        }
-
-        container = document.createElement('div');
-        container.id = 'quick-reply-container';
-        container.style.cssText = `
-            position: relative;
-            margin: 10px 0;
-            padding: 8px;
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 6px;
-            font-size: 12px;
-        `;
-
-        // 标题栏
-        const header = document.createElement('div');
-        header.style.cssText = `
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-            padding-bottom: 5px;
-            border-bottom: 1px solid #e9ecef;
-        `;
-
-        const title = document.createElement('span');
-        title.textContent = '快捷回复';
-        title.style.cssText = `
-            font-weight: bold;
-            color: #495057;
-        `;
-
-        const actions = document.createElement('span');
-        actions.style.cssText = `
-            display: flex;
-            gap: 8px;
-        `;
-
-        // 管理按钮
-        const manageBtn = document.createElement('button');
-        manageBtn.textContent = '管理';
-        manageBtn.style.cssText = `
-            padding: 2px 8px;
-            font-size: 11px;
-            background: #6c757d;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-        `;
-        manageBtn.onclick = () => showQuickReplyManager();
-
-        // 折叠按钮
-        const collapseBtn = document.createElement('button');
-        collapseBtn.textContent = '−';
-        collapseBtn.style.cssText = `
-            padding: 2px 6px;
-            font-size: 11px;
-            background: #6c757d;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        `;
-
-        actions.appendChild(manageBtn);
-        actions.appendChild(collapseBtn);
-        header.appendChild(title);
-        header.appendChild(actions);
-
-        // 回复按钮区域
-        const buttonsArea = document.createElement('div');
-        buttonsArea.id = 'quick-reply-buttons';
-        buttonsArea.style.cssText = `
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-        `;
-
-        // 折叠功能
-        let isCollapsed = localStorage.getItem('quick_reply_collapsed') === 'true';
-        
-        const toggleCollapse = () => {
-            isCollapsed = !isCollapsed;
-            localStorage.setItem('quick_reply_collapsed', isCollapsed);
-            buttonsArea.style.display = isCollapsed ? 'none' : 'flex';
-            collapseBtn.textContent = isCollapsed ? '+' : '−';
-        };
-
-        collapseBtn.onclick = toggleCollapse;
-        
-        // 初始状态
-        if (isCollapsed) {
-            buttonsArea.style.display = 'none';
-            collapseBtn.textContent = '+';
-        }
-
-        container.appendChild(header);
-        container.appendChild(buttonsArea);
-
-        return container;
-    }
-
-    // 更新快捷回复按钮
-    function updateQuickReplyButtons() {
-        const buttonsArea = document.getElementById('quick-reply-buttons');
-        if (!buttonsArea) return;
-
-        // 清空现有按钮
-        buttonsArea.innerHTML = '';
-
-        const replies = getQuickReplies();
-        const allReplies = [...replies.preset, ...replies.custom];
-
-        allReplies.forEach((text, index) => {
-            const button = document.createElement('button');
-            button.textContent = text;
-            button.title = `点击插入："${text}"`;
-            button.style.cssText = `
-                padding: 4px 8px;
-                font-size: 11px;
-                background: ${index < replies.preset.length ? '#007bff' : '#28a745'};
-                color: white;
+            
+            .quick-reply-close {
+                background: none;
                 border: none;
-                border-radius: 3px;
+                font-size: 24px;
+                color: #666;
                 cursor: pointer;
-                max-width: 120px;
-                overflow: hidden;
-                text-overflow: ellipsis;
+                padding: 0;
+                width: 30px;
+                height: 30px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 50%;
+                transition: background-color 0.2s;
+            }
+            
+            .quick-reply-close:hover {
+                background-color: #f5f5f5;
+                color: #333;
+            }
+            
+            .quick-reply-tabs {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 20px;
+                border-bottom: 1px solid #e0e0e0;
+                padding-bottom: 10px;
+            }
+            
+            .quick-reply-tab {
+                padding: 8px 16px;
+                background: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 20px;
+                cursor: pointer;
+                font-size: 14px;
+                transition: all 0.2s;
                 white-space: nowrap;
-            `;
+            }
+            
+            .quick-reply-tab.active {
+                background: #9C27B0;
+                color: white;
+                border-color: #9C27B0;
+            }
+            
+            .quick-reply-tab:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            
+            .quick-reply-content {
+                max-height: 400px;
+                overflow-y: auto;
+                margin-bottom: 20px;
+            }
+            
+            .quick-reply-items {
+                display: grid;
+                gap: 8px;
+            }
+            
+            .quick-reply-item {
+                display: flex;
+                align-items: center;
+                padding: 12px;
+                background: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.2s;
+                position: relative;
+            }
+            
+            .quick-reply-item:hover {
+                background: #e3f2fd;
+                border-color: #9C27B0;
+                transform: translateY(-1px);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            
+            .quick-reply-text {
+                flex: 1;
+                font-size: 14px;
+                color: #333;
+                margin-right: 10px;
+                word-break: break-word;
+            }
+            
+            .quick-reply-actions {
+                display: flex;
+                gap: 8px;
+                opacity: 0;
+                transition: opacity 0.2s;
+            }
+            
+            .quick-reply-item:hover .quick-reply-actions {
+                opacity: 1;
+            }
+            
+            .quick-reply-btn-small {
+                padding: 4px 8px;
+                font-size: 12px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+            
+            .quick-reply-btn-edit {
+                background: #4CAF50;
+                color: white;
+            }
+            
+            .quick-reply-btn-edit:hover {
+                background: #45a049;
+            }
+            
+            .quick-reply-btn-delete {
+                background: #f44336;
+                color: white;
+            }
+            
+            .quick-reply-btn-delete:hover {
+                background: #da190b;
+            }
+            
+            .quick-reply-footer {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                justify-content: space-between;
+                align-items: center;
+                padding-top: 15px;
+                border-top: 1px solid #e0e0e0;
+            }
+            
+            .quick-reply-btn {
+                padding: 8px 16px;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 14px;
+                transition: all 0.2s;
+                min-width: 80px;
+            }
+            
+            .quick-reply-btn-primary {
+                background: #9C27B0;
+                color: white;
+            }
+            
+            .quick-reply-btn-primary:hover {
+                background: #7B1FA2;
+                transform: translateY(-1px);
+            }
+            
+            .quick-reply-btn-secondary {
+                background: #6c757d;
+                color: white;
+            }
+            
+            .quick-reply-btn-secondary:hover {
+                background: #5a6268;
+            }
+            
+            .quick-reply-btn-success {
+                background: #28a745;
+                color: white;
+            }
+            
+            .quick-reply-btn-success:hover {
+                background: #218838;
+            }
+            
+            .quick-reply-btn-warning {
+                background: #ffc107;
+                color: #212529;
+            }
+            
+            .quick-reply-btn-warning:hover {
+                background: #e0a800;
+            }
+            
+            .quick-reply-empty {
+                text-align: center;
+                color: #666;
+                padding: 40px 20px;
+                font-size: 14px;
+            }
+            
+            .quick-reply-input-group {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 15px;
+                flex-wrap: wrap;
+            }
+            
+            .quick-reply-input {
+                flex: 1;
+                padding: 8px 12px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                font-size: 14px;
+                min-width: 200px;
+            }
+            
+            .quick-reply-input:focus {
+                outline: none;
+                border-color: #9C27B0;
+                box-shadow: 0 0 0 2px rgba(156, 39, 176, 0.2);
+            }
+            
+            /* 自动发布选项样式 */
+            .quick-reply-auto-submit-container {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 15px;
+                padding: 10px;
+                background-color: #f8f9fa;
+                border-radius: 6px;
+                border: 1px solid #dee2e6;
+                transition: border-color 0.2s;
+            }
+            
+            .quick-reply-auto-submit-container:hover {
+                border-color: #9C27B0;
+            }
+            
+            .quick-reply-auto-submit-checkbox {
+                transform: scale(1.2);
+                accent-color: #9C27B0;
+            }
+            
+            .quick-reply-auto-submit-label {
+                font-size: 14px;
+                color: #333;
+                cursor: pointer;
+                user-select: none;
+                line-height: 1.4;
+            }
 
-            button.onclick = () => {
-                appendTextToEditor(text);
-                
-                // 记录使用日志
-                if (window.addLog) {
-                    window.addLog(`使用快捷回复：${text}`);
+            /* 移动端适配 */
+            @media (max-width: 768px) {
+                .quick-reply-dialog {
+                    left: 10px !important;
+                    right: 10px !important;
+                    top: 20px !important;
+                    width: auto !important;
+                    min-width: auto !important;
+                    max-height: 90vh;
                 }
-            };
-
-            // 悬停效果
-            button.onmouseover = () => {
-                button.style.opacity = '0.8';
-            };
-            button.onmouseout = () => {
-                button.style.opacity = '1';
-            };
-
-            buttonsArea.appendChild(button);
-        });
+                
+                .quick-reply-tabs {
+                    gap: 5px;
+                }
+                
+                .quick-reply-tab {
+                    padding: 6px 12px;
+                    font-size: 13px;
+                }
+                
+                .quick-reply-footer {
+                    flex-direction: column;
+                    gap: 8px;
+                }
+                
+                .quick-reply-btn {
+                    width: 100%;
+                }
+                
+                .quick-reply-input-group {
+                    flex-direction: column;
+                }
+                
+                .quick-reply-input {
+                    min-width: auto;
+                }
+                
+                .quick-reply-auto-submit-label {
+                    font-size: 13px;
+                }
+            }
+        `;
+        document.head.appendChild(style);
     }
 
-    // 显示快捷回复管理界面
-    function showQuickReplyManager() {
-        // 检查是否已存在
-        let dialog = document.getElementById('quick-reply-manager');
-        if (dialog) {
-            dialog.remove();
+    // 显示快捷回复弹窗
+    function showQuickReplyDialog() {
+        // 检查弹窗是否已存在
+        const existingDialog = document.getElementById('quick-reply-dialog');
+        if (existingDialog) {
+            existingDialog.remove();
             return;
         }
 
-        dialog = document.createElement('div');
-        dialog.id = 'quick-reply-manager';
-        dialog.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 10000;
-            background: white;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            padding: 20px;
-            width: 500px;
-            max-width: 90vw;
-            max-height: 80vh;
-            overflow-y: auto;
-        `;
+        // 添加样式
+        addQuickReplyStyles();
 
-        const title = document.createElement('h3');
-        title.textContent = '快捷回复管理';
-        title.style.marginTop = '0';
+        // 创建弹窗
+        const dialog = document.createElement('div');
+        dialog.id = 'quick-reply-dialog';
+        dialog.className = 'quick-reply-dialog';
+        dialog.style.position = 'fixed';
+        dialog.style.top = '60px';
+        dialog.style.right = '20px';
+        dialog.style.zIndex = 10000;
+        dialog.style.background = '#fff';
+        dialog.style.border = '1px solid #ddd';
+        dialog.style.borderRadius = '12px';
+        dialog.style.boxShadow = '0 8px 32px rgba(0,0,0,0.12)';
+        dialog.style.padding = '20px';
+        dialog.style.minWidth = '400px';
+        dialog.style.maxWidth = '600px';
 
-        const closeBtn = document.createElement('button');
-        closeBtn.textContent = '×';
-        closeBtn.style.cssText = `
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            background: none;
-            border: none;
-            font-size: 20px;
-            cursor: pointer;
-            color: #666;
-        `;
-        closeBtn.onclick = () => dialog.remove();
-
-        // 添加自定义回复区域
-        const addSection = document.createElement('div');
-        addSection.style.marginBottom = '20px';
-
-        const addTitle = document.createElement('h4');
-        addTitle.textContent = '添加自定义回复';
-        addTitle.style.marginBottom = '10px';
-
-        const addInput = document.createElement('input');
-        addInput.type = 'text';
-        addInput.placeholder = '输入自定义回复文本...';
-        addInput.style.cssText = `
-            width: calc(100% - 70px);
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            margin-right: 10px;
-        `;
-
-        const addBtn = document.createElement('button');
-        addBtn.textContent = '添加';
-        addBtn.style.cssText = `
-            padding: 8px 15px;
-            background: #28a745;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        `;
-
-        const doAdd = () => {
-            const text = addInput.value.trim();
-            if (!text) {
-                alert('请输入回复内容');
-                return;
-            }
-            
-            if (addCustomReply(text)) {
-                addInput.value = '';
-                refreshLists();
-                updateQuickReplyButtons();
-                alert('添加成功');
-            } else {
-                alert('该回复已存在');
-            }
-        };
-
-        addBtn.onclick = doAdd;
-        addInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                doAdd();
-            }
-        });
-
-        addSection.appendChild(addTitle);
-        addSection.appendChild(addInput);
-        addSection.appendChild(addBtn);
-
-        // 预设回复列表
-        const presetSection = document.createElement('div');
-        presetSection.style.marginBottom = '20px';
-
-        const presetTitle = document.createElement('div');
-        presetTitle.style.cssText = `
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        `;
-
-        const presetTitleText = document.createElement('h4');
-        presetTitleText.textContent = '预设回复';
-        presetTitleText.style.margin = '0';
-
-        const resetBtn = document.createElement('button');
-        resetBtn.textContent = '重置默认';
-        resetBtn.style.cssText = `
-            padding: 4px 8px;
-            font-size: 12px;
-            background: #ffc107;
-            color: #212529;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-        `;
-        resetBtn.onclick = () => {
-            if (confirm('确定要重置为默认预设回复吗？')) {
-                resetPresetReplies();
-                refreshLists();
-                updateQuickReplyButtons();
-                alert('已重置为默认预设');
-            }
-        };
-
-        presetTitle.appendChild(presetTitleText);
-        presetTitle.appendChild(resetBtn);
-
-        const presetList = document.createElement('div');
-        presetList.id = 'preset-list';
-        presetList.style.cssText = `
-            max-height: 150px;
-            overflow-y: auto;
-            border: 1px solid #eee;
-            border-radius: 4px;
-            padding: 8px;
-        `;
-
-        presetSection.appendChild(presetTitle);
-        presetSection.appendChild(presetList);
-
-        // 自定义回复列表
-        const customSection = document.createElement('div');
-
-        const customTitle = document.createElement('h4');
-        customTitle.textContent = '自定义回复';
-        customTitle.style.marginBottom = '10px';
-
-        const customList = document.createElement('div');
-        customList.id = 'custom-list';
-        customList.style.cssText = `
-            max-height: 200px;
-            overflow-y: auto;
-            border: 1px solid #eee;
-            border-radius: 4px;
-            padding: 8px;
-        `;
-
-        customSection.appendChild(customTitle);
-        customSection.appendChild(customList);
-
-        // 刷新列表的函数
-        function refreshLists() {
-            const replies = getQuickReplies();
-            
-            // 更新预设列表
-            presetList.innerHTML = '';
-            replies.preset.forEach(text => {
-                const item = document.createElement('div');
-                item.style.cssText = `
-                    padding: 4px 8px;
-                    margin: 2px 0;
-                    background: #e3f2fd;
-                    border-radius: 3px;
-                    font-size: 12px;
-                `;
-                item.textContent = text;
-                presetList.appendChild(item);
-            });
-
-            // 更新自定义列表
-            customList.innerHTML = '';
-            if (replies.custom.length === 0) {
-                const empty = document.createElement('div');
-                empty.textContent = '暂无自定义回复';
-                empty.style.cssText = `
-                    text-align: center;
-                    color: #666;
-                    font-size: 12px;
-                    padding: 20px;
-                `;
-                customList.appendChild(empty);
-            } else {
-                replies.custom.forEach(text => {
-                    const item = document.createElement('div');
-                    item.style.cssText = `
-                        display: flex;
-                        justify-content: space-between;
-                        align-items: center;
-                        padding: 4px 8px;
-                        margin: 2px 0;
-                        background: #e8f5e8;
-                        border-radius: 3px;
-                        font-size: 12px;
-                    `;
-
-                    const textSpan = document.createElement('span');
-                    textSpan.textContent = text;
-                    textSpan.style.flex = '1';
-
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.textContent = '删除';
-                    deleteBtn.style.cssText = `
-                        padding: 2px 6px;
-                        font-size: 10px;
-                        background: #dc3545;
-                        color: white;
-                        border: none;
-                        border-radius: 2px;
-                        cursor: pointer;
-                    `;
-                    deleteBtn.onclick = () => {
-                        if (confirm(`确定要删除"${text}"吗？`)) {
-                            removeCustomReply(text);
-                            refreshLists();
-                            updateQuickReplyButtons();
-                        }
-                    };
-
-                    item.appendChild(textSpan);
-                    item.appendChild(deleteBtn);
-                    customList.appendChild(item);
-                });
-            }
-        }
-
-        dialog.appendChild(title);
-        dialog.appendChild(closeBtn);
-        dialog.appendChild(addSection);
-        dialog.appendChild(presetSection);
-        dialog.appendChild(customSection);
+        // 创建弹窗内容
+        createQuickReplyContent(dialog);
 
         document.body.appendChild(dialog);
-
-        // 初始加载列表
-        refreshLists();
-
-        // 使对话框可拖拽（如果makeDraggable函数可用）
+        
+        // 使用全局的 makeDraggable 函数
         if (window.makeDraggable) {
-            window.makeDraggable(dialog, {width: 100, height: 40});
+            window.makeDraggable(dialog, {width: 60, height: 40});
+        }
+
+        // 记录日志
+        if (window.addQuickReplyLog) {
+            window.addQuickReplyLog('打开快捷回复面板');
         }
     }
 
-    // 初始化快捷回复功能
-    function initQuickReply() {
-        if (!isCommentPage()) {
+    // 创建快捷回复弹窗内容
+    function createQuickReplyContent(dialog) {
+        const categories = getCategories();
+        let activeCategory = categories[0] || '通用回复';
+
+        // 清空弹窗内容
+        dialog.innerHTML = '';
+
+        // 头部
+        const header = document.createElement('div');
+        header.className = 'quick-reply-header';
+        
+        const title = document.createElement('h3');
+        title.className = 'quick-reply-title';
+        title.textContent = '快捷回复';
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'quick-reply-close';
+        closeBtn.innerHTML = '×';
+        closeBtn.onclick = () => dialog.remove();
+        
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        dialog.appendChild(header);
+
+        // 分类标签
+        const tabsContainer = document.createElement('div');
+        tabsContainer.className = 'quick-reply-tabs';
+        
+        categories.forEach(category => {
+            const tab = document.createElement('div');
+            tab.className = 'quick-reply-tab';
+            if (category === activeCategory) {
+                tab.classList.add('active');
+            }
+            tab.textContent = category;
+            tab.onclick = () => {
+                activeCategory = category;
+                updateQuickReplyContent();
+            };
+            tabsContainer.appendChild(tab);
+        });
+        
+        dialog.appendChild(tabsContainer);
+
+        // 内容区域
+        const contentContainer = document.createElement('div');
+        contentContainer.className = 'quick-reply-content';
+        dialog.appendChild(contentContainer);
+
+        // 添加新回复输入区
+        const inputGroup = document.createElement('div');
+        inputGroup.className = 'quick-reply-input-group';
+        
+        const input = document.createElement('input');
+        input.className = 'quick-reply-input';
+        input.placeholder = '输入新的快捷回复或评论内容...';
+        input.id = 'new-reply-input';
+        
+        const addReplyBtn = document.createElement('button');
+        addReplyBtn.className = 'quick-reply-btn quick-reply-btn-success';
+        addReplyBtn.textContent = '添加回复';
+        addReplyBtn.onclick = () => {
+            const text = input.value.trim();
+            if (text) {
+                if (addReplyToCategory(activeCategory, text)) {
+                    input.value = '';
+                    updateQuickReplyContent();
+                    if (window.addQuickReplyLog) {
+                        window.addQuickReplyLog(`添加快捷回复: ${text}`);
+                    }
+                } else {
+                    alert('添加失败，可能已存在相同回复');
+                }
+            } else {
+                alert('请输入要添加的回复内容。');
+                input.focus();
+            }
+        };
+        
+        const quickPublishBtn = document.createElement('button');
+        quickPublishBtn.className = 'quick-reply-btn quick-reply-btn-primary';
+        quickPublishBtn.textContent = '快速发表';
+        quickPublishBtn.onclick = () => {
+            const content = input.value.trim();
+            
+            if (content) {
+                // 如果有内容，先插入文本
+                if (!insertReplyText(content)) {
+                    alert('未找到编辑器，请确保在帖子评论页面使用');
+                    return;
+                }
+                if (window.addQuickReplyLog) {
+                    window.addQuickReplyLog(`快速发表评论: ${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`);
+                }
+            } else {
+                if (window.addQuickReplyLog) {
+                    window.addQuickReplyLog('尝试快速发表空评论');
+                }
+            }
+            
+            // 延迟一点时间确保文本已插入，然后尝试点击发布按钮
+            setTimeout(() => {
+                const selectors = [
+                    'button[data-v-2664b64e].submit.btn.focus-visible',
+                    'button[data-v-2664b64e].submit.btn',
+                    'button.submit.btn.focus-visible',
+                    'button.submit.btn',
+                    'button.submit',
+                    'button[type="submit"]',
+                    'button:contains("发布评论")',
+                    '[class*="submit"][class*="btn"]',
+                    '[class*="comment"][class*="submit"]',
+                    'input[type="submit"][value="发布评论"]', // 针对input[type=submit]的情况
+                    'button[role="button"]:contains("发布评论")' // 针对通用按钮
+                ];
+                
+                let submitButton = null;
+                
+                for (const selector of selectors) {
+                    try {
+                        // 特殊处理 :contains 伪类，因为它不是标准CSS选择器
+                        if (selector.includes(':contains')) {
+                            const tempButtons = document.querySelectorAll(selector.split(':contains')[0]);
+                            for (const btn of tempButtons) {
+                                if (btn.textContent && btn.textContent.includes('发布评论')) {
+                                    submitButton = btn;
+                                    break;
+                                }
+                            }
+                        } else {
+                            const btn = document.querySelector(selector);
+                            // 再次检查textContent确保是发布按钮
+                            if (btn && btn.textContent && btn.textContent.includes('发布评论')) {
+                                submitButton = btn;
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        // 忽略选择器错误，继续尝试下一个
+                        // console.warn(`Selector failed: ${selector}, Error: ${e.message}`); // 调试用，最终移除
+                        continue;
+                    }
+                    if (submitButton) break;
+                }
+                
+                if (submitButton) {
+                    try {
+                        submitButton.click();
+                        if (window.addQuickReplyLog) {
+                            window.addQuickReplyLog('✅ 评论已自动发布');
+                        }
+                    } catch (e) {
+                        if (window.addQuickReplyLog) {
+                            window.addQuickReplyLog('❌ 自动发布失败: ' + e.message);
+                        }
+                    }
+                } else {
+                    if (window.addQuickReplyLog) {
+                        window.addQuickReplyLog('⚠️ 未找到发布评论按钮，请手动发布');
+                    }
+                }
+            }, 400); // 稍微增加延迟确保文本插入完成，并给页面足够时间渲染
+            
+            // 如果输入框有内容，清空输入框并关闭弹窗
+            if (content) {
+                input.value = '';
+                dialog.remove();
+            }
+        };
+        
+        // 回车键添加或快速发表
+        input.addEventListener('keydown', (e) => { // 使用 keydown 以便捕获 Ctrl 组合键
+            if (e.key === 'Enter') {
+                e.preventDefault(); // 阻止默认回车行为 (如换行)
+                if (e.ctrlKey) {
+                    quickPublishBtn.click(); // Ctrl + Enter 快速发表
+                } else {
+                    addReplyBtn.click(); // Enter 添加回复
+                }
+            }
+        });
+        
+        inputGroup.appendChild(input);
+        inputGroup.appendChild(addReplyBtn);
+        inputGroup.appendChild(quickPublishBtn);
+        dialog.appendChild(inputGroup);
+
+        // 自动发布选项
+        const autoSubmitContainer = document.createElement('div');
+        autoSubmitContainer.className = 'quick-reply-auto-submit-container';
+        
+        const autoSubmitCheckbox = document.createElement('input');
+        autoSubmitCheckbox.type = 'checkbox';
+        autoSubmitCheckbox.id = 'auto-submit-checkbox';
+        autoSubmitCheckbox.className = 'quick-reply-auto-submit-checkbox';
+        autoSubmitCheckbox.checked = localStorage.getItem('nodeseek_quick_reply_auto_submit') === 'true';
+        
+        const autoSubmitLabel = document.createElement('label');
+        autoSubmitLabel.htmlFor = 'auto-submit-checkbox';
+        autoSubmitLabel.className = 'quick-reply-auto-submit-label';
+        
+        // 创建状态提示文本
+        const updateLabelText = () => {
+            const isChecked = autoSubmitCheckbox.checked;
+            autoSubmitLabel.innerHTML = `
+                选择回复后自动点击发布评论按钮 
+                <span style="color: ${isChecked ? '#28a745' : '#6c757d'}; font-weight: 500;">
+                    ${isChecked ? '(已开启)' : '(已关闭)'}
+                </span>
+            `;
+        };
+        
+        // 初始化文本
+        updateLabelText();
+        
+        // 保存自动发布设置
+        autoSubmitCheckbox.addEventListener('change', () => {
+            localStorage.setItem('nodeseek_quick_reply_auto_submit', autoSubmitCheckbox.checked.toString());
+            updateLabelText(); // 更新状态显示
+            if (window.addQuickReplyLog) {
+                window.addQuickReplyLog(`${autoSubmitCheckbox.checked ? '开启' : '关闭'}自动发布评论功能`);
+            }
+        });
+        
+        autoSubmitContainer.appendChild(autoSubmitCheckbox);
+        autoSubmitContainer.appendChild(autoSubmitLabel);
+        dialog.appendChild(autoSubmitContainer);
+
+        // 底部操作按钮
+        const footer = document.createElement('div');
+        footer.className = 'quick-reply-footer';
+        
+        const leftBtns = document.createElement('div');
+        leftBtns.style.display = 'flex';
+        leftBtns.style.gap = '10px';
+        leftBtns.style.flexWrap = 'wrap';
+        
+        // 管理分类按钮
+        const manageCategoryBtn = document.createElement('button');
+        manageCategoryBtn.className = 'quick-reply-btn quick-reply-btn-secondary';
+        manageCategoryBtn.textContent = '管理分类';
+        manageCategoryBtn.onclick = () => showCategoryManageDialog();
+        
+        // 重置按钮
+        const resetBtn = document.createElement('button');
+        resetBtn.className = 'quick-reply-btn quick-reply-btn-secondary';
+        resetBtn.textContent = '重置';
+        resetBtn.onclick = () => {
+            if (confirm('确定要重置为默认快捷回复吗？这将删除所有自定义内容。')) {
+                resetToDefault();
+                updateQuickReplyContent();
+                if (window.addQuickReplyLog) {
+                    window.addQuickReplyLog('重置快捷回复为默认设置');
+                }
+            }
+        };
+        
+        leftBtns.appendChild(manageCategoryBtn);
+        leftBtns.appendChild(resetBtn);
+        
+        footer.appendChild(leftBtns);
+        dialog.appendChild(footer);
+
+        // 更新内容函数
+        function updateQuickReplyContent() {
+            // 更新分类标签
+            const tabs = tabsContainer.querySelectorAll('.quick-reply-tab');
+            tabs.forEach(tab => {
+                tab.classList.toggle('active', tab.textContent === activeCategory);
+            });
+
+            // 更新回复列表
+            const replies = getCategoryReplies(activeCategory);
+            contentContainer.innerHTML = '';
+            
+            if (replies.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'quick-reply-empty';
+                empty.textContent = '暂无快捷回复，点击上方输入框添加';
+                contentContainer.appendChild(empty);
+            } else {
+                const itemsContainer = document.createElement('div');
+                itemsContainer.className = 'quick-reply-items';
+                
+                replies.forEach(reply => {
+                    const item = document.createElement('div');
+                    item.className = 'quick-reply-item';
+                    
+                    const text = document.createElement('div');
+                    text.className = 'quick-reply-text';
+                    text.textContent = reply;
+                    
+                    const actions = document.createElement('div');
+                    actions.className = 'quick-reply-actions';
+                    
+                    const editBtn = document.createElement('button');
+                    editBtn.className = 'quick-reply-btn-small quick-reply-btn-edit';
+                    editBtn.textContent = '编辑';
+                    editBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        editQuickReply(activeCategory, reply);
+                    };
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'quick-reply-btn-small quick-reply-btn-delete';
+                    deleteBtn.textContent = '删除';
+                    deleteBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        if (confirm('确定要删除这条快捷回复吗？')) {
+                            deleteReplyFromCategory(activeCategory, reply);
+                            updateQuickReplyContent();
+                            if (window.addQuickReplyLog) {
+                                window.addQuickReplyLog(`删除快捷回复: ${reply}`);
+                            }
+                        }
+                    };
+                    
+                    actions.appendChild(editBtn);
+                    actions.appendChild(deleteBtn);
+                    
+                    item.appendChild(text);
+                    item.appendChild(actions);
+                    
+                    // 点击插入回复
+                    item.onclick = () => {
+                        if (insertReplyText(reply)) {
+                            if (window.addQuickReplyLog) {
+                                window.addQuickReplyLog(`使用快捷回复: ${reply}`);
+                            }
+                            
+                            // 检查是否需要自动发布
+                            const autoSubmit = localStorage.getItem('nodeseek_quick_reply_auto_submit') === 'true';
+                            if (autoSubmit) {
+                                // 延迟一点时间确保文本已插入
+                                setTimeout(() => {
+                                    // 尝试多种选择器查找发布评论按钮
+                                    const selectors = [
+                                        'button[data-v-2664b64e].submit.btn.focus-visible',
+                                        'button[data-v-2664b64e].submit.btn',
+                                        'button.submit.btn.focus-visible',
+                                        'button.submit.btn',
+                                        'button.submit',
+                                        'button[type="submit"]',
+                                        'button:contains("发布评论")',
+                                        '[class*="submit"][class*="btn"]'
+                                    ];
+                                    
+                                    let submitBtn = null;
+                                    
+                                    // 遍历选择器尝试找到按钮
+                                    for (const selector of selectors) {
+                                        try {
+                                            if (selector.includes(':contains')) {
+                                                // 对于包含文本的选择器，手动查找
+                                                const buttons = document.querySelectorAll('button');
+                                                for (const btn of buttons) {
+                                                    if (btn.textContent && btn.textContent.includes('发布评论')) {
+                                                        submitBtn = btn;
+                                                        break;
+                                                    }
+                                                }
+                                            } else {
+                                                const btn = document.querySelector(selector);
+                                                if (btn && btn.textContent && btn.textContent.includes('发布评论')) {
+                                                    submitBtn = btn;
+                                                    break;
+                                                }
+                                            }
+                                        } catch (e) {
+                                            // 忽略选择器错误，继续尝试下一个
+                                            continue;
+                                        }
+                                        
+                                        if (submitBtn) break;
+                                    }
+                                    
+                                    if (submitBtn) {
+                                        try {
+                                            submitBtn.click();
+                                            if (window.addQuickReplyLog) {
+                                                window.addQuickReplyLog('✅ 已自动点击发布评论按钮');
+                                            }
+                                        } catch (e) {
+                                            if (window.addQuickReplyLog) {
+                                                window.addQuickReplyLog('❌ 点击发布按钮时出错: ' + e.message);
+                                            }
+                                        }
+                                    } else {
+                                        if (window.addQuickReplyLog) {
+                                            window.addQuickReplyLog('⚠️ 未找到发布评论按钮，请手动发布');
+                                        }
+                                    }
+                                }, 300); // 稍微增加延迟确保文本插入完成
+                            }
+                            
+                            dialog.remove();
+                        } else {
+                            alert('未找到编辑器，请确保在帖子评论页面使用');
+                        }
+                    };
+                    
+                    itemsContainer.appendChild(item);
+                });
+                
+                contentContainer.appendChild(itemsContainer);
+            }
+        }
+
+        // 编辑快捷回复
+        function editQuickReply(category, oldText) {
+            const newText = prompt('编辑快捷回复:', oldText);
+            if (newText !== null && newText.trim() !== '' && newText !== oldText) {
+                if (editReplyText(category, oldText, newText.trim())) {
+                    updateQuickReplyContent();
+                    if (window.addQuickReplyLog) {
+                        window.addQuickReplyLog(`编辑快捷回复: ${oldText} -> ${newText.trim()}`);
+                    }
+                } else {
+                    alert('编辑失败，可能已存在相同回复');
+                }
+            }
+        }
+
+        // 初始化内容
+        updateQuickReplyContent();
+    }
+
+    // 显示分类管理弹窗
+    function showCategoryManageDialog() {
+        const existingDialog = document.getElementById('category-manage-dialog');
+        if (existingDialog) {
+            existingDialog.remove();
             return;
         }
 
-        // 等待编辑器加载完成
-        const checkEditor = () => {
-            const editorWrapper = document.querySelector('#cm-editor-wrapper');
-            const submitBtn = document.querySelector('button.submit.btn');
-            
-            if (editorWrapper && submitBtn) {
-                // 创建快捷回复容器
-                const container = createQuickReplyContainer();
-                
-                // 插入到提交按钮之前
-                submitBtn.parentNode.insertBefore(container, submitBtn);
-                
-                // 更新按钮
-                updateQuickReplyButtons();
-                
-                console.log('快捷回复功能已初始化');
-            } else {
-                // 如果编辑器还没有加载，等待一段时间后重试
-                setTimeout(checkEditor, 500);
+        const dialog = document.createElement('div');
+        dialog.id = 'category-manage-dialog';
+        dialog.className = 'quick-reply-dialog';
+        dialog.style.position = 'fixed';
+        dialog.style.top = '100px';
+        dialog.style.right = '50px';
+        dialog.style.zIndex = 10001;
+        dialog.style.background = '#fff';
+        dialog.style.border = '1px solid #ddd';
+        dialog.style.borderRadius = '12px';
+        dialog.style.boxShadow = '0 8px 32px rgba(0,0,0,0.12)';
+        dialog.style.padding = '20px';
+        dialog.style.minWidth = '350px';
+
+        const categories = getCategories();
+
+        // 头部
+        const header = document.createElement('div');
+        header.className = 'quick-reply-header';
+        
+        const title = document.createElement('h3');
+        title.className = 'quick-reply-title';
+        title.textContent = '管理分类';
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'quick-reply-close';
+        closeBtn.innerHTML = '×';
+        closeBtn.onclick = () => dialog.remove();
+        
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        dialog.appendChild(header);
+
+        // 添加新分类
+        const inputGroup = document.createElement('div');
+        inputGroup.className = 'quick-reply-input-group';
+        
+        const input = document.createElement('input');
+        input.className = 'quick-reply-input';
+        input.placeholder = '输入新分类名称...';
+        
+        const addBtn = document.createElement('button');
+        addBtn.className = 'quick-reply-btn quick-reply-btn-success';
+        addBtn.textContent = '添加分类';
+        addBtn.onclick = () => {
+            const name = input.value.trim();
+            if (name) {
+                if (addCategory(name)) {
+                    input.value = '';
+                    updateCategoryList();
+                    if (window.addQuickReplyLog) {
+                        window.addQuickReplyLog(`添加分类: ${name}`);
+                    }
+                } else {
+                    alert('添加失败，分类名称已存在');
+                }
             }
         };
+        
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                addBtn.click();
+            }
+        });
+        
+        inputGroup.appendChild(input);
+        inputGroup.appendChild(addBtn);
+        dialog.appendChild(inputGroup);
 
-        checkEditor();
+        // 分类列表
+        const listContainer = document.createElement('div');
+        listContainer.style.maxHeight = '300px';
+        listContainer.style.overflowY = 'auto';
+        dialog.appendChild(listContainer);
+
+        function updateCategoryList() {
+            const currentCategories = getCategories();
+            listContainer.innerHTML = '';
+            
+            currentCategories.forEach(category => {
+                const item = document.createElement('div');
+                item.className = 'quick-reply-item';
+                item.style.marginBottom = '8px';
+                
+                const text = document.createElement('div');
+                text.className = 'quick-reply-text';
+                text.textContent = category;
+                
+                const actions = document.createElement('div');
+                actions.className = 'quick-reply-actions';
+                actions.style.opacity = '1'; // 始终显示
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'quick-reply-btn-small quick-reply-btn-edit';
+                editBtn.textContent = '重命名';
+                editBtn.onclick = () => {
+                    const newName = prompt('重命名分类:', category);
+                    if (newName !== null && newName.trim() !== '' && newName !== category) {
+                        if (renameCategory(category, newName.trim())) {
+                            updateCategoryList();
+                            if (window.addQuickReplyLog) {
+                                window.addQuickReplyLog(`重命名分类: ${category} -> ${newName.trim()}`);
+                            }
+                        } else {
+                            alert('重命名失败，可能名称已存在');
+                        }
+                    }
+                };
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'quick-reply-btn-small quick-reply-btn-delete';
+                deleteBtn.textContent = '删除';
+                deleteBtn.onclick = () => {
+                    const replies = getCategoryReplies(category);
+                    const message = replies.length > 0 
+                        ? `确定要删除分类"${category}"吗？这将同时删除该分类下的${replies.length}条回复。`
+                        : `确定要删除分类"${category}"吗？`;
+                    
+                    if (confirm(message)) {
+                        deleteCategory(category);
+                        updateCategoryList();
+                        if (window.addQuickReplyLog) {
+                            window.addQuickReplyLog(`删除分类: ${category}`);
+                        }
+                    }
+                };
+                
+                actions.appendChild(editBtn);
+                actions.appendChild(deleteBtn);
+                
+                item.appendChild(text);
+                item.appendChild(actions);
+                listContainer.appendChild(item);
+            });
+        }
+
+        updateCategoryList();
+        document.body.appendChild(dialog);
+        
+        // 使用全局的 makeDraggable 函数
+        if (window.makeDraggable) {
+            window.makeDraggable(dialog, {width: 60, height: 40});
+        }
     }
 
-    // 暴露API到全局
+    // 暴露给全局
     window.NodeSeekQuickReply = {
-        initQuickReply,
         getQuickReplies,
-        addCustomReply,
-        removeCustomReply,
-        insertTextToEditor,
-        appendTextToEditor,
-        replaceEditorContent,
-        getEditorContent,
-        showQuickReplyManager,
-        updateQuickReplyButtons
+        setQuickReplies,
+        getCategories,
+        addCategory,
+        deleteCategory,
+        renameCategory,
+        getCategoryReplies,
+        addReplyToCategory,
+        deleteReplyFromCategory,
+        editReplyText,
+        insertReplyText,
+        resetToDefault,
+        findEditor,
+        showQuickReplyDialog // 新增：暴露显示弹窗函数
     };
-
-    // 页面加载完成后自动初始化
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initQuickReply);
-    } else {
-        setTimeout(initQuickReply, 1000); // 延迟1秒确保页面元素加载完成
-    }
 
 })(); 
