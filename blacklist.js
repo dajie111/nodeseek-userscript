@@ -22,18 +22,6 @@
         const timeStr = now.toLocaleString();
         const logEntry = `[${timeStr}] ${message}`;
 
-        // 不记录签到倒计时日志，只在控制台输出
-        if (/^\[本地时间 .+\] 距离下次签到还有 \\d+小时\\d+分\\d+秒$/.test(message) || message.startsWith('[本地时间')) {
-            console.log(logEntry);
-            return;
-        }
-
-        // 新增：不记录活跃页面控制权日志，只在控制台输出
-        if (message.includes('检测到无活跃页面或原活跃页面失效，当前页面强制获得签到控制权')) {
-            console.log(logEntry);
-            return;
-        }
-
         // 获取现有日志
         const logs = getLogs();
 
@@ -45,9 +33,6 @@
 
         // 保存日志
         localStorage.setItem(LOGS_KEY, JSON.stringify(logs));
-
-        // 同时在控制台输出
-        console.log(logEntry);
 
         // 如果日志对话框已打开，则更新其内容
         updateLogDialogIfOpen(logEntry);
