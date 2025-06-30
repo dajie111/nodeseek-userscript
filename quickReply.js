@@ -70,17 +70,37 @@
         return Object.keys(replies);
     }
 
+    // 计算混合长度：中文2，英文/数字1
+    function getMixedLength(str) {
+        let len = 0;
+        for (let ch of str) {
+            if (/^[\u4e00-\u9fa5]$/.test(ch)) {
+                len += 2;
+            } else if (/^[A-Za-z0-9]$/.test(ch)) {
+                len += 1;
+            } else {
+                len += 1; // 其它符号算1
+            }
+        }
+        return len;
+    }
+
     // 添加新分类
     function addCategory(categoryName) {
-        if (!categoryName || categoryName.trim() === '') return false;
-
         const replies = getQuickReplies();
+        if (Object.keys(replies).length >= 5) {
+            alert('最多只能添加5个分类');
+            return false;
+        }
+        if (!categoryName || categoryName.trim() === '') return false;
         const trimmedName = categoryName.trim();
-
+        if (getMixedLength(trimmedName) > 8) {
+            alert('分类名限中英文混合8字符以内（中文算2，英文/数字算1）');
+            return false;
+        }
         if (replies[trimmedName]) {
             return false; // 分类已存在
         }
-
         replies[trimmedName] = [];
         setQuickReplies(replies);
         return true;
@@ -344,7 +364,7 @@
             }
 
             .quick-reply-content {
-                max-height: 400px;
+                height: 275px;
                 overflow-y: auto;
                 margin-bottom: 20px;
             }
@@ -1216,6 +1236,10 @@
         addBtn.onclick = () => {
             const name = input.value.trim();
             if (name) {
+                if (getCategories().length >= 5) {
+                    alert('最多只能添加5个分类');
+                    return;
+                }
                 if (addCategory(name)) {
                     input.value = '';
                     updateCategoryList();
@@ -1278,6 +1302,10 @@
                     e.stopPropagation();
                     const newName = prompt('重命名分类:', category);
                     if (newName !== null && newName.trim() !== '' && newName !== category) {
+                        if (getMixedLength(newName.trim()) > 8) {
+                            alert('分类名限中英文混合8字符以内（中文算2，英文/数字算1）');
+                            return;
+                        }
                         if (renameCategory(category, newName.trim())) {
                             updateCategoryList();
                             updateMainDialog(); // 更新主弹窗
