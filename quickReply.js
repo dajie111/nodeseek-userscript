@@ -1,4 +1,4 @@
-// ========== 快捷回复功能模块 ==========
+// ========== 快捷回复功能 ==========
 (function() {
     'use strict';
 
@@ -108,9 +108,33 @@
             return false; // 原分类不存在或新分类名已存在
         }
         
-        replies[trimmedNewName] = replies[oldName];
-        delete replies[oldName];
-        setQuickReplies(replies);
+        // 保持分类顺序：重建整个对象，保持原始位置
+        const newReplies = {};
+        for (const [key, value] of Object.entries(replies)) {
+            if (key === oldName) {
+                newReplies[trimmedNewName] = value; // 在原位置插入新名称
+            } else {
+                newReplies[key] = value;
+            }
+        }
+        
+        setQuickReplies(newReplies);
+        return true;
+    }
+
+    // 重新排序分类
+    function reorderCategories(newOrder) {
+        const replies = getQuickReplies();
+        const newReplies = {};
+        
+        // 按新顺序重建对象
+        newOrder.forEach(categoryName => {
+            if (replies[categoryName]) {
+                newReplies[categoryName] = replies[categoryName];
+            }
+        });
+        
+        setQuickReplies(newReplies);
         return true;
     }
 
@@ -510,6 +534,63 @@
                 line-height: 1.4;
             }
 
+            /* 拖拽排序样式 */
+            .category-item-draggable {
+                cursor: move;
+                transition: all 0.2s;
+                user-select: none;
+            }
+            
+            .category-item-draggable:hover {
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            }
+            
+            .category-item-dragging {
+                opacity: 0.5;
+                transform: rotate(2deg);
+                z-index: 1000;
+                box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+            }
+            
+            .category-item-drag-over {
+                border-top: 3px solid #9C27B0;
+                margin-top: 3px;
+            }
+            
+            .category-drag-handle {
+                position: absolute;
+                left: 8px;
+                top: 50%;
+                transform: translateY(-50%);
+                color: #666;
+                font-size: 16px;
+                cursor: move;
+                opacity: 0;
+                transition: opacity 0.2s;
+                z-index: 10;
+            }
+            
+            .category-item-draggable:hover .category-drag-handle {
+                opacity: 1;
+            }
+            
+            .category-item-draggable .quick-reply-text {
+                padding-left: 30px;
+            }
+            
+            .category-drop-placeholder {
+                height: 3px;
+                background: #9C27B0;
+                border-radius: 2px;
+                margin: 4px 0;
+                opacity: 0;
+                transition: opacity 0.2s;
+            }
+            
+            .category-drop-placeholder.active {
+                opacity: 1;
+            }
+
             /* 移动端适配 */
             @media (max-width: 768px) {
                 .quick-reply-dialog {
@@ -549,6 +630,11 @@
                 
                 .quick-reply-auto-submit-label {
                     font-size: 13px;
+                }
+                
+                .category-drag-handle {
+                    opacity: 1; /* 移动端始终显示拖拽手柄 */
+                    font-size: 18px;
                 }
             }
         `;
@@ -601,7 +687,7 @@
 
     // 创建快捷回复弹窗内容
     function createQuickReplyContent(dialog) {
-        const categories = getCategories();
+        let categories = getCategories();
         let activeCategory = categories[0] || '通用回复';
 
         // 清空弹窗内容
@@ -624,25 +710,38 @@
         header.appendChild(closeBtn);
         dialog.appendChild(header);
 
-        // 分类标签
+        // 分类标签容器
         const tabsContainer = document.createElement('div');
         tabsContainer.className = 'quick-reply-tabs';
-        
-        categories.forEach(category => {
-            const tab = document.createElement('div');
-            tab.className = 'quick-reply-tab';
-            if (category === activeCategory) {
-                tab.classList.add('active');
-            }
-            tab.textContent = category;
-            tab.onclick = () => {
-                activeCategory = category;
-                updateQuickReplyContent();
-            };
-            tabsContainer.appendChild(tab);
-        });
-        
         dialog.appendChild(tabsContainer);
+
+        // 重建分类标签的函数
+        function rebuildTabs() {
+            categories = getCategories();
+            
+            // 检查当前活跃分类是否还存在
+            if (!categories.includes(activeCategory)) {
+                activeCategory = categories[0] || '通用回复';
+            }
+            
+            tabsContainer.innerHTML = '';
+            categories.forEach(category => {
+                const tab = document.createElement('div');
+                tab.className = 'quick-reply-tab';
+                if (category === activeCategory) {
+                    tab.classList.add('active');
+                }
+                tab.textContent = category;
+                tab.onclick = () => {
+                    activeCategory = category;
+                    updateQuickReplyContent();
+                };
+                tabsContainer.appendChild(tab);
+            });
+        }
+
+        // 初始化分类标签
+        rebuildTabs();
 
         // 内容区域
         const contentContainer = document.createElement('div');
@@ -865,11 +964,8 @@
 
         // 更新内容函数
         function updateQuickReplyContent() {
-            // 更新分类标签
-            const tabs = tabsContainer.querySelectorAll('.quick-reply-tab');
-            tabs.forEach(tab => {
-                tab.classList.toggle('active', tab.textContent === activeCategory);
-            });
+            // 重建分类标签（防止分类发生变化）
+            rebuildTabs();
 
             // 更新回复列表
             const replies = getCategoryReplies(activeCategory);
@@ -1025,6 +1121,9 @@
 
         // 初始化内容
         updateQuickReplyContent();
+
+        // 暴露更新函数给分类管理弹窗使用
+        dialog.updateContent = updateQuickReplyContent;
     }
 
     // 显示分类管理弹窗
@@ -1050,6 +1149,14 @@
         dialog.style.minWidth = '350px';
 
         const categories = getCategories();
+
+        // 更新主快捷回复弹窗的函数
+        function updateMainDialog() {
+            const mainDialog = document.getElementById('quick-reply-dialog');
+            if (mainDialog && mainDialog.updateContent) {
+                mainDialog.updateContent();
+            }
+        }
 
         // 头部
         const header = document.createElement('div');
@@ -1085,6 +1192,7 @@
                 if (addCategory(name)) {
                     input.value = '';
                     updateCategoryList();
+                    updateMainDialog(); // 更新主弹窗
                     if (window.addQuickReplyLog) {
                         window.addQuickReplyLog(`添加分类: ${name}`);
                     }
@@ -1114,10 +1222,19 @@
             const currentCategories = getCategories();
             listContainer.innerHTML = '';
             
-            currentCategories.forEach(category => {
+            currentCategories.forEach((category, index) => {
                 const item = document.createElement('div');
-                item.className = 'quick-reply-item';
+                item.className = 'quick-reply-item category-item-draggable';
                 item.style.marginBottom = '8px';
+                item.style.position = 'relative';
+                item.draggable = true;
+                item.dataset.category = category;
+                item.dataset.index = index;
+                
+                // 拖拽手柄
+                const dragHandle = document.createElement('div');
+                dragHandle.className = 'category-drag-handle';
+                dragHandle.innerHTML = '⋮⋮';
                 
                 const text = document.createElement('div');
                 text.className = 'quick-reply-text';
@@ -1130,11 +1247,13 @@
                 const editBtn = document.createElement('button');
                 editBtn.className = 'quick-reply-btn-small quick-reply-btn-edit';
                 editBtn.textContent = '重命名';
-                editBtn.onclick = () => {
+                editBtn.onclick = (e) => {
+                    e.stopPropagation();
                     const newName = prompt('重命名分类:', category);
                     if (newName !== null && newName.trim() !== '' && newName !== category) {
                         if (renameCategory(category, newName.trim())) {
                             updateCategoryList();
+                            updateMainDialog(); // 更新主弹窗
                             if (window.addQuickReplyLog) {
                                 window.addQuickReplyLog(`重命名分类: ${category} -> ${newName.trim()}`);
                             }
@@ -1147,7 +1266,8 @@
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'quick-reply-btn-small quick-reply-btn-delete';
                 deleteBtn.textContent = '删除';
-                deleteBtn.onclick = () => {
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
                     const replies = getCategoryReplies(category);
                     const message = replies.length > 0 
                         ? `确定要删除分类"${category}"吗？这将同时删除该分类下的${replies.length}条回复。`
@@ -1156,6 +1276,7 @@
                     if (confirm(message)) {
                         deleteCategory(category);
                         updateCategoryList();
+                        updateMainDialog(); // 更新主弹窗
                         if (window.addQuickReplyLog) {
                             window.addQuickReplyLog(`删除分类: ${category}`);
                         }
@@ -1165,10 +1286,170 @@
                 actions.appendChild(editBtn);
                 actions.appendChild(deleteBtn);
                 
+                item.appendChild(dragHandle);
                 item.appendChild(text);
                 item.appendChild(actions);
+                
+                // 桌面端拖拽事件
+                item.addEventListener('dragstart', handleDragStart);
+                item.addEventListener('dragover', handleDragOver);
+                item.addEventListener('drop', handleDrop);
+                item.addEventListener('dragend', handleDragEnd);
+                
+                // 移动端触摸事件
+                item.addEventListener('touchstart', handleTouchStart, { passive: false });
+                item.addEventListener('touchmove', handleTouchMove, { passive: false });
+                item.addEventListener('touchend', handleTouchEnd);
+                
                 listContainer.appendChild(item);
             });
+        }
+
+        // 拖拽相关变量
+        let draggedElement = null;
+        let draggedIndex = -1;
+        let touchStartY = 0;
+        let touchCurrentY = 0;
+        let isTouchDragging = false;
+
+        // 桌面端拖拽处理
+        function handleDragStart(e) {
+            draggedElement = this;
+            draggedIndex = parseInt(this.dataset.index);
+            this.classList.add('category-item-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.outerHTML);
+        }
+
+        function handleDragOver(e) {
+            if (e.preventDefault) {
+                e.preventDefault();
+            }
+            e.dataTransfer.dropEffect = 'move';
+            
+            const targetIndex = parseInt(this.dataset.index);
+            if (targetIndex !== draggedIndex) {
+                this.classList.add('category-item-drag-over');
+            }
+            return false;
+        }
+
+        function handleDrop(e) {
+            if (e.stopPropagation) {
+                e.stopPropagation();
+            }
+
+            const targetIndex = parseInt(this.dataset.index);
+            if (draggedIndex !== targetIndex) {
+                reorderCategoriesAfterDrag(draggedIndex, targetIndex);
+            }
+
+            // 清理样式
+            document.querySelectorAll('.category-item-drag-over').forEach(el => {
+                el.classList.remove('category-item-drag-over');
+            });
+
+            return false;
+        }
+
+        function handleDragEnd() {
+            this.classList.remove('category-item-dragging');
+            document.querySelectorAll('.category-item-drag-over').forEach(el => {
+                el.classList.remove('category-item-drag-over');
+            });
+            draggedElement = null;
+            draggedIndex = -1;
+        }
+
+        // 移动端触摸处理
+        function handleTouchStart(e) {
+            if (e.target.closest('.quick-reply-actions')) {
+                return; // 如果点击的是按钮，不启动拖拽
+            }
+            
+            const touch = e.touches[0];
+            touchStartY = touch.clientY;
+            draggedElement = this;
+            draggedIndex = parseInt(this.dataset.index);
+            isTouchDragging = false;
+            
+            // 延迟启动拖拽，避免与点击冲突
+            setTimeout(() => {
+                if (draggedElement === this) {
+                    isTouchDragging = true;
+                    this.classList.add('category-item-dragging');
+                }
+            }, 150);
+        }
+
+        function handleTouchMove(e) {
+            if (!isTouchDragging || !draggedElement) return;
+            
+            e.preventDefault();
+            const touch = e.touches[0];
+            touchCurrentY = touch.clientY;
+            
+            // 查找触摸点下的元素
+            const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+            const categoryItem = elementBelow?.closest('.category-item-draggable');
+            
+            // 清除之前的高亮
+            document.querySelectorAll('.category-item-drag-over').forEach(el => {
+                el.classList.remove('category-item-drag-over');
+            });
+            
+            if (categoryItem && categoryItem !== draggedElement) {
+                categoryItem.classList.add('category-item-drag-over');
+            }
+        }
+
+        function handleTouchEnd(e) {
+            if (!isTouchDragging || !draggedElement) {
+                draggedElement = null;
+                return;
+            }
+            
+            const touch = e.changedTouches[0];
+            const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+            const targetItem = elementBelow?.closest('.category-item-draggable');
+            
+            if (targetItem && targetItem !== draggedElement) {
+                const targetIndex = parseInt(targetItem.dataset.index);
+                if (draggedIndex !== targetIndex) {
+                    reorderCategoriesAfterDrag(draggedIndex, targetIndex);
+                }
+            }
+            
+            // 清理状态
+            document.querySelectorAll('.category-item-dragging, .category-item-drag-over').forEach(el => {
+                el.classList.remove('category-item-dragging', 'category-item-drag-over');
+            });
+            
+            draggedElement = null;
+            draggedIndex = -1;
+            isTouchDragging = false;
+        }
+
+        // 拖拽完成后重新排序
+        function reorderCategoriesAfterDrag(fromIndex, toIndex) {
+            const categories = getCategories();
+            const movedCategory = categories[fromIndex];
+            
+            // 创建新的顺序数组
+            const newOrder = [...categories];
+            newOrder.splice(fromIndex, 1); // 移除原位置的元素
+            newOrder.splice(toIndex, 0, movedCategory); // 插入到新位置
+            
+            // 保存新顺序
+            reorderCategories(newOrder);
+            
+            // 更新界面
+            updateCategoryList();
+            updateMainDialog();
+            
+            if (window.addQuickReplyLog) {
+                window.addQuickReplyLog(`移动分类: ${movedCategory} (${fromIndex + 1} → ${toIndex + 1})`);
+            }
         }
 
         updateCategoryList();
@@ -1188,6 +1469,7 @@
         addCategory,
         deleteCategory,
         renameCategory,
+        reorderCategories, // 新增：分类排序功能
         getCategoryReplies,
         addReplyToCategory,
         deleteReplyFromCategory,
