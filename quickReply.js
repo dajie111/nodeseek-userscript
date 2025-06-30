@@ -291,6 +291,9 @@
         style.id = 'quick-reply-styles';
         style.textContent = `
             .quick-reply-dialog {
+                width: 500px;
+                min-width: unset;
+                max-width: unset;
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             }
 
