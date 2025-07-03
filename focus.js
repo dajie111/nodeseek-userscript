@@ -2108,34 +2108,11 @@
             if (window.innerWidth <= 767) {
                 dialog.style.cssText += `
                     position: fixed !important;
-                    width: 94% !important;
-                    left: 3% !important;
-                    right: 3% !important;
-                    top: 5px !important;
-                    max-height: 92vh !important;
-                    transform: none !important;
-                    padding: 15px 10px 10px 10px !important;
-                `;
-                
-                // 移动端标题和关闭按钮样式调整
-                title.style.cssText += `
-                    font-size: 18px !important;
-                    padding-right: 40px !important;
-                `;
-                
-                closeBtn.style.cssText += `
-                    position: fixed !important;
-                    right: 15px !important;
-                    top: 15px !important;
-                    font-size: 24px !important;
-                    width: 30px !important;
-                    height: 30px !important;
-                    line-height: 30px !important;
-                    text-align: center !important;
-                    background: rgba(255,255,255,0.9) !important;
-                    border-radius: 50% !important;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
-                    z-index: 10001 !important;
+                    width: 96% !important;
+                    left: 2% !important;
+                    right: 2% !important;
+                    top: 10px !important;
+                    max-height: 88vh !important;
                 `;
             } else {
                 dialog.style.width = '600px';
@@ -3004,34 +2981,11 @@
             if (window.innerWidth <= 767) {
                 dialog.style.cssText += `
                     position: fixed !important;
-                    width: 94% !important;
-                    left: 3% !important;
-                    right: 3% !important;
-                    top: 5px !important;
-                    max-height: 92vh !important;
-                    transform: none !important;
-                    padding: 15px 10px 10px 10px !important;
-                `;
-                
-                // 移动端标题和关闭按钮样式调整
-                title.style.cssText += `
-                    font-size: 18px !important;
-                    padding-right: 40px !important;
-                `;
-                
-                closeBtn.style.cssText += `
-                    position: fixed !important;
-                    right: 15px !important;
-                    top: 15px !important;
-                    font-size: 24px !important;
-                    width: 30px !important;
-                    height: 30px !important;
-                    line-height: 30px !important;
-                    text-align: center !important;
-                    background: rgba(255,255,255,0.9) !important;
-                    border-radius: 50% !important;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
-                    z-index: 10001 !important;
+                    width: 96% !important;
+                    left: 2% !important;
+                    right: 2% !important;
+                    top: 10px !important;
+                    max-height: 88vh !important;
                 `;
             } else {
                 dialog.style.width = '700px';
@@ -3350,6 +3304,20 @@
                 -ms-user-select: text;
             `;
 
+            // 移动端适配
+            if (window.innerWidth <= 767) {
+                dialog.style.cssText += `
+                    position: fixed !important;
+                    width: 96% !important;
+                    left: 2% !important;
+                    right: 2% !important;
+                    top: 10px !important;
+                    max-height: 88vh !important;
+                `;
+            } else {
+                dialog.style.width = '600px';
+            }
+
             // 标题和关闭按钮
             const header = document.createElement('div');
             header.style.cssText = `
@@ -3378,43 +3346,6 @@
                 color: #999;
             `;
             closeBtn.onclick = () => dialog.remove();
-
-            // 移动端适配
-            if (window.innerWidth <= 767) {
-                dialog.style.cssText += `
-                    position: fixed !important;
-                    width: 94% !important;
-                    left: 3% !important;
-                    right: 3% !important;
-                    top: 5px !important;
-                    max-height: 92vh !important;
-                    transform: none !important;
-                    padding: 15px 10px 10px 10px !important;
-                `;
-                
-                // 移动端标题和关闭按钮样式调整
-                title.style.cssText += `
-                    font-size: 18px !important;
-                    padding-right: 40px !important;
-                `;
-                
-                closeBtn.style.cssText += `
-                    position: fixed !important;
-                    right: 15px !important;
-                    top: 15px !important;
-                    font-size: 24px !important;
-                    width: 30px !important;
-                    height: 30px !important;
-                    line-height: 30px !important;
-                    text-align: center !important;
-                    background: rgba(255,255,255,0.9) !important;
-                    border-radius: 50% !important;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
-                    z-index: 10001 !important;
-                `;
-            } else {
-                dialog.style.width = '500px';
-            }
 
             header.appendChild(title);
             header.appendChild(closeBtn);
