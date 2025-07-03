@@ -138,7 +138,7 @@
             if (now.getMinutes() === 0 && now.getSeconds() === 0 && lastSignHour !== currentHour) {
                 this.performSignIn();
             }
-            
+
             // 设置下一个整点的定时器
             this.nextSignTimer = setTimeout(() => {
                 const hourToSign = nextHour.getHours();
