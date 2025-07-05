@@ -1668,11 +1668,12 @@
             if (window.innerWidth <= 767) {
                 dialog.style.cssText += `
                     position: fixed !important;
-                    width: 96% !important;
-                    left: 2% !important;
-                    right: 2% !important;
-                    top: 10px !important;
-                    max-height: 88vh !important;
+                    width: 95% !important;
+                    left: 2.5% !important;
+                    right: 2.5% !important;
+                    top: 5px !important;
+                    max-height: 95vh !important;
+                    padding: 15px 15px 10px 15px !important;
                 `;
             } else {
                 dialog.style.width = '500px';
@@ -1699,11 +1700,20 @@
             closeBtn.textContent = '×';
             closeBtn.style.cssText = `
                 position: absolute;
-                right: 0;
-                top: -5px;
+                right: -5px;
+                top: -8px;
                 cursor: pointer;
-                font-size: 20px;
+                font-size: 24px;
                 color: #999;
+                background: #fff;
+                border-radius: 50%;
+                width: 30px;
+                height: 30px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+                z-index: 1;
             `;
             closeBtn.onclick = () => dialog.remove();
 
@@ -2108,11 +2118,12 @@
             if (window.innerWidth <= 767) {
                 dialog.style.cssText += `
                     position: fixed !important;
-                    width: 96% !important;
-                    left: 2% !important;
-                    right: 2% !important;
-                    top: 10px !important;
-                    max-height: 88vh !important;
+                    width: 95% !important;
+                    left: 2.5% !important;
+                    right: 2.5% !important;
+                    top: 5px !important;
+                    max-height: 95vh !important;
+                    padding: 15px 15px 10px 15px !important;
                 `;
             } else {
                 dialog.style.width = '600px';
@@ -2139,11 +2150,20 @@
             closeBtn.textContent = '×';
             closeBtn.style.cssText = `
                 position: absolute;
-                right: 0;
-                top: -5px;
+                right: -5px;
+                top: -8px;
                 cursor: pointer;
-                font-size: 20px;
+                font-size: 24px;
                 color: #999;
+                background: #fff;
+                border-radius: 50%;
+                width: 30px;
+                height: 30px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+                z-index: 1;
             `;
             closeBtn.onclick = () => dialog.remove();
 
@@ -2981,11 +3001,11 @@
             if (window.innerWidth <= 767) {
                 dialog.style.cssText += `
                     position: fixed !important;
-                    width: 96% !important;
-                    left: 2% !important;
-                    right: 2% !important;
-                    top: 10px !important;
-                    max-height: 88vh !important;
+                    width: 95% !important;
+                    left: 2.5% !important;
+                    right: 2.5% !important;
+                    top: 5px !important;
+                    max-height: 95vh !important;
                 `;
             } else {
                 dialog.style.width = '700px';
@@ -2994,7 +3014,7 @@
             // 创建固定区域（不滚动）
             const fixedArea = document.createElement('div');
             fixedArea.style.cssText = `
-                padding: 18px 20px 0 20px;
+                padding: ${window.innerWidth <= 767 ? '15px 15px 0 15px' : '18px 20px 0 20px'};
                 flex-shrink: 0;
             `;
 
@@ -3019,11 +3039,20 @@
             closeBtn.textContent = '×';
             closeBtn.style.cssText = `
                 position: absolute;
-                right: 0;
-                top: -5px;
+                right: -5px;
+                top: -8px;
                 cursor: pointer;
-                font-size: 20px;
+                font-size: 24px;
                 color: #999;
+                background: #fff;
+                border-radius: 50%;
+                width: 30px;
+                height: 30px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+                z-index: 1;
             `;
             closeBtn.onclick = () => dialog.remove();
 
@@ -3259,7 +3288,7 @@
             contentContainer.style.cssText = `
                 flex: 1;
                 overflow-y: auto;
-                padding: 0 20px 12px 20px;
+                padding: ${window.innerWidth <= 767 ? '0 15px 10px 15px' : '0 20px 12px 20px'};
             `;
             dialog.appendChild(contentContainer);
 
@@ -3308,11 +3337,12 @@
             if (window.innerWidth <= 767) {
                 dialog.style.cssText += `
                     position: fixed !important;
-                    width: 96% !important;
-                    left: 2% !important;
-                    right: 2% !important;
-                    top: 10px !important;
-                    max-height: 88vh !important;
+                    width: 95% !important;
+                    left: 2.5% !important;
+                    right: 2.5% !important;
+                    top: 5px !important;
+                    max-height: 95vh !important;
+                    padding: 15px 15px 10px 15px !important;
                 `;
             } else {
                 dialog.style.width = '600px';
@@ -3339,11 +3369,20 @@
             closeBtn.textContent = '×';
             closeBtn.style.cssText = `
                 position: absolute;
-                right: 0;
-                top: -5px;
+                right: -5px;
+                top: -8px;
                 cursor: pointer;
-                font-size: 20px;
+                font-size: 24px;
                 color: #999;
+                background: #fff;
+                border-radius: 50%;
+                width: 30px;
+                height: 30px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+                z-index: 1;
             `;
             closeBtn.onclick = () => dialog.remove();
 
