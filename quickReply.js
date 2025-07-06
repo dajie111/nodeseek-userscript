@@ -180,7 +180,8 @@
             return false;
         }
 
-        replies[categoryName].push(trimmedText);
+        // 使用 unshift 将新回复添加到数组开头，显示在最上面
+        replies[categoryName].unshift(trimmedText);
         setQuickReplies(replies);
         return true;
     }
@@ -215,6 +216,20 @@
             return true;
         }
         return false;
+    }
+
+    // 重新排序分类中的回复
+    function reorderRepliesInCategory(categoryName, newOrder) {
+        const replies = getQuickReplies();
+        if (!replies[categoryName]) return false;
+
+        // 验证新顺序数组的有效性
+        if (newOrder.length !== replies[categoryName].length) return false;
+
+        // 更新回复顺序
+        replies[categoryName] = newOrder;
+        setQuickReplies(replies);
+        return true;
     }
 
     // 查找编辑器元素
@@ -559,29 +574,29 @@
             }
 
             /* 拖拽排序样式 */
-            .category-item-draggable {
+            .category-item-draggable, .reply-item-draggable {
                 cursor: move;
                 transition: all 0.2s;
                 user-select: none;
             }
 
-            .category-item-draggable:hover {
+            .category-item-draggable:hover, .reply-item-draggable:hover {
                 box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             }
 
-            .category-item-dragging {
+            .category-item-dragging, .reply-item-dragging {
                 opacity: 0.5;
                 transform: rotate(2deg);
                 z-index: 1000;
                 box-shadow: 0 8px 25px rgba(0,0,0,0.2);
             }
 
-            .category-item-drag-over {
+            .category-item-drag-over, .reply-item-drag-over {
                 border-top: 3px solid #9C27B0;
                 margin-top: 3px;
             }
 
-            .category-drag-handle {
+            .category-drag-handle, .reply-drag-handle {
                 position: absolute;
                 left: 8px;
                 top: 50%;
@@ -594,15 +609,17 @@
                 z-index: 10;
             }
 
-            .category-item-draggable:hover .category-drag-handle {
+            .category-item-draggable:hover .category-drag-handle,
+            .reply-item-draggable:hover .reply-drag-handle {
                 opacity: 1;
             }
 
-            .category-item-draggable .quick-reply-text {
+            .category-item-draggable .quick-reply-text,
+            .reply-item-draggable .quick-reply-text {
                 padding-left: 30px;
             }
 
-            .category-drop-placeholder {
+            .category-drop-placeholder, .reply-drop-placeholder {
                 height: 3px;
                 background: #9C27B0;
                 border-radius: 2px;
@@ -611,7 +628,7 @@
                 transition: opacity 0.2s;
             }
 
-            .category-drop-placeholder.active {
+            .category-drop-placeholder.active, .reply-drop-placeholder.active {
                 opacity: 1;
             }
 
@@ -679,7 +696,7 @@
                     font-size: 13px;
                 }
 
-                .category-drag-handle {
+                .category-drag-handle, .reply-drag-handle {
                     opacity: 1;
                     font-size: 18px;
                 }
@@ -1021,6 +1038,152 @@
             const replies = getCategoryReplies(activeCategory);
             contentContainer.innerHTML = '';
 
+            // 拖拽相关变量
+            let replyDraggedElement = null;
+            let replyDraggedIndex = -1;
+            let replyTouchStartY = 0;
+            let replyTouchCurrentY = 0;
+            let isReplyTouchDragging = false;
+
+            // 回复拖拽处理函数
+            function handleReplyDragStart(e) {
+                replyDraggedElement = this;
+                replyDraggedIndex = parseInt(this.dataset.index);
+                this.classList.add('reply-item-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/html', this.outerHTML);
+            }
+
+            function handleReplyDragOver(e) {
+                if (e.preventDefault) {
+                    e.preventDefault();
+                }
+                e.dataTransfer.dropEffect = 'move';
+
+                const targetIndex = parseInt(this.dataset.index);
+                if (targetIndex !== replyDraggedIndex) {
+                    this.classList.add('reply-item-drag-over');
+                }
+                return false;
+            }
+
+            function handleReplyDrop(e) {
+                if (e.stopPropagation) {
+                    e.stopPropagation();
+                }
+
+                const targetIndex = parseInt(this.dataset.index);
+                if (replyDraggedIndex !== targetIndex) {
+                    reorderRepliesAfterDrag(replyDraggedIndex, targetIndex);
+                }
+
+                // 清理样式
+                document.querySelectorAll('.reply-item-drag-over').forEach(el => {
+                    el.classList.remove('reply-item-drag-over');
+                });
+
+                return false;
+            }
+
+            function handleReplyDragEnd() {
+                this.classList.remove('reply-item-dragging');
+                document.querySelectorAll('.reply-item-drag-over').forEach(el => {
+                    el.classList.remove('reply-item-drag-over');
+                });
+                replyDraggedElement = null;
+                replyDraggedIndex = -1;
+            }
+
+            // 移动端触摸处理
+            function handleReplyTouchStart(e) {
+                if (e.target.closest('.quick-reply-actions')) {
+                    return; // 如果点击的是按钮，不启动拖拽
+                }
+
+                const touch = e.touches[0];
+                replyTouchStartY = touch.clientY;
+                replyDraggedElement = this;
+                replyDraggedIndex = parseInt(this.dataset.index);
+                isReplyTouchDragging = false;
+
+                // 延迟启动拖拽，避免与点击冲突
+                setTimeout(() => {
+                    if (replyDraggedElement === this) {
+                        isReplyTouchDragging = true;
+                        this.classList.add('reply-item-dragging');
+                    }
+                }, 150);
+            }
+
+            function handleReplyTouchMove(e) {
+                if (!isReplyTouchDragging || !replyDraggedElement) return;
+
+                e.preventDefault();
+                const touch = e.touches[0];
+                replyTouchCurrentY = touch.clientY;
+
+                // 查找触摸点下的元素
+                const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+                const replyItem = elementBelow?.closest('.reply-item-draggable');
+
+                // 清除之前的高亮
+                document.querySelectorAll('.reply-item-drag-over').forEach(el => {
+                    el.classList.remove('reply-item-drag-over');
+                });
+
+                if (replyItem && replyItem !== replyDraggedElement) {
+                    replyItem.classList.add('reply-item-drag-over');
+                }
+            }
+
+            function handleReplyTouchEnd(e) {
+                if (!isReplyTouchDragging || !replyDraggedElement) {
+                    replyDraggedElement = null;
+                    return;
+                }
+
+                const touch = e.changedTouches[0];
+                const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+                const targetItem = elementBelow?.closest('.reply-item-draggable');
+
+                if (targetItem && targetItem !== replyDraggedElement) {
+                    const targetIndex = parseInt(targetItem.dataset.index);
+                    if (replyDraggedIndex !== targetIndex) {
+                        reorderRepliesAfterDrag(replyDraggedIndex, targetIndex);
+                    }
+                }
+
+                // 清理状态
+                document.querySelectorAll('.reply-item-dragging, .reply-item-drag-over').forEach(el => {
+                    el.classList.remove('reply-item-dragging', 'reply-item-drag-over');
+                });
+
+                replyDraggedElement = null;
+                replyDraggedIndex = -1;
+                isReplyTouchDragging = false;
+            }
+
+            // 拖拽完成后重新排序回复
+            function reorderRepliesAfterDrag(fromIndex, toIndex) {
+                const currentReplies = getCategoryReplies(activeCategory);
+                const movedReply = currentReplies[fromIndex];
+
+                // 创建新的顺序数组
+                const newOrder = [...currentReplies];
+                newOrder.splice(fromIndex, 1); // 移除原位置的元素
+                newOrder.splice(toIndex, 0, movedReply); // 插入到新位置
+
+                // 保存新顺序
+                reorderRepliesInCategory(activeCategory, newOrder);
+
+                // 更新界面
+                updateQuickReplyContent();
+
+                if (window.addQuickReplyLog) {
+                    window.addQuickReplyLog(`移动回复: ${movedReply.substring(0, 20)}${movedReply.length > 20 ? '...' : ''} (${fromIndex + 1} → ${toIndex + 1})`);
+                }
+            }
+
             if (replies.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'quick-reply-empty';
@@ -1030,9 +1193,18 @@
                 const itemsContainer = document.createElement('div');
                 itemsContainer.className = 'quick-reply-items';
 
-                replies.forEach(reply => {
+                replies.forEach((reply, index) => {
                     const item = document.createElement('div');
-                    item.className = 'quick-reply-item';
+                    item.className = 'quick-reply-item reply-item-draggable';
+                    item.style.position = 'relative';
+                    item.draggable = true;
+                    item.dataset.reply = reply;
+                    item.dataset.index = index;
+
+                    // 拖拽手柄
+                    const dragHandle = document.createElement('div');
+                    dragHandle.className = 'reply-drag-handle';
+                    dragHandle.innerHTML = '⋮⋮';
 
                     const text = document.createElement('div');
                     text.className = 'quick-reply-text';
@@ -1066,8 +1238,20 @@
                     actions.appendChild(editBtn);
                     actions.appendChild(deleteBtn);
 
+                    item.appendChild(dragHandle);
                     item.appendChild(text);
                     item.appendChild(actions);
+
+                    // 添加拖拽事件监听器
+                    item.addEventListener('dragstart', handleReplyDragStart);
+                    item.addEventListener('dragover', handleReplyDragOver);
+                    item.addEventListener('drop', handleReplyDrop);
+                    item.addEventListener('dragend', handleReplyDragEnd);
+
+                    // 移动端触摸事件
+                    item.addEventListener('touchstart', handleReplyTouchStart, { passive: false });
+                    item.addEventListener('touchmove', handleReplyTouchMove, { passive: false });
+                    item.addEventListener('touchend', handleReplyTouchEnd);
 
                     // 点击插入回复
                     item.onclick = () => {
@@ -1532,6 +1716,7 @@
         addReplyToCategory,
         deleteReplyFromCategory,
         editReplyText,
+        reorderRepliesInCategory, // 新增：回复排序功能
         insertReplyText,
         resetToDefault,
         findEditor,
