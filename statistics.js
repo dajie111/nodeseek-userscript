@@ -1,4 +1,4 @@
-// ========== 鸡腿统计模块 ==========
+// ========== 鸡腿统计 ==========
 (function() {
     'use strict';
 
@@ -562,9 +562,15 @@
 
         // ========== 筛选按钮事件 ==========
         filterBtn.onclick = function() {
+            // 每次筛选时都重新从 localStorage 获取最新的历史数据
+            let currentHistory = [];
+            try {
+                currentHistory = JSON.parse(localStorage.getItem(CHICKEN_LEG_HISTORY_KEY) || '[]');
+            } catch (e) { currentHistory = []; }
+            
             const start = startInput.value ? new Date(startInput.value + 'T00:00:00') : null;
             const end = endInput.value ? new Date(endInput.value + 'T23:59:59') : null;
-            const filtered = history.filter(item => {
+            const filtered = currentHistory.filter(item => {
                 if (!item[3]) return false;
                 let dateStr = String(item[3]).trim();
                 if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateStr)) {
@@ -578,6 +584,8 @@
                 if (end && d > end) return false;
                 return true;
             });
+            // 按时间降序排列
+            filtered.sort((a, b) => new Date(b[3]) - new Date(a[3]));
             renderTableAndStats(filtered);
         };
 
