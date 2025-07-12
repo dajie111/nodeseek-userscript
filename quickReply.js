@@ -574,8 +574,14 @@
             }
 
             /* 拖拽排序样式 */
-            .category-item-draggable, .reply-item-draggable {
-                cursor: move;
+            .category-item-draggable {
+                cursor: default;
+                transition: all 0.2s;
+                user-select: none;
+            }
+
+            .reply-item-draggable {
+                cursor: default;
                 transition: all 0.2s;
                 user-select: none;
             }
@@ -596,7 +602,7 @@
                 margin-top: 3px;
             }
 
-            .category-drag-handle, .reply-drag-handle {
+            .category-drag-handle {
                 position: absolute;
                 left: 8px;
                 top: 50%;
@@ -605,8 +611,16 @@
                 font-size: 16px;
                 cursor: move;
                 opacity: 0;
-                transition: opacity 0.2s;
+                transition: all 0.2s;
                 z-index: 10;
+                padding: 2px;
+                border-radius: 4px;
+            }
+
+            .category-drag-handle:hover {
+                background-color: rgba(156, 39, 176, 0.1);
+                color: #9C27B0;
+                opacity: 1 !important;
             }
 
             .category-item-draggable:hover .category-drag-handle,
@@ -614,8 +628,7 @@
                 opacity: 1;
             }
 
-            .category-item-draggable .quick-reply-text,
-            .reply-item-draggable .quick-reply-text {
+            .category-item-draggable .quick-reply-text {
                 padding-left: 30px;
             }
 
@@ -696,7 +709,7 @@
                     font-size: 13px;
                 }
 
-                .category-drag-handle, .reply-drag-handle {
+                .category-drag-handle {
                     opacity: 1;
                     font-size: 18px;
                 }
@@ -1201,11 +1214,6 @@
                     item.dataset.reply = reply;
                     item.dataset.index = index;
 
-                    // 拖拽手柄
-                    const dragHandle = document.createElement('div');
-                    dragHandle.className = 'reply-drag-handle';
-                    dragHandle.innerHTML = '⋮⋮';
-
                     const text = document.createElement('div');
                     text.className = 'quick-reply-text';
                     text.textContent = reply;
@@ -1238,7 +1246,6 @@
                     actions.appendChild(editBtn);
                     actions.appendChild(deleteBtn);
 
-                    item.appendChild(dragHandle);
                     item.appendChild(text);
                     item.appendChild(actions);
 
