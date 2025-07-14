@@ -529,28 +529,45 @@
 
             const dialog = document.createElement('div');
             dialog.id = 'login-auth-dialog';
+            // 检测是否为移动端
+            const isMobile = window.innerWidth <= 768;
+            
             dialog.style.cssText = `
                 position: fixed;
-                top: 60px;
-                right: 16px;
+                ${isMobile ? `
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    width: 90vw;
+                    max-width: 350px;
+                ` : `
+                    top: 60px;
+                    right: 16px;
+                    width: 300px;
+                `}
                 z-index: 10000;
                 background: #fff;
                 border: 1px solid #ccc;
                 border-radius: 8px;
                 box-shadow: 0 2px 12px rgba(0,0,0,0.15);
-                padding: 20px;
-                width: 300px;
-                max-height: 80vh;
+                padding: ${isMobile ? '16px' : '20px'};
+                max-height: ${isMobile ? '90vh' : '80vh'};
                 overflow-y: auto;
+                box-sizing: border-box;
             `;
 
             const title = document.createElement('div');
             title.textContent = '配置同步';
+            title.className = 'dialog-title-draggable'; // 添加可拖拽标识
             title.style.cssText = `
                 font-weight: bold;
                 font-size: 16px;
                 margin-bottom: 15px;
                 text-align: center;
+                cursor: move;
+                padding: 10px 5px;
+                margin: -10px -5px 15px -5px;
+                user-select: none;
             `;
 
             const closeBtn = document.createElement('span');
@@ -580,9 +597,43 @@
             this.makeDraggable(dialog);
         },
 
+        // 优化输入框样式（移动端适配）
+        optimizeInputForMobile: function(input, isMobile) {
+            const styles = `
+                width: 100%;
+                padding: ${isMobile ? '12px 8px' : '8px'};
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                margin-bottom: 10px;
+                box-sizing: border-box;
+                font-size: ${isMobile ? '16px' : '14px'};
+                line-height: 1.4;
+                -webkit-appearance: none;
+                transition: border-color 0.2s ease;
+            `;
+            input.style.cssText = styles;
+            
+            // 移动端禁用自动缩放
+            if (isMobile) {
+                input.setAttribute('autocapitalize', 'off');
+                input.setAttribute('autocorrect', 'off');
+            }
+        },
+
+        // 优化按钮样式（移动端适配）
+        optimizeButtonForMobile: function(button, isMobile) {
+            const currentStyles = button.style.cssText;
+            button.style.cssText = currentStyles + `
+                min-height: ${isMobile ? '44px' : '32px'};
+                touch-action: manipulation;
+                -webkit-appearance: none;
+            `;
+        },
+
         // 创建认证面板
         createAuthPanel: function(container) {
             const form = document.createElement('div');
+            const isMobile = window.innerWidth <= 768;
 
             // 用户名输入
             const usernameLabel = document.createElement('div');
@@ -592,14 +643,7 @@
             const usernameInput = document.createElement('input');
             usernameInput.type = 'text';
             usernameInput.placeholder = '请输入用户名';
-            usernameInput.style.cssText = `
-                width: 100%;
-                padding: 8px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                margin-bottom: 10px;
-                box-sizing: border-box;
-            `;
+            this.optimizeInputForMobile(usernameInput, isMobile);
 
             // 密码输入
             const passwordLabel = document.createElement('div');
@@ -609,14 +653,7 @@
             const passwordInput = document.createElement('input');
             passwordInput.type = 'password';
             passwordInput.placeholder = '请输入密码';
-            passwordInput.style.cssText = `
-                width: 100%;
-                padding: 8px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                margin-bottom: 10px;
-                box-sizing: border-box;
-            `;
+            this.optimizeInputForMobile(passwordInput, isMobile);
 
             // 安全码输入（仅注册时显示）
             const securityCodeLabel = document.createElement('div');
@@ -627,15 +664,8 @@
             const securityCodeInput = document.createElement('input');
             securityCodeInput.type = 'password';
             securityCodeInput.placeholder = '请输入安全码（用于找回密码）';
-            securityCodeInput.style.cssText = `
-                width: 100%;
-                padding: 8px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                margin-bottom: 10px;
-                box-sizing: border-box;
-                display: none;
-            `;
+            this.optimizeInputForMobile(securityCodeInput, isMobile);
+            securityCodeInput.style.display = 'none'; // 默认隐藏
 
             // 模式切换提示
             const modeHint = document.createElement('div');
@@ -815,11 +845,17 @@
                         container.innerHTML = '';
                         const title = document.createElement('div');
                         title.textContent = '配置同步';
+                        title.className = 'dialog-title-draggable'; // 添加可拖拽标识
+                        const isMobile = window.innerWidth <= 768;
                         title.style.cssText = `
                             font-weight: bold;
                             font-size: 16px;
                             margin-bottom: 15px;
                             text-align: center;
+                            cursor: move;
+                            padding: 10px 5px;
+                            margin: -10px -5px 15px -5px;
+                            user-select: none;
                         `;
                         
                         const closeBtn = document.createElement('span');
@@ -836,6 +872,9 @@
                         container.appendChild(title);
                         container.appendChild(closeBtn);
                         this.createUserPanel(container);
+                        
+                        // 重要：重新绑定拖拽功能
+                        this.makeDraggable(container);
                     }
                 } catch (error) {
                     // 错误已在Auth模块中处理
@@ -867,9 +906,18 @@
                 }
             };
 
+            // 优化按钮移动端适配
+            this.optimizeButtonForMobile(loginBtn, isMobile);
+            this.optimizeButtonForMobile(registerBtn, isMobile);
+            
             buttonContainer.appendChild(loginBtn);
             buttonContainer.appendChild(registerBtn);
 
+            // 优化其他按钮移动端适配
+            this.optimizeButtonForMobile(switchToRegisterBtn, isMobile);
+            this.optimizeButtonForMobile(switchToLoginBtn, isMobile);
+            this.optimizeButtonForMobile(forgotPasswordBtn, isMobile);
+            
             // 添加安全码输入到切换容器中
             switchContainer.appendChild(switchToRegisterBtn);
             switchContainer.appendChild(switchToLoginBtn);
@@ -1088,6 +1136,7 @@
         // 创建用户面板
         createUserPanel: function(container) {
             const user = Auth.getCurrentUser();
+            const isMobile = window.innerWidth <= 768;
 
             // 用户信息
             const userInfo = document.createElement('div');
@@ -1189,6 +1238,12 @@
                 }
             };
 
+            // 优化用户面板按钮移动端适配
+            this.optimizeButtonForMobile(uploadBtn, isMobile);
+            this.optimizeButtonForMobile(downloadBtn, isMobile);
+            this.optimizeButtonForMobile(changePasswordBtn, isMobile);
+            this.optimizeButtonForMobile(logoutBtn, isMobile);
+            
             syncContainer.appendChild(uploadBtn);
             syncContainer.appendChild(downloadBtn);
             syncContainer.appendChild(changePasswordBtn);
@@ -1400,39 +1455,84 @@
             currentPasswordInput.focus();
         },
 
-        // 使对话框可拖动
+        // 使对话框可拖动（支持PC和移动端）
         makeDraggable: function(element) {
             let isDragging = false;
             let startX, startY, startLeft, startTop;
 
-            element.addEventListener('mousedown', function(e) {
+            // 通用的开始拖拽函数
+            const startDrag = function(clientX, clientY, target) {
                 // 只有点击标题区域才能拖动
-                if (e.target === element || e.target.tagName === 'DIV') {
+                if (target.className === 'dialog-title-draggable' || 
+                    target.closest('.dialog-title-draggable')) {
                     isDragging = true;
-                    startX = e.clientX;
-                    startY = e.clientY;
+                    startX = clientX;
+                    startY = clientY;
                     startLeft = parseInt(window.getComputedStyle(element).left, 10);
                     startTop = parseInt(window.getComputedStyle(element).top, 10);
-                    
-                    element.style.cursor = 'move';
+                    return true;
+                }
+                return false;
+            };
+
+            // 通用的拖拽移动函数
+            const handleDrag = function(clientX, clientY) {
+                if (isDragging) {
+                    const deltaX = clientX - startX;
+                    const deltaY = clientY - startY;
+                    element.style.left = (startLeft + deltaX) + 'px';
+                    element.style.top = (startTop + deltaY) + 'px';
+                }
+            };
+
+            // 通用的结束拖拽函数
+            const endDrag = function() {
+                if (isDragging) {
+                    isDragging = false;
+                }
+            };
+
+            // PC端鼠标事件
+            element.addEventListener('mousedown', function(e) {
+                if (startDrag(e.clientX, e.clientY, e.target)) {
                     e.preventDefault();
                 }
             });
 
             document.addEventListener('mousemove', function(e) {
-                if (isDragging) {
-                    const deltaX = e.clientX - startX;
-                    const deltaY = e.clientY - startY;
-                    element.style.left = (startLeft + deltaX) + 'px';
-                    element.style.top = (startTop + deltaY) + 'px';
-                }
+                handleDrag(e.clientX, e.clientY);
             });
 
             document.addEventListener('mouseup', function() {
-                if (isDragging) {
-                    isDragging = false;
-                    element.style.cursor = 'default';
+                endDrag();
+            });
+
+            // 移动端触摸事件
+            element.addEventListener('touchstart', function(e) {
+                if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    if (startDrag(touch.clientX, touch.clientY, e.target)) {
+                        e.preventDefault();
+                    }
                 }
+            }, { passive: false });
+
+            document.addEventListener('touchmove', function(e) {
+                if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    handleDrag(touch.clientX, touch.clientY);
+                    if (isDragging) {
+                        e.preventDefault();
+                    }
+                }
+            }, { passive: false });
+
+            document.addEventListener('touchend', function() {
+                endDrag();
+            });
+
+            document.addEventListener('touchcancel', function() {
+                endDrag();
             });
         }
     };
