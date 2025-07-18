@@ -912,7 +912,45 @@
     window.NodeSeekRegister = {
         setAddLogFunction: setAddLogFunction,
         showChickenLegStatsDialog: showChickenLegStatsDialog,
-        getPageMainText: getPageMainText
+        getPageMainText: getPageMainText,
+        
+        // 导出鸡腿统计数据
+        getChickenLegStats: function() {
+            const lastFetch = localStorage.getItem(CHICKEN_LEG_LAST_FETCH_KEY);
+            const nextAllow = localStorage.getItem(CHICKEN_LEG_NEXT_ALLOW_KEY);
+            const lastHtml = localStorage.getItem(CHICKEN_LEG_LAST_HTML_KEY);
+            const history = localStorage.getItem(CHICKEN_LEG_HISTORY_KEY);
+            
+            return {
+                lastFetch: lastFetch,
+                nextAllow: nextAllow,
+                lastHtml: lastHtml,
+                history: history ? JSON.parse(history) : []
+            };
+        },
+        
+        // 导入鸡腿统计数据
+        setChickenLegStats: function(data) {
+            if (!data || typeof data !== 'object') {
+                return;
+            }
+            
+            if (data.lastFetch) {
+                localStorage.setItem(CHICKEN_LEG_LAST_FETCH_KEY, data.lastFetch);
+            }
+            
+            if (data.nextAllow) {
+                localStorage.setItem(CHICKEN_LEG_NEXT_ALLOW_KEY, data.nextAllow);
+            }
+            
+            if (data.lastHtml) {
+                localStorage.setItem(CHICKEN_LEG_LAST_HTML_KEY, data.lastHtml);
+            }
+            
+            if (data.history && Array.isArray(data.history)) {
+                localStorage.setItem(CHICKEN_LEG_HISTORY_KEY, JSON.stringify(data.history));
+            }
+        }
     };
 
 
