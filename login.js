@@ -144,89 +144,151 @@
         },
 
         // 获取所有配置数据
-        getAllConfig: function() {
+        getAllConfig: function(selectedItems) {
+            const config = {};
+            
+            // 如果没有选择特定项目，默认获取所有配置
+            if (!selectedItems || selectedItems.length === 0) {
+                selectedItems = ['blacklist', 'friends', 'favorites', 'logs', 'browseHistory', 'quickReplies', 'chickenLegStats', 'hotTopicsData'];
+            }
+            
             // 获取黑名单数据
-            const blacklist = JSON.parse(localStorage.getItem('nodeseek_blacklist') || '{}');
+            if (selectedItems.includes('blacklist')) {
+                config.blacklist = JSON.parse(localStorage.getItem('nodeseek_blacklist') || '{}');
+            }
             
             // 获取好友数据
-            let friends = {};
-            try {
-                if (window.NodeSeekFriends && typeof window.NodeSeekFriends.getFriends === 'function') {
-                    friends = window.NodeSeekFriends.getFriends();
-                } else {
-                    friends = JSON.parse(localStorage.getItem('nodeseek_friends') || '{}');
+            if (selectedItems.includes('friends')) {
+                try {
+                    if (window.NodeSeekFriends && typeof window.NodeSeekFriends.getFriends === 'function') {
+                        config.friends = window.NodeSeekFriends.getFriends();
+                    } else {
+                        config.friends = JSON.parse(localStorage.getItem('nodeseek_friends') || '{}');
+                    }
+                } catch (e) {
+                    config.friends = {};
                 }
-            } catch (e) {
-                friends = {};
             }
             
             // 获取收藏数据
-            const favorites = JSON.parse(localStorage.getItem('nodeseek_favorites') || '[]');
+            if (selectedItems.includes('favorites')) {
+                config.favorites = JSON.parse(localStorage.getItem('nodeseek_favorites') || '[]');
+            }
             
             // 获取操作日志
-            const logs = JSON.parse(localStorage.getItem('nodeseek_sign_logs') || '[]');
+            if (selectedItems.includes('logs')) {
+                config.logs = JSON.parse(localStorage.getItem('nodeseek_sign_logs') || '[]');
+            }
             
             // 获取浏览历史
-            const browseHistory = JSON.parse(localStorage.getItem('nodeseek_browse_history') || '[]');
-            
-            // 获取热点统计数据
-            const hotTopicsData = {};
-            try {
-                const rssHistory = localStorage.getItem('nodeseek_rss_history');
-                if (rssHistory) hotTopicsData.rssHistory = JSON.parse(rssHistory);
-                
-                const hotWordsHistory = localStorage.getItem('nodeseek_hot_words_history');
-                if (hotWordsHistory) hotTopicsData.hotWordsHistory = JSON.parse(hotWordsHistory);
-                
-                const timeDistributionHistory = localStorage.getItem('nodeseek_time_distribution_history');
-                if (timeDistributionHistory) hotTopicsData.timeDistributionHistory = JSON.parse(timeDistributionHistory);
-                
-                const userStatsHistory = localStorage.getItem('nodeseek_user_stats_history');
-                if (userStatsHistory) hotTopicsData.userStatsHistory = JSON.parse(userStatsHistory);
-                
-                const globalState = localStorage.getItem('nodeseek_focus_global_state');
-                if (globalState) hotTopicsData.globalState = JSON.parse(globalState);
-            } catch (error) {
-                console.error('获取热点统计数据失败:', error);
+            if (selectedItems.includes('browseHistory')) {
+                config.browseHistory = JSON.parse(localStorage.getItem('nodeseek_browse_history') || '[]');
             }
             
             // 获取快捷回复数据
-            let quickReplies = {};
-            try {
-                if (window.NodeSeekQuickReply && typeof window.NodeSeekQuickReply.getQuickReplies === 'function') {
-                    quickReplies = window.NodeSeekQuickReply.getQuickReplies();
-                } else {
-                    quickReplies = JSON.parse(localStorage.getItem('nodeseek_quick_reply') || '{}');
+            if (selectedItems.includes('quickReplies')) {
+                try {
+                    if (window.NodeSeekQuickReply && typeof window.NodeSeekQuickReply.getQuickReplies === 'function') {
+                        config.quickReplies = window.NodeSeekQuickReply.getQuickReplies();
+                    } else {
+                        config.quickReplies = JSON.parse(localStorage.getItem('nodeseek_quick_reply') || '{}');
+                    }
+                } catch (error) {
+                    config.quickReplies = {};
                 }
-            } catch (error) {
-                quickReplies = {};
+            }
+            
+            // 获取鸡腿统计数据
+            if (selectedItems.includes('chickenLegStats')) {
+                try {
+                    if (window.NodeSeekRegister && typeof window.NodeSeekRegister.getChickenLegStats === 'function') {
+                        config.chickenLegStats = window.NodeSeekRegister.getChickenLegStats();
+                    } else {
+                        // 如果模块未加载，尝试直接从localStorage获取
+                        const lastFetch = localStorage.getItem('nodeseek_chicken_leg_last_fetch');
+                        const nextAllow = localStorage.getItem('nodeseek_chicken_leg_next_allow');
+                        const lastHtml = localStorage.getItem('nodeseek_chicken_leg_last_html');
+                        const history = localStorage.getItem('nodeseek_chicken_leg_history');
+                        
+                        if (lastFetch || nextAllow || lastHtml || history) {
+                            config.chickenLegStats = {
+                                lastFetch: lastFetch,
+                                nextAllow: nextAllow,
+                                lastHtml: lastHtml,
+                                history: history ? JSON.parse(history) : []
+                            };
+                        }
+                    }
+                } catch (error) {
+                    console.error('获取鸡腿统计数据失败:', error);
+                }
+            }
+            
+            // 获取热点统计数据
+            if (selectedItems.includes('hotTopicsData')) {
+                const hotTopicsData = {};
+                try {
+                    // RSS历史采集数据
+                    const rssHistory = localStorage.getItem('nodeseek_rss_history');
+                    if (rssHistory) {
+                        hotTopicsData.rssHistory = JSON.parse(rssHistory);
+                    }
+                    
+                    // 热词历史数据
+                    const hotWordsHistory = localStorage.getItem('nodeseek_hot_words_history');
+                    if (hotWordsHistory) {
+                        hotTopicsData.hotWordsHistory = JSON.parse(hotWordsHistory);
+                    }
+                    
+                    // 时间分布统计数据
+                    const timeDistributionHistory = localStorage.getItem('nodeseek_time_distribution_history');
+                    if (timeDistributionHistory) {
+                        hotTopicsData.timeDistributionHistory = JSON.parse(timeDistributionHistory);
+                    }
+                    
+                    // 用户统计数据
+                    const userStatsHistory = localStorage.getItem('nodeseek_user_stats_history');
+                    if (userStatsHistory) {
+                        hotTopicsData.userStatsHistory = JSON.parse(userStatsHistory);
+                    }
+                    
+                    // 全局状态数据
+                    const globalState = localStorage.getItem('nodeseek_focus_global_state');
+                    if (globalState) {
+                        hotTopicsData.globalState = JSON.parse(globalState);
+                    }
+                    
+                    // 只在有数据时才添加到配置中
+                    if (Object.keys(hotTopicsData).length > 0) {
+                        config.hotTopicsData = hotTopicsData;
+                    }
+                } catch (error) {
+                    console.error('获取热点统计数据失败:', error);
+                }
             }
 
-            return {
-                blacklist,
-                friends,
-                favorites,
-                logs,
-                browseHistory,
-                hotTopicsData,
-                quickReplies,
-                timestamp: new Date().toISOString()
-            };
+            config.timestamp = new Date().toISOString();
+            return config;
         },
 
         // 应用配置数据
-        applyConfig: function(config) {
+        applyConfig: function(config, selectedItems) {
             let applied = [];
+            
+            // 如果没有选择特定项目，默认应用所有配置
+            if (!selectedItems || selectedItems.length === 0) {
+                selectedItems = ['blacklist', 'friends', 'favorites', 'logs', 'browseHistory', 'quickReplies', 'chickenLegStats', 'hotTopicsData'];
+            }
             
             try {
                 // 应用黑名单数据
-                if (config.blacklist) {
+                if (selectedItems.includes('blacklist') && config.blacklist) {
                     localStorage.setItem('nodeseek_blacklist', JSON.stringify(config.blacklist));
                     applied.push("黑名单");
                 }
 
                 // 应用好友数据
-                if (config.friends) {
+                if (selectedItems.includes('friends') && config.friends) {
                     if (window.NodeSeekFriends && typeof window.NodeSeekFriends.setFriends === 'function') {
                         window.NodeSeekFriends.setFriends(config.friends);
                     } else {
@@ -236,59 +298,25 @@
                 }
 
                 // 应用收藏数据
-                if (config.favorites && Array.isArray(config.favorites)) {
+                if (selectedItems.includes('favorites') && config.favorites && Array.isArray(config.favorites)) {
                     localStorage.setItem('nodeseek_favorites', JSON.stringify(config.favorites));
                     applied.push("收藏");
                 }
 
                 // 应用操作日志
-                if (config.logs && Array.isArray(config.logs)) {
+                if (selectedItems.includes('logs') && config.logs && Array.isArray(config.logs)) {
                     localStorage.setItem('nodeseek_sign_logs', JSON.stringify(config.logs));
                     applied.push("操作日志");
                 }
 
                 // 应用浏览历史
-                if (config.browseHistory && Array.isArray(config.browseHistory)) {
+                if (selectedItems.includes('browseHistory') && config.browseHistory && Array.isArray(config.browseHistory)) {
                     localStorage.setItem('nodeseek_browse_history', JSON.stringify(config.browseHistory));
                     applied.push("浏览历史");
                 }
 
-                // 应用热点统计数据
-                if (config.hotTopicsData && typeof config.hotTopicsData === 'object') {
-                    let hotImportCount = 0;
-                    
-                    if (config.hotTopicsData.rssHistory) {
-                        localStorage.setItem('nodeseek_rss_history', JSON.stringify(config.hotTopicsData.rssHistory));
-                        hotImportCount++;
-                    }
-                    
-                    if (config.hotTopicsData.hotWordsHistory) {
-                        localStorage.setItem('nodeseek_hot_words_history', JSON.stringify(config.hotTopicsData.hotWordsHistory));
-                        hotImportCount++;
-                    }
-                    
-                    if (config.hotTopicsData.timeDistributionHistory) {
-                        localStorage.setItem('nodeseek_time_distribution_history', JSON.stringify(config.hotTopicsData.timeDistributionHistory));
-                        hotImportCount++;
-                    }
-                    
-                    if (config.hotTopicsData.userStatsHistory) {
-                        localStorage.setItem('nodeseek_user_stats_history', JSON.stringify(config.hotTopicsData.userStatsHistory));
-                        hotImportCount++;
-                    }
-                    
-                    if (config.hotTopicsData.globalState) {
-                        localStorage.setItem('nodeseek_focus_global_state', JSON.stringify(config.hotTopicsData.globalState));
-                        hotImportCount++;
-                    }
-                    
-                    if (hotImportCount > 0) {
-                        applied.push(`热点统计(${hotImportCount}项)`);
-                    }
-                }
-
                 // 应用快捷回复数据
-                if (config.quickReplies && typeof config.quickReplies === 'object') {
+                if (selectedItems.includes('quickReplies') && config.quickReplies && typeof config.quickReplies === 'object') {
                     if (window.NodeSeekQuickReply && typeof window.NodeSeekQuickReply.setQuickReplies === 'function') {
                         window.NodeSeekQuickReply.setQuickReplies(config.quickReplies);
                     } else {
@@ -296,6 +324,90 @@
                     }
                     const categoriesCount = Object.keys(config.quickReplies).length;
                     applied.push(`快捷回复(${categoriesCount}个分类)`);
+                }
+
+                // 应用鸡腿统计数据
+                if (selectedItems.includes('chickenLegStats') && config.chickenLegStats && typeof config.chickenLegStats === 'object') {
+                    try {
+                        if (window.NodeSeekRegister && typeof window.NodeSeekRegister.setChickenLegStats === 'function') {
+                            window.NodeSeekRegister.setChickenLegStats(config.chickenLegStats);
+                            const historyCount = config.chickenLegStats.history ? config.chickenLegStats.history.length : 0;
+                            applied.push(`鸡腿统计(${historyCount}条记录)`);
+                        } else {
+                            // 如果模块未加载，直接保存到localStorage的相应键中
+                            let importedCount = 0;
+                            
+                            if (config.chickenLegStats.lastFetch) {
+                                localStorage.setItem('nodeseek_chicken_leg_last_fetch', config.chickenLegStats.lastFetch);
+                                importedCount++;
+                            }
+                            
+                            if (config.chickenLegStats.nextAllow) {
+                                localStorage.setItem('nodeseek_chicken_leg_next_allow', config.chickenLegStats.nextAllow);
+                                importedCount++;
+                            }
+                            
+                            if (config.chickenLegStats.lastHtml) {
+                                localStorage.setItem('nodeseek_chicken_leg_last_html', config.chickenLegStats.lastHtml);
+                                importedCount++;
+                            }
+                            
+                            if (config.chickenLegStats.history && Array.isArray(config.chickenLegStats.history)) {
+                                localStorage.setItem('nodeseek_chicken_leg_history', JSON.stringify(config.chickenLegStats.history));
+                                applied.push(`鸡腿统计(${config.chickenLegStats.history.length}条记录)`);
+                            } else {
+                                applied.push("鸡腿统计");
+                            }
+                        }
+                    } catch (error) {
+                        console.error('应用鸡腿统计数据失败:', error);
+                        applied.push("鸡腿统计(失败)");
+                    }
+                }
+
+                // 应用热点统计数据
+                if (selectedItems.includes('hotTopicsData') && config.hotTopicsData && typeof config.hotTopicsData === 'object') {
+                    try {
+                        const hotData = config.hotTopicsData;
+                        let hotImportCount = 0;
+                        
+                        // 导入RSS历史数据
+                        if (hotData.rssHistory && Array.isArray(hotData.rssHistory)) {
+                            localStorage.setItem('nodeseek_rss_history', JSON.stringify(hotData.rssHistory));
+                            hotImportCount++;
+                        }
+                        
+                        // 导入热词历史数据
+                        if (hotData.hotWordsHistory && Array.isArray(hotData.hotWordsHistory)) {
+                            localStorage.setItem('nodeseek_hot_words_history', JSON.stringify(hotData.hotWordsHistory));
+                            hotImportCount++;
+                        }
+                        
+                        // 导入时间分布数据
+                        if (hotData.timeDistributionHistory && Array.isArray(hotData.timeDistributionHistory)) {
+                            localStorage.setItem('nodeseek_time_distribution_history', JSON.stringify(hotData.timeDistributionHistory));
+                            hotImportCount++;
+                        }
+                        
+                        // 导入用户统计数据
+                        if (hotData.userStatsHistory && Array.isArray(hotData.userStatsHistory)) {
+                            localStorage.setItem('nodeseek_user_stats_history', JSON.stringify(hotData.userStatsHistory));
+                            hotImportCount++;
+                        }
+                        
+                        // 导入全局状态数据
+                        if (hotData.globalState && typeof hotData.globalState === 'object') {
+                            localStorage.setItem('nodeseek_focus_global_state', JSON.stringify(hotData.globalState));
+                            hotImportCount++;
+                        }
+                        
+                        if (hotImportCount > 0) {
+                            applied.push(`热点统计(${hotImportCount}项)`);
+                        }
+                    } catch (error) {
+                        console.error('应用热点统计数据失败:', error);
+                        applied.push("热点统计(失败)");
+                    }
                 }
 
                 return applied;
@@ -454,6 +566,407 @@
 
     // 配置同步
     const Sync = {
+        // 显示配置选择对话框
+        showConfigSelectionDialog: function(mode, callback) {
+            // 移除已存在的对话框
+            const existingDialog = document.getElementById('config-selection-dialog');
+            if (existingDialog) {
+                existingDialog.remove();
+            }
+
+            const dialog = document.createElement('div');
+            dialog.id = 'config-selection-dialog';
+            const isMobile = window.innerWidth <= 768;
+            
+            dialog.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: ${isMobile ? '90vw' : '480px'};
+                max-width: ${isMobile ? '90vw' : '480px'};
+                z-index: 10001;
+                background: #fff;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+                padding: 20px;
+                max-height: 80vh;
+                overflow-y: auto;
+                box-sizing: border-box;
+            `;
+
+            // 添加左上角拖拽区域
+            const dragHandle = document.createElement('div');
+            dragHandle.className = 'dialog-title-draggable'; // 添加可拖拽标识
+            dragHandle.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 30px;
+                height: 30px;
+                cursor: move;
+                background: transparent;
+                z-index: 1;
+                user-select: none;
+            `;
+
+            // 标题
+            const title = document.createElement('div');
+            title.textContent = `选择要${mode === 'upload' ? '上传' : '下载'}的配置`;
+            title.style.cssText = `
+                font-weight: bold;
+                font-size: 16px;
+                margin-bottom: 15px;
+                text-align: center;
+            `;
+
+            // 关闭按钮
+            const closeBtn = document.createElement('span');
+            closeBtn.textContent = '×';
+            closeBtn.style.cssText = `
+                position: absolute;
+                right: 12px;
+                top: 8px;
+                cursor: pointer;
+                font-size: 20px;
+            `;
+            closeBtn.onclick = () => dialog.remove();
+
+            // 配置选项
+            const configOptions = [
+                { key: 'blacklist', label: '黑名单' },
+                { key: 'friends', label: '好友' },
+                { key: 'favorites', label: '收藏' },
+                { key: 'logs', label: '操作日志' },
+                { key: 'browseHistory', label: '浏览历史' },
+                { key: 'quickReplies', label: '快捷回复' },
+                { key: 'chickenLegStats', label: '鸡腿统计' },
+                { key: 'hotTopicsData', label: '热点统计' }
+            ];
+
+            // 全选/取消全选
+            const selectAllContainer = document.createElement('div');
+            selectAllContainer.style.cssText = `
+                margin-bottom: 15px;
+                padding-bottom: 10px;
+                border-bottom: 1px solid #eee;
+            `;
+
+            const selectAllCheckbox = document.createElement('input');
+            selectAllCheckbox.type = 'checkbox';
+            selectAllCheckbox.id = 'select-all-config';
+            selectAllCheckbox.checked = true;
+            selectAllCheckbox.style.marginRight = '8px';
+
+            const selectAllLabel = document.createElement('label');
+            selectAllLabel.htmlFor = 'select-all-config';
+            selectAllLabel.textContent = '全选';
+            selectAllLabel.style.cssText = `
+                cursor: pointer;
+                font-weight: bold;
+                color: #1890ff;
+            `;
+
+            selectAllContainer.appendChild(selectAllCheckbox);
+            selectAllContainer.appendChild(selectAllLabel);
+
+            // 配置项列表
+            const configList = document.createElement('div');
+            configList.style.cssText = `
+                margin-bottom: 20px;
+                display: flex;
+                flex-wrap: wrap;
+                gap: ${isMobile ? '6px' : '8px'};
+                max-height: 200px;
+                overflow-y: auto;
+            `;
+
+            const checkboxes = [];
+
+            configOptions.forEach(option => {
+                const item = document.createElement('div');
+                item.style.cssText = `
+                    flex: 0 0 auto;
+                    min-width: ${isMobile ? '70px' : '90px'};
+                    padding: ${isMobile ? '6px 8px' : '8px 12px'};
+                    background: #f8f9fa;
+                    border-radius: 4px;
+                    display: flex;
+                    align-items: center;
+                    transition: background-color 0.2s ease;
+                    cursor: pointer;
+                    white-space: nowrap;
+                `;
+                
+                // 添加hover效果
+                item.onmouseover = () => {
+                    item.style.backgroundColor = '#e9ecef';
+                };
+                item.onmouseout = () => {
+                    item.style.backgroundColor = '#f8f9fa';
+                };
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `config-${option.key}`;
+                checkbox.value = option.key;
+                checkbox.checked = true;
+                checkbox.style.marginRight = isMobile ? '4px' : '6px';
+
+                const label = document.createElement('label');
+                label.htmlFor = `config-${option.key}`;
+                label.style.cssText = `
+                    cursor: pointer;
+                    font-weight: bold;
+                    font-size: ${isMobile ? '12px' : '13px'};
+                    color: #333;
+                    user-select: none;
+                    flex: 1;
+                `;
+                label.textContent = option.label;
+
+                // 统一的点击处理函数
+                const toggleCheckbox = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    checkbox.checked = !checkbox.checked;
+                    // 触发change事件以更新全选状态
+                    checkbox.dispatchEvent(new Event('change'));
+                };
+
+                // 点击整个item区域切换checkbox状态
+                item.onclick = toggleCheckbox;
+                
+                // 点击label文本切换checkbox状态
+                label.onclick = toggleCheckbox;
+                
+                // 阻止checkbox的默认行为，使用我们的统一处理
+                checkbox.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleCheckbox(e);
+                };
+
+                item.appendChild(checkbox);
+                item.appendChild(label);
+                configList.appendChild(item);
+
+                checkboxes.push(checkbox);
+            });
+
+            // 全选逻辑
+            selectAllCheckbox.onchange = function() {
+                checkboxes.forEach(cb => cb.checked = this.checked);
+            };
+
+            // 单个选择逻辑
+            checkboxes.forEach(cb => {
+                cb.onchange = function() {
+                    const allChecked = checkboxes.every(c => c.checked);
+                    const anyChecked = checkboxes.some(c => c.checked);
+                    selectAllCheckbox.checked = allChecked;
+                    selectAllCheckbox.indeterminate = !allChecked && anyChecked;
+                };
+            });
+
+            // 进度条容器
+            const progressContainer = document.createElement('div');
+            progressContainer.style.cssText = `
+                margin-bottom: 15px;
+                display: none;
+            `;
+
+            // 进度条标签
+            const progressLabel = document.createElement('div');
+            progressLabel.style.cssText = `
+                font-size: 12px;
+                color: #666;
+                margin-bottom: 5px;
+                text-align: center;
+            `;
+
+            // 进度条背景
+            const progressBar = document.createElement('div');
+            progressBar.style.cssText = `
+                width: 100%;
+                height: 8px;
+                background: #f0f0f0;
+                border-radius: 4px;
+                overflow: hidden;
+                box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+            `;
+
+            // 进度条填充
+            const progressFill = document.createElement('div');
+            progressFill.style.cssText = `
+                height: 100%;
+                background: linear-gradient(90deg, #1890ff, #40a9ff);
+                width: 0%;
+                transition: width 0.5s ease;
+                border-radius: 4px;
+                position: relative;
+                box-shadow: 0 1px 2px rgba(24,144,255,0.3);
+                overflow: hidden;
+            `;
+            
+            // 添加闪烁效果
+            const progressShine = document.createElement('div');
+            progressShine.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: -100%;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+                animation: shine 2s infinite;
+            `;
+            
+            // 添加CSS动画
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes shine {
+                    0% { left: -100%; }
+                    50% { left: 100%; }
+                    100% { left: 100%; }
+                }
+            `;
+            
+            if (!document.head.querySelector('style[data-progress-shine]')) {
+                style.setAttribute('data-progress-shine', 'true');
+                document.head.appendChild(style);
+            }
+            
+            progressFill.appendChild(progressShine);
+
+            progressBar.appendChild(progressFill);
+            progressContainer.appendChild(progressLabel);
+            progressContainer.appendChild(progressBar);
+
+            // 按钮容器
+            const buttonContainer = document.createElement('div');
+            buttonContainer.style.cssText = `
+                display: flex;
+                gap: 10px;
+                justify-content: center;
+            `;
+
+            // 确认按钮
+            const confirmBtn = document.createElement('button');
+            confirmBtn.textContent = mode === 'upload' ? '上传选中配置' : '下载选中配置';
+            confirmBtn.style.cssText = `
+                flex: 1;
+                padding: 8px 16px;
+                background: #1890ff;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+            `;
+
+            // 取消按钮
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = '取消';
+            cancelBtn.style.cssText = `
+                flex: 1;
+                padding: 8px 16px;
+                background: #f0f0f0;
+                color: #666;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+            `;
+
+            // 事件处理
+            confirmBtn.onclick = async () => {
+                const selectedItems = checkboxes
+                    .filter(cb => cb.checked)
+                    .map(cb => cb.value);
+
+                if (selectedItems.length === 0) {
+                    Utils.showMessage('请至少选择一个配置项', 'warning');
+                    return;
+                }
+
+                // 禁用按钮并显示同步中状态
+                confirmBtn.disabled = true;
+                cancelBtn.disabled = true;
+                const originalText = confirmBtn.textContent;
+                confirmBtn.textContent = mode === 'upload' ? '上传中...' : '下载中...';
+                confirmBtn.style.background = '#ccc';
+                
+                // 显示进度条
+                progressContainer.style.display = 'block';
+                progressLabel.textContent = mode === 'upload' ? '准备上传配置...' : '准备下载配置...';
+                progressFill.style.width = '10%';
+                
+                try {
+                    // 进度步骤1：数据准备
+                    progressLabel.textContent = mode === 'upload' ? '正在收集配置数据...' : '正在获取服务器配置...';
+                    progressFill.style.width = '30%';
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    
+                    // 进度步骤2：执行同步
+                    progressLabel.textContent = mode === 'upload' ? '正在上传配置...' : '正在应用配置...';
+                    progressFill.style.width = '70%';
+                    
+                    // 执行同步操作
+                    await callback(selectedItems);
+                    
+                    // 进度步骤3：完成
+                    progressLabel.textContent = mode === 'upload' ? '上传完成!' : '下载完成!';
+                    progressFill.style.width = '100%';
+                    progressShine.style.animation = 'none'; // 停止闪烁动画
+                    
+                    // 等待一下让用户看到完成状态
+                    await new Promise(resolve => setTimeout(resolve, 800));
+                    
+                } catch (error) {
+                    console.error('同步操作失败:', error);
+                    progressLabel.textContent = '同步失败';
+                    progressFill.style.background = 'linear-gradient(90deg, #f44336, #e57373)';
+                    progressFill.style.width = '100%';
+                    progressShine.style.animation = 'none'; // 停止闪烁动画
+                    
+                    // 等待一下让用户看到失败状态
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } finally {
+                    // 隐藏进度条
+                    progressContainer.style.display = 'none';
+                    progressFill.style.width = '0%';
+                    progressFill.style.background = 'linear-gradient(90deg, #1890ff, #40a9ff)';
+                    progressShine.style.animation = 'shine 2s infinite'; // 恢复闪烁动画
+                    
+                    // 恢复按钮状态并关闭对话框
+                    confirmBtn.disabled = false;
+                    cancelBtn.disabled = false;
+                    confirmBtn.textContent = originalText;
+                    confirmBtn.style.background = '#1890ff';
+                    dialog.remove();
+                }
+            };
+
+            cancelBtn.onclick = () => dialog.remove();
+
+            // 组装对话框
+            dialog.appendChild(dragHandle);
+            dialog.appendChild(title);
+            dialog.appendChild(closeBtn);
+            dialog.appendChild(selectAllContainer);
+            dialog.appendChild(configList);
+            dialog.appendChild(progressContainer);
+            buttonContainer.appendChild(confirmBtn);
+            buttonContainer.appendChild(cancelBtn);
+            dialog.appendChild(buttonContainer);
+
+            document.body.appendChild(dialog);
+            
+            // 使对话框可拖动
+            UI.makeDraggable(dialog);
+        },
+
         // 上传配置到服务器
         upload: async function() {
             if (!Auth.isLoggedIn()) {
@@ -461,21 +974,41 @@
                 return false;
             }
 
-            try {
-                const config = Utils.getAllConfig();
-                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`, {
-                    method: 'POST',
-                    body: JSON.stringify({ config })
-                });
+            // 显示配置选择对话框
+            this.showConfigSelectionDialog('upload', async (selectedItems) => {
+                try {
+                    // 收集配置数据
+                    const config = Utils.getAllConfig(selectedItems);
+                    
+                    // 发送到服务器
+                    const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`, {
+                        method: 'POST',
+                        body: JSON.stringify({ config })
+                    });
 
-                if (data.success) {
-                    Utils.showMessage('配置已同步到服务器', 'success');
-                    return true;
+                    if (data.success) {
+                        const itemNames = selectedItems.map(item => {
+                            const option = {
+                                'blacklist': '黑名单',
+                                'friends': '好友',
+                                'favorites': '收藏',
+                                'logs': '操作日志',
+                                'browseHistory': '浏览历史',
+                                'quickReplies': '快捷回复',
+                                'chickenLegStats': '鸡腿统计',
+                                'hotTopicsData': '热点统计'
+                            }[item];
+                            return option || item;
+                        });
+                        Utils.showMessage(`配置已同步到服务器 (${itemNames.join('、')})`, 'success');
+                        return true;
+                    }
+                } catch (error) {
+                    Utils.showMessage(`配置同步失败: ${error.message}`, 'error');
+                    throw error; // 重新抛出错误，让进度条能够显示失败状态
                 }
-            } catch (error) {
-                Utils.showMessage(`配置同步失败: ${error.message}`, 'error');
-            }
-            return false;
+                return false;
+            });
         },
 
         // 从服务器下载配置
@@ -485,34 +1018,44 @@
                 return false;
             }
 
-            try {
-                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`);
+            // 显示配置选择对话框
+            this.showConfigSelectionDialog('download', async (selectedItems) => {
+                try {
+                    // 获取服务器配置数据
+                    const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`);
 
-                if (data.success) {
-                    const applied = Utils.applyConfig(data.config);
-                    if (applied.length > 0) {
-                        // 延迟显示确认对话框，让成功提示先显示
-                        setTimeout(() => {
-                            const shouldReload = confirm(`配置同步成功！\n\n已同步: ${applied.join('、')}\n\n是否刷新页面以应用更改？`);
-                            if (shouldReload) {
-                                location.reload();
-                            } else {
-                                Utils.showMessage('配置已同步，建议刷新页面以完全应用更改', 'info');
-                            }
-                        }, 500);
+                    if (data.success && data.config) {
+                        // 应用配置
+                        const applied = Utils.applyConfig(data.config, selectedItems);
+                        
+                        if (applied.length > 0) {
+                            // 延迟显示确认对话框，让成功提示先显示
+                            setTimeout(() => {
+                                const shouldReload = confirm(`配置同步成功！\n\n已同步: ${applied.join('、')}\n\n是否刷新页面以应用更改？`);
+                                if (shouldReload) {
+                                    location.reload();
+                                } else {
+                                    Utils.showMessage('配置已同步，建议刷新页面以完全应用更改', 'info');
+                                }
+                            }, 500);
+                            return true;
+                        } else {
+                            Utils.showMessage('从服务器获取配置成功，但没有数据需要应用', 'info');
+                            return false;
+                        }
                     } else {
-                        Utils.showMessage('从服务器获取配置成功，但没有数据需要应用', 'info');
+                        Utils.showMessage('服务器返回的配置数据格式错误', 'error');
+                        throw new Error('配置数据格式错误');
                     }
-                    return true;
+                } catch (error) {
+                    if (error.message.includes('404')) {
+                        Utils.showMessage('服务器上没有配置数据，请先上传配置', 'warning');
+                    } else {
+                        Utils.showMessage(`配置下载失败: ${error.message}`, 'error');
+                    }
+                    throw error; // 重新抛出错误，让进度条能够显示失败状态
                 }
-            } catch (error) {
-                if (error.message.includes('404')) {
-                    Utils.showMessage('服务器上没有配置数据，请先上传配置', 'warning');
-                } else {
-                    Utils.showMessage(`配置下载失败: ${error.message}`, 'error');
-                }
-            }
-            return false;
+            });
         }
     };
 
@@ -556,17 +1099,28 @@
                 box-sizing: border-box;
             `;
 
+            // 添加左上角拖拽区域
+            const dragHandle = document.createElement('div');
+            dragHandle.className = 'dialog-title-draggable'; // 添加可拖拽标识
+            dragHandle.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 30px;
+                height: 30px;
+                cursor: move;
+                background: transparent;
+                z-index: 1;
+                user-select: none;
+            `;
+
             const title = document.createElement('div');
             title.textContent = '配置同步';
-            title.className = 'dialog-title-draggable'; // 添加可拖拽标识
             title.style.cssText = `
                 font-weight: bold;
                 font-size: 16px;
                 margin-bottom: 15px;
                 text-align: center;
-                cursor: move;
-                padding: 10px 5px;
-                margin: -10px -5px 15px -5px;
                 user-select: none;
             `;
 
@@ -581,6 +1135,7 @@
             `;
             closeBtn.onclick = () => dialog.remove();
 
+            dialog.appendChild(dragHandle);
             dialog.appendChild(title);
             dialog.appendChild(closeBtn);
 
@@ -843,18 +1398,29 @@
                     // 登录成功后更新界面
                     if (isLogin && Auth.isLoggedIn()) {
                         container.innerHTML = '';
+                        
+                        // 添加左上角拖拽区域
+                        const dragHandle = document.createElement('div');
+                        dragHandle.className = 'dialog-title-draggable'; // 添加可拖拽标识
+                        dragHandle.style.cssText = `
+                            position: absolute;
+                            top: 0;
+                            left: 0;
+                            width: 30px;
+                            height: 30px;
+                            cursor: move;
+                            background: transparent;
+                            z-index: 1;
+                            user-select: none;
+                        `;
+                        
                         const title = document.createElement('div');
                         title.textContent = '配置同步';
-                        title.className = 'dialog-title-draggable'; // 添加可拖拽标识
-                        const isMobile = window.innerWidth <= 768;
                         title.style.cssText = `
                             font-weight: bold;
                             font-size: 16px;
                             margin-bottom: 15px;
                             text-align: center;
-                            cursor: move;
-                            padding: 10px 5px;
-                            margin: -10px -5px 15px -5px;
                             user-select: none;
                         `;
                         
@@ -869,6 +1435,7 @@
                         `;
                         closeBtn.onclick = () => container.remove();
 
+                        container.appendChild(dragHandle);
                         container.appendChild(title);
                         container.appendChild(closeBtn);
                         this.createUserPanel(container);
@@ -960,6 +1527,21 @@
                 z-index: 10001;
                 width: 350px;
                 max-width: 90vw;
+            `;
+
+            // 添加左上角拖拽区域
+            const dragHandle = document.createElement('div');
+            dragHandle.className = 'dialog-title-draggable'; // 添加可拖拽标识
+            dragHandle.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 30px;
+                height: 30px;
+                cursor: move;
+                background: transparent;
+                z-index: 1;
+                user-select: none;
             `;
 
             // 标题
@@ -1123,11 +1705,15 @@
             form.appendChild(newPasswordInput);
             form.appendChild(buttonContainer);
 
+            dialog.appendChild(dragHandle);
             dialog.appendChild(title);
             dialog.appendChild(closeBtn);
             dialog.appendChild(form);
 
             document.body.appendChild(dialog);
+            
+            // 使对话框可拖动
+            this.makeDraggable(dialog);
             
             // 聚焦用户名输入框
             usernameInput.focus();
@@ -1277,6 +1863,21 @@
                 z-index: 10001;
                 width: 350px;
                 max-width: 90vw;
+            `;
+
+            // 添加左上角拖拽区域
+            const dragHandle = document.createElement('div');
+            dragHandle.className = 'dialog-title-draggable'; // 添加可拖拽标识
+            dragHandle.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 30px;
+                height: 30px;
+                cursor: move;
+                background: transparent;
+                z-index: 1;
+                user-select: none;
             `;
 
             // 标题
@@ -1445,11 +2046,15 @@
             form.appendChild(confirmPasswordInput);
             form.appendChild(buttonContainer);
 
+            dialog.appendChild(dragHandle);
             dialog.appendChild(title);
             dialog.appendChild(closeBtn);
             dialog.appendChild(form);
 
             document.body.appendChild(dialog);
+            
+            // 使对话框可拖动
+            this.makeDraggable(dialog);
             
             // 聚焦当前密码输入框
             currentPasswordInput.focus();
