@@ -50,24 +50,35 @@
         const stored = localStorage.getItem(QUICK_REPLY_KEY);
         if (stored) {
             try {
-                return JSON.parse(stored);
+                const data = JSON.parse(stored);
+                // 如果数据中没有categoryOrder，则从现有分类生成
+                if (!data.categoryOrder) {
+                    data.categoryOrder = Object.keys(data).filter(key => key !== 'categoryOrder');
+                }
+                return data;
             } catch (e) {
                 console.error('解析快捷回复数据失败:', e);
             }
         }
-        // 返回默认数据
-        return JSON.parse(JSON.stringify(DEFAULT_REPLIES));
+        // 返回默认数据，包含分类顺序
+        const defaultData = JSON.parse(JSON.stringify(DEFAULT_REPLIES));
+        defaultData.categoryOrder = Object.keys(DEFAULT_REPLIES);
+        return defaultData;
     }
 
     // 保存快捷回复数据
     function setQuickReplies(data) {
+        // 确保数据包含categoryOrder
+        if (data && typeof data === 'object' && !data.categoryOrder) {
+            data.categoryOrder = Object.keys(data).filter(key => key !== 'categoryOrder');
+        }
         localStorage.setItem(QUICK_REPLY_KEY, JSON.stringify(data));
     }
 
     // 获取分类列表
     function getCategories() {
         const replies = getQuickReplies();
-        return Object.keys(replies);
+        return replies.categoryOrder;
     }
 
     // 计算混合长度：中文2，英文/数字1
@@ -88,7 +99,8 @@
     // 添加新分类
     function addCategory(categoryName) {
         const replies = getQuickReplies();
-        if (Object.keys(replies).length >= 5) {
+        const actualCategories = replies.categoryOrder ? replies.categoryOrder.length : Object.keys(replies).filter(key => key !== 'categoryOrder').length;
+        if (actualCategories >= 5) {
             alert('最多只能添加5个分类');
             return false;
         }
@@ -102,6 +114,11 @@
             return false; // 分类已存在
         }
         replies[trimmedName] = [];
+        // 将新分类添加到顺序数组的末尾
+        if (!replies.categoryOrder) {
+            replies.categoryOrder = [];
+        }
+        replies.categoryOrder.push(trimmedName);
         setQuickReplies(replies);
         return true;
     }
@@ -111,6 +128,13 @@
         const replies = getQuickReplies();
         if (replies[categoryName]) {
             delete replies[categoryName];
+            // 从顺序数组中移除
+            if (replies.categoryOrder) {
+                const index = replies.categoryOrder.indexOf(categoryName);
+                if (index > -1) {
+                    replies.categoryOrder.splice(index, 1);
+                }
+            }
             setQuickReplies(replies);
             return true;
         }
@@ -130,11 +154,15 @@
 
         // 保持分类顺序：重建整个对象，保持原始位置
         const newReplies = {};
-        for (const [key, value] of Object.entries(replies)) {
-            if (key === oldName) {
-                newReplies[trimmedNewName] = value; // 在原位置插入新名称
+        newReplies.categoryOrder = [];
+        
+        for (const categoryName of replies.categoryOrder) {
+            if (categoryName === oldName) {
+                newReplies[trimmedNewName] = replies[oldName]; // 在原位置插入新名称
+                newReplies.categoryOrder.push(trimmedNewName);
             } else {
-                newReplies[key] = value;
+                newReplies[categoryName] = replies[categoryName];
+                newReplies.categoryOrder.push(categoryName);
             }
         }
 
@@ -153,6 +181,9 @@
                 newReplies[categoryName] = replies[categoryName];
             }
         });
+
+        // 更新分类顺序
+        newReplies.categoryOrder = newOrder;
 
         setQuickReplies(newReplies);
         return true;
@@ -293,7 +324,9 @@
 
     // 重置为默认回复
     function resetToDefault() {
-        setQuickReplies(JSON.parse(JSON.stringify(DEFAULT_REPLIES)));
+        const defaultData = JSON.parse(JSON.stringify(DEFAULT_REPLIES));
+        defaultData.categoryOrder = Object.keys(DEFAULT_REPLIES);
+        setQuickReplies(defaultData);
     }
 
     // ========== 快捷回复UI功能 ==========
