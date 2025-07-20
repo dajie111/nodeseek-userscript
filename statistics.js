@@ -472,6 +472,9 @@
                 th.style.border = '1px solid #eee';
                 th.style.textAlign = 'left';
                 th.style.backgroundColor = '#f0f0f0';
+                th.style.position = 'sticky';
+                th.style.top = '0';
+                th.style.zIndex = '1';
                 headerRow.appendChild(th);
             });
             thead.appendChild(headerRow);
@@ -819,6 +822,9 @@
                     th.style.border = '1px solid #eee';
                     th.style.textAlign = 'left';
                     th.style.backgroundColor = '#f0f0f0';
+                    th.style.position = 'sticky';
+                    th.style.top = '0';
+                    th.style.zIndex = '1';
                     headerRow.appendChild(th);
                 });
                 thead.appendChild(headerRow);
