@@ -191,7 +191,12 @@
                     if (window.NodeSeekQuickReply && typeof window.NodeSeekQuickReply.getQuickReplies === 'function') {
                         config.quickReplies = window.NodeSeekQuickReply.getQuickReplies();
                     } else {
-                        config.quickReplies = JSON.parse(localStorage.getItem('nodeseek_quick_reply') || '{}');
+                        const quickReplyData = JSON.parse(localStorage.getItem('nodeseek_quick_reply') || '{}');
+                        // 确保数据包含categoryOrder
+                        if (quickReplyData && typeof quickReplyData === 'object' && !quickReplyData.categoryOrder) {
+                            quickReplyData.categoryOrder = Object.keys(quickReplyData).filter(key => key !== 'categoryOrder');
+                        }
+                        config.quickReplies = quickReplyData;
                     }
                 } catch (error) {
                     config.quickReplies = {};
@@ -317,12 +322,17 @@
 
                 // 应用快捷回复数据
                 if (selectedItems.includes('quickReplies') && config.quickReplies && typeof config.quickReplies === 'object') {
+                    // 确保数据包含categoryOrder
+                    if (!config.quickReplies.categoryOrder) {
+                        config.quickReplies.categoryOrder = Object.keys(config.quickReplies).filter(key => key !== 'categoryOrder');
+                    }
+                    
                     if (window.NodeSeekQuickReply && typeof window.NodeSeekQuickReply.setQuickReplies === 'function') {
                         window.NodeSeekQuickReply.setQuickReplies(config.quickReplies);
                     } else {
                         localStorage.setItem('nodeseek_quick_reply', JSON.stringify(config.quickReplies));
                     }
-                    const categoriesCount = Object.keys(config.quickReplies).length;
+                    const categoriesCount = config.quickReplies.categoryOrder ? config.quickReplies.categoryOrder.length : Object.keys(config.quickReplies).filter(key => key !== 'categoryOrder').length;
                     applied.push(`快捷回复(${categoriesCount}个分类)`);
                 }
 
@@ -2184,7 +2194,5 @@
 
     // 初始化
     NodeSeekLogin.init();
-
-    console.log('NodeSeek 配置同步功能已加载');
 
 })(); 
