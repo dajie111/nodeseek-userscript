@@ -140,17 +140,12 @@
                     let rate;
                     if (currencyCode === 'CNY') {
                         rate = 1; // 人民币对人民币汇率为1
-                    } else if (currencyCode === 'USD') {
-                        rate = rates['CNY'] || 7.2; // USD兑CNY汇率
                     } else {
-                        // 其他货币：计算兑CNY的汇率
-                        // API返回的是USD兑其他货币的汇率
-                        // 我们需要计算：其他货币兑CNY = (USD兑CNY) / (USD兑其他货币)
+                        // 其他币种：USD兑CNY / USD兑币种 = 币种兑CNY
                         const usdToCny = rates['CNY'] || 7.2;
                         const usdToCurrency = rates[currencyCode] || 1;
                         rate = usdToCny / usdToCurrency;
                     }
-                    
                     const formattedRate = NodeSeekVPS.utils.formatNumber(rate, 3);
                     referenceRateInput.value = formattedRate;
                     exchangeRateInput.value = formattedRate;
@@ -232,13 +227,26 @@
                         const currencySelect = document.getElementById('vps-currency-code');
                         if (currencySelect) {
                             NodeSeekVPS.utils.updateExchangeRate(currencySelect.value, NodeSeekVPS.rates);
-
                             // 添加币种变化监听
                             currencySelect.addEventListener('change', function() {
                                 NodeSeekVPS.utils.updateExchangeRate(this.value, NodeSeekVPS.rates);
+                                // 币种切换时，清空已计算标记，重置结果显示
+                                document.getElementById('vps-is-calculated').value = '0';
+                                NodeSeekVPS.updateResultDisplay({
+                                    trade_date: '',
+                                    exchange_rate: '',
+                                    renewal: '',
+                                    remain_days: '',
+                                    expiry_date: '',
+                                    remain_value: '',
+                                    remain_value_cny: '',
+                                    total_value: '',
+                                    custom_remain_value: '',
+                                    custom_exchange_rate: '',
+                                    currency_code: this.value
+                                });
                             });
                         }
-
                         return true;
                     } else {
                         throw new Error('汇率数据格式错误');
@@ -262,10 +270,22 @@
             const currencySelect = document.getElementById('vps-currency-code');
             if (currencySelect) {
                 NodeSeekVPS.utils.updateExchangeRate(currencySelect.value, NodeSeekVPS.rates);
-
-                // 添加币种变化监听
                 currencySelect.addEventListener('change', function() {
                     NodeSeekVPS.utils.updateExchangeRate(this.value, NodeSeekVPS.rates);
+                    document.getElementById('vps-is-calculated').value = '0';
+                    NodeSeekVPS.updateResultDisplay({
+                        trade_date: '',
+                        exchange_rate: '',
+                        renewal: '',
+                        remain_days: '',
+                        expiry_date: '',
+                        remain_value: '',
+                        remain_value_cny: '',
+                        total_value: '',
+                        custom_remain_value: '',
+                        custom_exchange_rate: '',
+                        currency_code: this.value
+                    });
                 });
             }
 
@@ -277,9 +297,10 @@
             NodeSeekVPS.utils.toggleLoading(true);
 
             // 获取表单数据
+            const currencyCode = document.getElementById('vps-currency-code').value;
+            // 获取当前币种兑人民币汇率
             const exchangeRate = parseFloat(document.getElementById('vps-exchange-rate').value);
             const renewMoney = parseFloat(document.getElementById('vps-renew-money').value);
-            const currencyCode = document.getElementById('vps-currency-code').value;
             const paymentCycle = document.getElementById('vps-payment-cycle').value;
             const expiryDate = document.getElementById('vps-expiry-date').value;
             const tradeDate = document.getElementById('vps-trade-date').value;
@@ -333,7 +354,7 @@
             try {
                 // 本地计算逻辑
                 const result = NodeSeekVPS.calculateVPSValueLocal({
-                    exchange_rate: referenceRate,
+                    exchange_rate: exchangeRate,
                     custom_exchange_rate: exchangeRate,
                     renew_money: renewMoney,
                     currency_code: currencyCode,
@@ -390,18 +411,17 @@
 
             const cycleDay = cycleDays[data.cycle] || 365;
             
-            // 计算剩余天数
+            // 计算剩余天数（用到期日-交易日）
             const expiryDate = new Date(data.expiry_date);
             const tradeDate = new Date(data.trade_date);
-            const now = new Date();
+            const remainDays = Math.max(0, Math.ceil((expiryDate - tradeDate) / (1000 * 60 * 60 * 24)));
             
-            const remainDays = Math.max(0, Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24)));
-            
-            // 计算总价值（人民币）
+            // 剩余价值（外币）
+            const remainValueForeign = data.renew_money * remainDays / cycleDay;
+            // 剩余价值（人民币）
+            const remainValueCNY = remainValueForeign * data.exchange_rate;
+            // 总价值（人民币）
             const totalValueCNY = data.renew_money * data.exchange_rate;
-            
-            // 计算剩余价值
-            const remainValue = (totalValueCNY / cycleDay) * remainDays;
             
             // 格式化日期
             const formatDate = (date) => {
@@ -421,9 +441,10 @@
                 renewal: formatCurrency(data.renew_money) + ' ' + data.currency_code + '/' + (cycleMap[data.cycle] || data.cycle),
                 remain_days: remainDays,
                 expiry_date: formatDate(expiryDate),
-                remain_value: formatCurrency(remainValue),
-                total_value: formatCurrency(totalValueCNY),
-                custom_remain_value: formatCurrency(remainValue),
+                remain_value: formatCurrency(remainValueForeign), // 剩余价值（外币）
+                remain_value_cny: formatCurrency(remainValueCNY), // 剩余价值（人民币）
+                total_value: formatCurrency(totalValueCNY), // 总价值（人民币）
+                custom_remain_value: formatCurrency(remainValueForeign),
                 custom_exchange_rate: formatCurrency(data.custom_exchange_rate),
                 currency_code: data.currency_code
             };
@@ -432,20 +453,18 @@
         // 更新结果显示
         updateResultDisplay: (data) => {
             // 计算剩余价值对应的人民币金额
-            let remainValueCNY = data.remain_value;
-            if (data.currency_code !== 'CNY') {
-                remainValueCNY = (parseFloat(data.remain_value) * parseFloat(data.exchange_rate)).toFixed(3);
-            }
+            let remainValueCNY = (data.remain_value_cny !== undefined && data.remain_value_cny !== '' ? data.remain_value_cny : '0.000');
+            const currency = (data.currency_code === 'CNY' ? '元' : data.currency_code) || '元';
             const selectors = {
-                '.vps-output-trade-date': data.trade_date,
-                '.vps-output-exchange-rate': data.exchange_rate,
-                '.vps-output-renewal': data.renewal,
-                '.vps-output-remain-days': data.remain_days + ' 天',
-                '.vps-output-expiry-date': '(于 ' + data.expiry_date + ' 过期)',
-                '.vps-output-remain-value': data.remain_value + ' ' + (data.currency_code === 'CNY' ? '元' : data.currency_code),
+                '.vps-output-trade-date': data.trade_date || '0000-00-00',
+                '.vps-output-exchange-rate': data.exchange_rate || '0.00',
+                '.vps-output-renewal': data.renewal || ('0.00 ' + currency + '/年'),
+                '.vps-output-remain-days': ((data.remain_days !== undefined && data.remain_days !== '' ? data.remain_days : '0') + ' 天'),
+                '.vps-output-expiry-date': '(于 ' + (data.expiry_date || '0000-00-00') + ' 过期)',
+                '.vps-output-remain-value': ((data.remain_value !== undefined && data.remain_value !== '' ? data.remain_value : '0.000') + ' ' + currency),
                 '.vps-output-total-value': '(总 ' + remainValueCNY + ' 元)',
-                '.vps-output-custom-future-value': data.custom_remain_value + ' ' + (data.currency_code === 'CNY' ? '元' : data.currency_code),
-                '.vps-output-custom-exchange-rate': '(汇率 ' + data.custom_exchange_rate + ')'
+                '.vps-output-custom-future-value': (data.custom_remain_value !== undefined && data.custom_remain_value !== '' ? data.custom_remain_value : '0.000') + ' ' + currency,
+                '.vps-output-custom-exchange-rate': '(汇率 ' + (data.custom_exchange_rate || '0.00') + ')'
             };
 
             Object.entries(selectors).forEach(([selector, value]) => {
@@ -459,11 +478,33 @@
             const customExchangeRate = data.custom_exchange_rate || '0.000';
             const customRow = document.getElementById('vps-tr-custom-exchange-show');
 
-            if (customExchangeRate !== '0.000' && exchangeRate !== customExchangeRate) {
-                customRow.style.display = '';
-            } else {
-                customRow.style.display = 'none';
+            if (customRow) {
+                if (customExchangeRate !== '0.000' && exchangeRate !== customExchangeRate) {
+                    customRow.style.display = '';
+                } else {
+                    customRow.style.display = 'none';
+                }
             }
+        },
+
+        // 新增：重置结果显示为初始状态
+        resetResultDisplay: () => {
+            const currencySelect = document.getElementById('vps-currency-code');
+            const currencyText = currencySelect ? currencySelect.options[currencySelect.selectedIndex].text.split(' ')[0] : '人民币';
+            const currencyCode = currencySelect ? currencySelect.value : 'CNY';
+            NodeSeekVPS.updateResultDisplay({
+                trade_date: '0000-00-00',
+                exchange_rate: '0.00',
+                renewal: '0.00 ' + currencyText + '/年',
+                remain_days: '0',
+                expiry_date: '0000-00-00',
+                remain_value: '0.000',
+                remain_value_cny: '0.000',
+                total_value: '0.000',
+                custom_remain_value: '0.000',
+                custom_exchange_rate: '0.00',
+                currency_code: currencyCode
+            });
         },
 
         // 生成自定义分享图片
