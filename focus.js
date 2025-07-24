@@ -1698,23 +1698,13 @@
 
             const closeBtn = document.createElement('span');
             closeBtn.textContent = '×';
-            closeBtn.style.cssText = `
-                position: absolute;
-                right: -5px;
-                top: -8px;
-                cursor: pointer;
-                font-size: 24px;
-                color: #999;
-                background: #fff;
-                border-radius: 50%;
-                width: 30px;
-                height: 30px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-                z-index: 1;
-            `;
+            closeBtn.style.position = 'absolute';
+            closeBtn.style.right = '12px';
+            closeBtn.style.top = '8px';
+            closeBtn.style.cursor = 'pointer';
+            closeBtn.style.fontSize = '20px';
+            closeBtn.style.color = '#333';
+            closeBtn.className = 'close-btn';
             closeBtn.onclick = () => dialog.remove();
 
             header.appendChild(title);
@@ -2148,23 +2138,13 @@
 
             const closeBtn = document.createElement('span');
             closeBtn.textContent = '×';
-            closeBtn.style.cssText = `
-                position: absolute;
-                right: -5px;
-                top: -8px;
-                cursor: pointer;
-                font-size: 24px;
-                color: #999;
-                background: #fff;
-                border-radius: 50%;
-                width: 30px;
-                height: 30px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-                z-index: 1;
-            `;
+            closeBtn.style.position = 'absolute';
+            closeBtn.style.right = '12px';
+            closeBtn.style.top = '8px';
+            closeBtn.style.cursor = 'pointer';
+            closeBtn.style.fontSize = '20px';
+            closeBtn.style.color = '#333';
+            closeBtn.className = 'close-btn';
             closeBtn.onclick = () => dialog.remove();
 
             header.appendChild(title);
@@ -3037,23 +3017,13 @@
 
             const closeBtn = document.createElement('span');
             closeBtn.textContent = '×';
-            closeBtn.style.cssText = `
-                position: absolute;
-                right: -5px;
-                top: -8px;
-                cursor: pointer;
-                font-size: 24px;
-                color: #999;
-                background: #fff;
-                border-radius: 50%;
-                width: 30px;
-                height: 30px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-                z-index: 1;
-            `;
+            closeBtn.style.position = 'absolute';
+            closeBtn.style.right = '12px';
+            closeBtn.style.top = '8px';
+            closeBtn.style.cursor = 'pointer';
+            closeBtn.style.fontSize = '20px';
+            closeBtn.style.color = '#333';
+            closeBtn.className = 'close-btn';
             closeBtn.onclick = () => dialog.remove();
 
             header.appendChild(title);
@@ -3367,23 +3337,13 @@
 
             const closeBtn = document.createElement('span');
             closeBtn.textContent = '×';
-            closeBtn.style.cssText = `
-                position: absolute;
-                right: -5px;
-                top: -8px;
-                cursor: pointer;
-                font-size: 24px;
-                color: #999;
-                background: #fff;
-                border-radius: 50%;
-                width: 30px;
-                height: 30px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-                z-index: 1;
-            `;
+            closeBtn.style.position = 'absolute';
+            closeBtn.style.right = '12px';
+            closeBtn.style.top = '8px';
+            closeBtn.style.cursor = 'pointer';
+            closeBtn.style.fontSize = '20px';
+            closeBtn.style.color = '#333';
+            closeBtn.className = 'close-btn';
             closeBtn.onclick = () => dialog.remove();
 
             header.appendChild(title);
