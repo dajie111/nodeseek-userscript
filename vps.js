@@ -557,7 +557,12 @@
                 }
             }
             if (data.premium_type && data.premium_abs && data.premium_foreign) {
-                premiumRow.innerHTML = `<span style="font-weight:bold;">${data.premium_type}:</span> <span>${data.premium_foreign} ${currency} / ${data.premium_abs} CNY</span>`;
+                // premium_foreign 取绝对值
+                let premiumForeignAbs = data.premium_foreign;
+                if (typeof premiumForeignAbs === 'string' && premiumForeignAbs.startsWith('-')) {
+                    premiumForeignAbs = premiumForeignAbs.replace('-', '');
+                }
+                premiumRow.innerHTML = `<span style="font-weight:bold;">${data.premium_type}:</span> <span>${premiumForeignAbs} ${currency} / ${data.premium_abs} CNY</span>`;
             } else {
                 premiumRow.innerHTML = '<span style="font-weight:bold;">溢价:</span> <span></span>';
             }
@@ -740,6 +745,7 @@
             const premiumRow = document.getElementById('vps-premium-row');
             let tradeMoneyText = '';
             let premiumText = '';
+            let premiumLabel = '';
             if (tradeMoneyRow) {
                 const tradeMoneySpan = tradeMoneyRow.querySelector('span:last-child');
                 if (tradeMoneySpan && tradeMoneySpan.textContent && tradeMoneySpan.textContent.trim()) {
@@ -747,16 +753,20 @@
                 }
             }
             if (premiumRow) {
-                const premiumSpan = premiumRow.querySelector('span:last-child');
-                if (premiumSpan && premiumSpan.textContent && premiumSpan.textContent.trim()) {
-                    premiumText = premiumSpan.textContent.trim();
+                const spans = premiumRow.querySelectorAll('span');
+                if (spans.length >= 2) {
+                    premiumLabel = spans[0].textContent.trim(); // 取“溢价:”/“折价:”/“平价:”
+                    // premiumText 里的数值全部去负号
+                    premiumText = spans[1].textContent.trim().replace(/-([\d.]+)/g, '$1');
                 }
             }
             // 生成Markdown格式文本
             let markdownText = `## VPS 剩余价值计算器\n\n### 输入参数\n- 参考汇率: ${referenceRate}\n- 外币汇率: ${exchangeRate}\n- 续费金额: ${renewMoney} ${currencyCode}\n- 付款周期: ${paymentCycle}\n- 到期时间: ${expiryDate}\n- 交易日期: ${tradeDate}\n- 交易金额: ${tradeMoney && tradeMoney.trim() ? tradeMoney + ' ' + currencyCode : ''}`;
-            
-            markdownText += `\n\n### 计算结果\n- 剩余天数: ${remainDays} ${expiryDateResult}\n- 剩余价值: ${remainValue}${customValue ? `\n- ${customValue}` : ''}\n- 交易金额: ${tradeMoneyText || ''}\n- 折溢价: ${premiumText || ''}`;
-            
+
+            markdownText += `\n\n### 计算结果\n- 剩余天数: ${remainDays} ${expiryDateResult}\n- 剩余价值: ${remainValue}${customValue ? `\n- ${customValue}` : ''}\n- 交易金额: ${tradeMoneyText || ''}`;
+            if (premiumLabel && premiumText) {
+                markdownText += `\n- ${premiumLabel} ${premiumText}`;
+            }
             markdownText += `\n\n*导出时间: ${(new Date().toLocaleString('zh-CN'))}*\n`;
             await NodeSeekVPS.utils.copyToClipboard(markdownText);
             document.getElementById('vps-markdown-text').style.opacity = '0';
