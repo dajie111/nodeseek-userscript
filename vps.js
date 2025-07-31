@@ -253,6 +253,12 @@
                         const currencySelect = document.getElementById('vps-currency-code');
                         if (currencySelect) {
                             NodeSeekVPS.utils.updateExchangeRate(currencySelect.value, NodeSeekVPS.rates);
+                            
+                            // 交易货币选择框默认选择CNY，不跟随续费货币
+                            const tradeCurrencySelect = document.getElementById('vps-trade-currency-code');
+                            if (tradeCurrencySelect) {
+                                tradeCurrencySelect.value = 'CNY';
+                            }
                         }
                         return true;
                     } else {
@@ -277,6 +283,12 @@
             const currencySelect = document.getElementById('vps-currency-code');
             if (currencySelect) {
                 NodeSeekVPS.utils.updateExchangeRate(currencySelect.value, NodeSeekVPS.rates);
+                
+                // 交易货币选择框默认选择CNY，不跟随续费货币
+                const tradeCurrencySelect = document.getElementById('vps-trade-currency-code');
+                if (tradeCurrencySelect) {
+                    tradeCurrencySelect.value = 'CNY';
+                }
             }
 
             return true;
@@ -298,9 +310,11 @@
             // 新增：获取交易金额
             const tradeMoneyInput = document.getElementById('vps-trade-money');
             const tradeMoney = tradeMoneyInput && tradeMoneyInput.value ? parseFloat(tradeMoneyInput.value) : null;
+            // 新增：获取交易金额货币单位
+            const tradeCurrencyCode = document.getElementById('vps-trade-currency-code').value;
 
             // 清除错误状态
-            ['vps-exchange-rate', 'vps-renew-money', 'vps-expiry-date', 'vps-trade-date', 'vps-trade-money'].forEach(id => {
+            ['vps-exchange-rate', 'vps-renew-money', 'vps-expiry-date', 'vps-trade-date', 'vps-trade-money', 'vps-trade-currency-code'].forEach(id => {
                 const element = document.getElementById(id);
                 if (element) element.classList.remove('error');
             });
@@ -364,7 +378,8 @@
                     cycle: paymentCycle,
                     expiry_date: expiryDate,
                     trade_date: tradeDate,
-                    trade_money: tradeMoney
+                    trade_money: tradeMoney,
+                    trade_currency_code: tradeCurrencyCode
                 });
 
                 await NodeSeekVPS.utils.delay(500);
@@ -426,10 +441,21 @@
             let tradeMoney = data.trade_money;
             let tradeMoneyCNY = null, premium = null, premiumType = '', premiumAbs = null, premiumForeign = null;
             if (tradeMoney !== null && !isNaN(tradeMoney)) {
-                tradeMoneyCNY = tradeMoney * data.exchange_rate;
+                // 获取交易金额的汇率（交易货币兑CNY）
+                let tradeExchangeRate;
+                if (data.trade_currency_code === 'CNY') {
+                    tradeExchangeRate = 1; // 人民币对人民币汇率为1
+                } else {
+                    // 其他币种：USD兑CNY / USD兑交易币种 = 交易币种兑CNY
+                    const usdToCny = NodeSeekVPS.rates['CNY'] || 7.2;
+                    const usdToTradeCurrency = NodeSeekVPS.rates[data.trade_currency_code] || 1;
+                    tradeExchangeRate = usdToCny / usdToTradeCurrency;
+                }
+                
+                tradeMoneyCNY = tradeMoney * tradeExchangeRate;
                 premium = tradeMoneyCNY - remainValueCNY;
                 premiumAbs = Math.abs(premium);
-                premiumForeign = premium / data.exchange_rate; // 溢价在外币中的数值
+                premiumForeign = premium / data.exchange_rate; // 溢价在续费货币中的数值
                 if (premium > 0) premiumType = '溢价';
                 else if (premium < 0) premiumType = '折价';
                 else premiumType = '平价';
@@ -458,6 +484,7 @@
                 currency_code: data.currency_code,
                 trade_money: tradeMoney !== null && !isNaN(tradeMoney) ? formatCurrency(tradeMoney) : '',
                 trade_money_cny: tradeMoneyCNY !== null ? formatCurrency(tradeMoneyCNY) : '',
+                trade_currency_code: data.trade_currency_code || '',
                 premium: premium !== null ? formatCurrency(premium) : '',
                 premium_type: premiumType,
                 premium_abs: premiumAbs !== null ? formatCurrency(premiumAbs) : '',
@@ -529,7 +556,8 @@
                 }
             }
             if (data.trade_money && data.trade_money_cny) {
-                tradeMoneyRow.innerHTML = `<span style="font-weight:bold;">交易金额:</span> <span>${data.trade_money} ${currency} / ${data.trade_money_cny} CNY</span>`;
+                const tradeCurrency = data.trade_currency_code || currency;
+                tradeMoneyRow.innerHTML = `<span style="font-weight:bold;">交易金额:</span> <span>${data.trade_money} ${tradeCurrency} / ${data.trade_money_cny} CNY</span>`;
             } else {
                 tradeMoneyRow.innerHTML = '<span style="font-weight:bold;">交易金额:</span> <span></span>';
             }
@@ -711,6 +739,7 @@
             const expiryDate = document.getElementById('vps-expiry-date').value;
             const tradeDate = document.getElementById('vps-trade-date').value;
             const tradeMoney = document.getElementById('vps-trade-money').value;
+            const tradeCurrencyCode = document.getElementById('vps-trade-currency-code').options[document.getElementById('vps-trade-currency-code').selectedIndex].text;
             // 读取所有计算结果
             const tradeDateElement = document.querySelector('.vps-output-trade-date');
             const exchangeRateElement = document.querySelector('.vps-output-exchange-rate');
@@ -752,7 +781,7 @@
                 }
             }
             // 生成Markdown格式文本
-            let markdownText = `## VPS 剩余价值计算器\n\n### 输入参数\n- 参考汇率: ${referenceRate}\n- 外币汇率: ${exchangeRate}\n- 续费金额: ${renewMoney} ${currencyCode}\n- 付款周期: ${paymentCycle}\n- 到期时间: ${expiryDate}\n- 交易日期: ${tradeDate}\n- 交易金额: ${tradeMoney && tradeMoney.trim() ? tradeMoney + ' ' + currencyCode : ''}`;
+            let markdownText = `## VPS 剩余价值计算器\n\n### 输入参数\n- 参考汇率: ${referenceRate}\n- 外币汇率: ${exchangeRate}\n- 续费金额: ${renewMoney} ${currencyCode}\n- 付款周期: ${paymentCycle}\n- 到期时间: ${expiryDate}\n- 交易日期: ${tradeDate}\n- 交易金额: ${tradeMoney && tradeMoney.trim() ? tradeMoney + ' ' + tradeCurrencyCode : ''}`;
 
             markdownText += `\n\n### 计算结果\n- 剩余天数: ${remainDays} ${expiryDateResult}\n- 剩余价值: ${remainValue}${customValue ? `\n- ${customValue}` : ''}\n- 交易金额: ${tradeMoneyText || ''}`;
             if (premiumLabel && premiumText) {
@@ -768,7 +797,7 @@
         // 绑定事件监听器
         bindEventListeners: () => {
             // 表单字段变化监听
-            ['vps-exchange-rate', 'vps-renew-money', 'vps-payment-cycle', 'vps-expiry-date', 'vps-trade-date', 'vps-trade-money'].forEach(id => {
+            ['vps-exchange-rate', 'vps-renew-money', 'vps-payment-cycle', 'vps-expiry-date', 'vps-trade-date', 'vps-trade-money', 'vps-trade-currency-code'].forEach(id => {
                 const element = document.getElementById(id);
                 if (element) {
                     element.addEventListener('change', function() {
@@ -782,6 +811,9 @@
             if (currencySelect) {
                 currencySelect.addEventListener('change', function() {
                     NodeSeekVPS.utils.updateExchangeRate(this.value, NodeSeekVPS.rates);
+                    
+                    // 交易货币选择框保持独立，不自动同步
+                    
                     // 币种切换时，自动重新计算并显示结果
                     const isCalculated = document.getElementById('vps-is-calculated').value;
                     if (isCalculated === '1') {
@@ -851,7 +883,7 @@
             });
 
             // 输入框焦点事件
-            ['vps-exchange-rate', 'vps-renew-money', 'vps-trade-date', 'vps-expiry-date', 'vps-trade-money'].forEach(id => {
+            ['vps-exchange-rate', 'vps-renew-money', 'vps-trade-date', 'vps-expiry-date', 'vps-trade-money', 'vps-trade-currency-code'].forEach(id => {
                 const element = document.getElementById(id);
                 if (element) {
                     element.addEventListener('focus', function() {
@@ -976,7 +1008,22 @@
                                 <!-- 新增交易金额输入框 -->
                                 <div style="margin-bottom: 20px;">
                                     <label style="font-weight: bold; display: block; margin-bottom: 5px;">交易金额（可选）</label>
-                                    <input type="number" id="vps-trade-money" placeholder="实际成交金额" min="0" step="0.01" style="width: 100%; padding: 8px; border: none; border-radius: 6px; background: #fafafa; color: #333;">
+                                    <div style="display: flex; gap: 10px;">
+                                        <input type="number" id="vps-trade-money" placeholder="实际成交金额" min="0" step="0.01" style="flex: 1; padding: 8px; border: none; border-radius: 6px; background: #fafafa; color: #333;">
+                                        <select id="vps-trade-currency-code" style="width: 150px; padding: 8px; border: none; border-radius: 6px; background: #fafafa; color: #333;">
+                                            <option value="CNY" selected>人民币 (CNY)</option>
+                                            <option value="USD">美元 (USD)</option>
+                                            <option value="GBP">英镑 (GBP)</option>
+                                            <option value="EUR">欧元 (EUR)</option>
+                                            <option value="JPY">日元 (JPY)</option>
+                                            <option value="KRW">韩元 (KRW)</option>
+                                            <option value="HKD">港元 (HKD)</option>
+                                            <option value="TWD">新台币(TWD)</option>
+                                            <option value="CAD">加拿大元(CAD)</option>
+                                            <option value="SGD">新加坡元(SGD)</option>
+                                            <option value="AUD">澳大利亚元(AUD)</option>
+                                        </select>
+                                    </div>
                                 </div>
 
                                 <button type="submit" id="vps-calculate-btn" style="width: 100%; background: #e0e0e0; color: #333; border: 2px solid #e0e0e0; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; transition: all 0.3s; display: flex; align-items: center; justify-content: center;">
