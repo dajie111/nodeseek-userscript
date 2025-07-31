@@ -438,8 +438,18 @@
                     }
                 }
             }
-            reasonStats += `<div style=\"margin-bottom:8px;font-weight:normal;color:#2ea44f;\">累计签到天数：<b>${signDaysSet.size}</b> 天`;
-            reasonStats += `，当前连续签到：<b>${currentStreak}</b> 天，历史最长连续签到：<b>${maxStreak}</b> 天</div>`;
+            // 计算签到收益平均鸡腿数
+            let totalSignInChickenLegs = 0;
+            let totalSignInCount = 0;
+            signInReasons.forEach(v => {
+                totalSignInChickenLegs += v.total;
+                totalSignInCount += v.count;
+            });
+            const averageChickenLegs = totalSignInCount > 0 ? (totalSignInChickenLegs / totalSignInCount).toFixed(2) : '0.00';
+            
+            reasonStats += `<div style=\"margin-bottom:8px;font-weight:normal;color:#2ea44f;font-size:12px;white-space:nowrap;\">累计签到天数：<b>${signDaysSet.size}</b> 天`;
+            reasonStats += `，当前连续签到：<b>${currentStreak}</b> 天，历史最长连续签到：<b>${maxStreak}</b> 天`;
+            reasonStats += `，签到收益平均：<b>${averageChickenLegs}</b> 个鸡腿/次</div>`;
             reasonStats += '<table style="width:100%;border-collapse:collapse;font-size:14px;">';
             reasonStats += '<thead><tr style="background:#f5f5f5;"><th style="padding:6px 8px;border:1px solid #eee;">分类</th><th style="padding:6px 8px;border:1px solid #eee;">总变动</th><th style="padding:6px 8px;border:1px solid #eee;">次数</th></tr></thead><tbody>';
             const addRow = (name, total, count) => {
