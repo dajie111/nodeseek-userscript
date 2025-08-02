@@ -1748,6 +1748,24 @@
                 <div style="margin-top: 5px;">${user.username}</div>
             `;
 
+            // 数据保留政策提示
+            const policyTip = document.createElement('div');
+            policyTip.style.cssText = `
+                background: #fff7e6;
+                border: 1px solid #ffd591;
+                border-radius: 4px;
+                padding: 8px 12px;
+                margin-bottom: 15px;
+                font-size: 12px;
+                color: #d46b08;
+                line-height: 1.4;
+                text-align: center;
+            `;
+            policyTip.innerHTML = `
+                <div>数据自动保留7天（超期删除）</div>
+                <div>30天无活动账号自动删除</div>
+            `;
+
             // 同步按钮容器
             const syncContainer = document.createElement('div');
             syncContainer.style.cssText = `
@@ -1845,6 +1863,7 @@
             syncContainer.appendChild(changePasswordBtn);
 
             container.appendChild(userInfo);
+            container.appendChild(policyTip);
             container.appendChild(syncContainer);
             container.appendChild(logoutBtn);
         },
