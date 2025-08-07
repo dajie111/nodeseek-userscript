@@ -271,6 +271,37 @@
                     console.error('获取热点统计数据失败:', error);
                 }
             }
+            
+            // 获取关键词过滤数据
+            if (selectedItems.includes('filterData')) {
+                const filterData = {};
+                try {
+                    // 屏蔽关键词
+                    const customKeywords = localStorage.getItem('ns-filter-custom-keywords');
+                    if (customKeywords) {
+                        filterData.customKeywords = JSON.parse(customKeywords);
+                    }
+                    
+                    // 显示关键词
+                    const displayKeywords = localStorage.getItem('ns-filter-keywords');
+                    if (displayKeywords) {
+                        filterData.displayKeywords = JSON.parse(displayKeywords);
+                    }
+                    
+                    // 弹窗位置
+                    const dialogPosition = localStorage.getItem('ns-filter-dialog-position');
+                    if (dialogPosition) {
+                        filterData.dialogPosition = JSON.parse(dialogPosition);
+                    }
+                    
+                    // 只在有数据时才添加到配置中
+                    if (Object.keys(filterData).length > 0) {
+                        config.filterData = filterData;
+                    }
+                } catch (error) {
+                    console.error('获取关键词过滤数据失败:', error);
+                }
+            }
 
             config.timestamp = new Date().toISOString();
             return config;
@@ -417,6 +448,38 @@
                     } catch (error) {
                         console.error('应用热点统计数据失败:', error);
                         applied.push("热点统计(失败)");
+                    }
+                }
+
+                // 应用关键词过滤数据
+                if (selectedItems.includes('filterData') && config.filterData && typeof config.filterData === 'object') {
+                    try {
+                        let filterImportCount = 0;
+                        
+                        // 导入屏蔽关键词
+                        if (config.filterData.customKeywords && Array.isArray(config.filterData.customKeywords)) {
+                            localStorage.setItem('ns-filter-custom-keywords', JSON.stringify(config.filterData.customKeywords));
+                            filterImportCount += config.filterData.customKeywords.length;
+                        }
+                        
+                        // 导入显示关键词
+                        if (config.filterData.displayKeywords && Array.isArray(config.filterData.displayKeywords)) {
+                            localStorage.setItem('ns-filter-keywords', JSON.stringify(config.filterData.displayKeywords));
+                        }
+                        
+                        // 导入弹窗位置
+                        if (config.filterData.dialogPosition && typeof config.filterData.dialogPosition === 'object') {
+                            localStorage.setItem('ns-filter-dialog-position', JSON.stringify(config.filterData.dialogPosition));
+                        }
+                        
+                        if (filterImportCount > 0) {
+                            applied.push(`关键词过滤(${filterImportCount}个屏蔽词)`);
+                        } else {
+                            applied.push("关键词过滤");
+                        }
+                    } catch (error) {
+                        console.error('应用关键词过滤数据失败:', error);
+                        applied.push("关键词过滤(失败)");
                     }
                 }
 
@@ -652,7 +715,8 @@
                 { key: 'browseHistory', label: '浏览历史' },
                 { key: 'quickReplies', label: '快捷回复' },
                 { key: 'chickenLegStats', label: '鸡腿统计' },
-                { key: 'hotTopicsData', label: '热点统计' }
+                { key: 'hotTopicsData', label: '热点统计' },
+                { key: 'filterData', label: '关键词过滤' }
             ];
 
             // 全选/取消全选
@@ -1006,7 +1070,8 @@
                                 'browseHistory': '浏览历史',
                                 'quickReplies': '快捷回复',
                                 'chickenLegStats': '鸡腿统计',
-                                'hotTopicsData': '热点统计'
+                                'hotTopicsData': '热点统计',
+                                'filterData': '关键词过滤'
                             }[item];
                             return option || item;
                         });
