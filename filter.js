@@ -1545,7 +1545,6 @@ function highlightTitleKeywords(titleEl, originalTitle, keywords) {
     const originalHTML = titleEl.innerHTML;
     
     try {
-        // 使用更安全的高亮方式，避免影响布局
         let processedHTML = originalTitle;
         
         // 按关键词长度排序，优先处理长关键词，避免短关键词覆盖长关键词
@@ -1558,31 +1557,37 @@ function highlightTitleKeywords(titleEl, originalTitle, keywords) {
             if (!keyword || keyword.trim() === '') return;
             
             const normalizedKeyword = normalizeText(keyword);
-            const normalizedTitle = normalizeText(originalTitle);
+            if (!normalizedKeyword) return;
             
-            let searchIndex = 0;
-            while (true) {
-                const matchIndex = normalizedTitle.indexOf(normalizedKeyword, searchIndex);
-                if (matchIndex === -1) break;
-                
-                // 检查是否与已有匹配重叠
-                const matchEnd = matchIndex + normalizedKeyword.length;
-                const overlap = matches.some(match => 
-                    (matchIndex >= match.start && matchIndex < match.end) ||
-                    (matchEnd > match.start && matchEnd <= match.end) ||
-                    (matchIndex <= match.start && matchEnd >= match.end)
-                );
-                
-                if (!overlap) {
-                    matches.push({
-                        start: matchIndex,
-                        end: matchEnd,
-                        original: originalTitle.substring(matchIndex, matchEnd),
-                        keyword: keyword
-                    });
+            // 使用滑动窗口方式查找匹配
+            for (let i = 0; i <= originalTitle.length - keyword.length; i++) {
+                // 尝试不同长度的子字符串，以处理简繁体转换可能的长度变化
+                for (let len = keyword.length; len <= Math.min(originalTitle.length - i, keyword.length + 5); len++) {
+                    const substring = originalTitle.substring(i, i + len);
+                    const normalizedSubstring = normalizeText(substring);
+                    
+                    if (normalizedSubstring === normalizedKeyword) {
+                        const matchStart = i;
+                        const matchEnd = i + len;
+                        
+                        // 检查是否与已有匹配重叠
+                        const overlap = matches.some(existingMatch => 
+                            (matchStart >= existingMatch.start && matchStart < existingMatch.end) ||
+                            (matchEnd > existingMatch.start && matchEnd <= existingMatch.end) ||
+                            (matchStart <= existingMatch.start && matchEnd >= existingMatch.end)
+                        );
+                        
+                        if (!overlap) {
+                            matches.push({
+                                start: matchStart,
+                                end: matchEnd,
+                                original: substring,
+                                keyword: keyword
+                            });
+                        }
+                        break; // 找到匹配后跳出长度循环
+                    }
                 }
-                
-                searchIndex = matchIndex + 1; // 逐字符搜索，避免遗漏
             }
         });
         
@@ -1609,6 +1614,71 @@ function highlightTitleKeywords(titleEl, originalTitle, keywords) {
     }
 }
 
+// 测试高亮匹配功能
+function testHighlightMatching() {
+    console.log('\n=== 高亮匹配功能测试 ===');
+    
+    // 创建测试元素
+    const testEl = document.createElement('div');
+    testEl.innerHTML = '<a>Test Content</a>';
+    document.body.appendChild(testEl);
+    
+    const testCases = [
+        {title: 'VPS rn服务器', keyword: 'rn', expected: 'rn'},
+        {title: '测试 rn 内容', keyword: 'rn', expected: 'rn'},  
+        {title: 'VPS伺服器', keyword: '服务器', expected: '伺服器'},
+        {title: 'TEST测試', keyword: '测试', expected: '測試'},
+        {title: 'NodeSeek论坛', keyword: '论坛', expected: '论坛'},
+        {title: 'rn rna RNA', keyword: 'rn', expected: 'rn'},
+        {title: 'rm rn ra', keyword: 'rn', expected: 'rn'}
+    ];
+    
+    console.log('测试用例：');
+    testCases.forEach((testCase, index) => {
+        console.log(`\n测试 ${index + 1}:`);
+        console.log(`  标题: "${testCase.title}"`);
+        console.log(`  关键词: "${testCase.keyword}"`);
+        console.log(`  期望高亮: "${testCase.expected}"`);
+        
+        // 模拟高亮过程
+        const titleEl = testEl.querySelector('a');
+        titleEl.textContent = testCase.title;
+        
+        try {
+            // 应用高亮
+            highlightTitleKeywords(titleEl, testCase.title, [testCase.keyword]);
+            
+            // 检查结果
+            const highlightedSpans = titleEl.querySelectorAll('.ns-keyword-highlight');
+            console.log(`  实际高亮数量: ${highlightedSpans.length}`);
+            
+            highlightedSpans.forEach((span, i) => {
+                const highlightedText = span.textContent;
+                const normalizedHighlighted = normalizeText(highlightedText);
+                const normalizedKeyword = normalizeText(testCase.keyword);
+                const match = normalizedHighlighted === normalizedKeyword;
+                
+                console.log(`    高亮片段 ${i + 1}: "${highlightedText}" ${match ? '✓' : '✗'}`);
+                if (!match) {
+                    console.log(`      标准化: "${normalizedHighlighted}" vs "${normalizedKeyword}"`);
+                }
+            });
+            
+        } catch (error) {
+            console.log(`  错误: ${error.message}`);
+        }
+        
+        // 清理
+        titleEl.innerHTML = testCase.title;
+    });
+    
+    // 清理测试元素
+    document.body.removeChild(testEl);
+    
+    console.log('\n=== 测试完成 ===');
+    console.log('使用方法: NodeSeekFilter.testHighlightMatching()');
+}
+
 // 导出
 window.NodeSeekFilter = {
     filterPosts,
@@ -1621,6 +1691,7 @@ window.NodeSeekFilter = {
     normalizeText,
     debugPageStructure,
     testLocalStorage,
+    testHighlightMatching, // 新增测试函数
     // 关键词管理功能
     addCustomKeyword,
     removeCustomKeyword,
