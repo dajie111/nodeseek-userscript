@@ -781,46 +781,68 @@ function createFilterUI(onFilter) {
         const highlightKeywords = getHighlightKeywords();
         const listContainer = dialog.querySelector('#ns-highlight-keywords-list');
         
+        // 使用DocumentFragment减少DOM操作
+        const fragment = document.createDocumentFragment();
+        
         if (highlightKeywords.length === 0) {
-            listContainer.innerHTML = '<div style="color:#999;font-size:13px;text-align:center;padding:38px 8px;">暂无已高亮的关键词</div>';
+            const emptyDiv = document.createElement('div');
+            emptyDiv.style.cssText = 'color:#999;font-size:13px;text-align:center;padding:38px 8px;';
+            emptyDiv.textContent = '暂无已高亮的关键词';
+            fragment.appendChild(emptyDiv);
+            
             // 没有关键词时调整样式，避免滚动条
             listContainer.style.height = 'auto';
             listContainer.style.minHeight = '110px';
             listContainer.style.maxHeight = '110px';
             listContainer.style.overflowY = 'hidden';
         } else {
-            listContainer.innerHTML = highlightKeywords.map(keyword => {
+            highlightKeywords.forEach(keyword => {
                 // 检查关键词长度，超长的用不同样式显示
                 const isLong = keyword.length > 15;
                 const borderColor = isLong ? '#ff9800' : '#ddd';
                 const textColor = isLong ? '#ff9800' : 'inherit';
                 const title = isLong ? `关键词过长(${keyword.length}字符)，建议删除重新添加` : '删除关键词';
                 
-                return `
-                    <div style="display:inline-flex;align-items:center;margin:2px;padding:4px 8px;background:#fff;border:1px solid ${borderColor};border-radius:12px;font-size:13px;color:${textColor};max-width:100%;word-break:break-all;">
-                        <span title="${isLong ? '长度超限' : ''}" style="max-width:calc(100% - 22px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${keyword}</span>
-                        <button class="ns-remove-highlight" data-keyword="${keyword}" style="margin-left:6px;background:none;border:none;color:#999;cursor:pointer;font-size:16px;line-height:1;padding:0;width:16px;height:16px;flex-shrink:0;" title="${title}">×</button>
-                    </div>
-                `;
-            }).join('');
+                const keywordDiv = document.createElement('div');
+                keywordDiv.style.cssText = `display:inline-flex;align-items:center;margin:2px;padding:4px 8px;background:#fff;border:1px solid ${borderColor};border-radius:12px;font-size:13px;color:${textColor};max-width:100%;word-break:break-all;`;
+                
+                const span = document.createElement('span');
+                span.title = isLong ? '长度超限' : '';
+                span.style.cssText = 'max-width:calc(100% - 22px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                span.textContent = keyword;
+                
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'ns-remove-highlight';
+                removeBtn.dataset.keyword = keyword;
+                removeBtn.style.cssText = 'margin-left:6px;background:none;border:none;color:#999;cursor:pointer;font-size:16px;line-height:1;padding:0;width:16px;height:16px;flex-shrink:0;';
+                removeBtn.title = title;
+                removeBtn.textContent = '×';
+                
+                // 添加删除按钮事件监听器
+                removeBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const keyword = this.dataset.keyword;
+                    removeHighlightKeyword(keyword);
+                    renderHighlightKeywordsList();
+                    // 重新应用高亮
+                    applyKeywordHighlight();
+                });
+                
+                keywordDiv.appendChild(span);
+                keywordDiv.appendChild(removeBtn);
+                fragment.appendChild(keywordDiv);
+            });
+            
             // 有关键词时恢复滚动样式
             listContainer.style.height = '110px';
             listContainer.style.minHeight = '110px';
             listContainer.style.maxHeight = '110px';
             listContainer.style.overflowY = 'auto';
         }
-
-        // 添加删除按钮事件监听器
-        listContainer.querySelectorAll('.ns-remove-highlight').forEach(btn => {
-            btn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                const keyword = this.dataset.keyword;
-                removeHighlightKeyword(keyword);
-                renderHighlightKeywordsList();
-                // 重新应用高亮
-                applyKeywordHighlight();
-            });
-        });
+        
+        // 清空容器并添加新内容
+        listContainer.innerHTML = '';
+        listContainer.appendChild(fragment);
     }
 
     // 不再需要getAllActiveKeywords函数
@@ -1022,7 +1044,7 @@ function createFilterUI(onFilter) {
             renderHighlightKeywordsList();
             showHighlightLengthHint('0/15 字符', '#999');
             
-            // 立即应用高亮
+            // 使用防抖机制应用高亮，避免卡顿
             applyKeywordHighlight();
             
             // 操作日志记录
@@ -1518,7 +1540,22 @@ function testLocalStorage() {
 // ========== 关键词高亮显示逻辑 ==========
 
 // 应用关键词高亮
+// 添加防抖机制
+let highlightDebounceTimer = null;
+
 function applyKeywordHighlight() {
+    // 清除之前的定时器
+    if (highlightDebounceTimer) {
+        clearTimeout(highlightDebounceTimer);
+    }
+    
+    // 设置防抖延迟
+    highlightDebounceTimer = setTimeout(() => {
+        applyKeywordHighlightImmediate();
+    }, 100); // 100ms防抖延迟
+}
+
+function applyKeywordHighlightImmediate() {
     const highlightKeywords = getHighlightKeywords();
     const highlightAuthorEnabled = getHighlightAuthorOption();
     
@@ -1528,7 +1565,7 @@ function applyKeywordHighlight() {
         return;
     }
     
-    // 尝试多种可能的CSS选择器查找帖子
+    // 缓存选择器结果，避免重复查询
     let postItems = document.querySelectorAll('ul.post-list > li.post-list-item');
     
     if (postItems.length === 0) {
@@ -1558,12 +1595,19 @@ function applyKeywordHighlight() {
         return;
     }
     
-    postItems.forEach((item) => {
+    // 预计算关键词的标准化版本，避免重复计算
+    const normalizedKeywords = highlightKeywords.map(keyword => ({
+        original: keyword,
+        normalized: normalizeText(keyword)
+    })).filter(item => item.normalized);
+    
+    // 使用更高效的批量处理
+    const processItem = (item) => {
         // 先清除该项目的现有高亮
         clearItemHighlight(item);
         
         // 处理标题高亮
-        if (highlightKeywords.length > 0) {
+        if (normalizedKeywords.length > 0) {
             // 尝试多种方式获取帖子标题
             let titleEl = item.querySelector('.post-title a');
             let title = titleEl ? titleEl.textContent.trim() : '';
@@ -1594,10 +1638,11 @@ function applyKeywordHighlight() {
             }
             
             if (title && titleEl) {
+                const normalizedTitle = normalizeText(title);
                 // 检查标题是否包含任何高亮关键词
-                const matchedKeywords = highlightKeywords.filter(keyword => 
-                    keyword && normalizeText(title).includes(normalizeText(keyword))
-                );
+                const matchedKeywords = normalizedKeywords.filter(item => 
+                    normalizedTitle.includes(item.normalized)
+                ).map(item => item.original);
                 
                 if (matchedKeywords.length > 0) {
                     // 高亮显示匹配的关键词
@@ -1607,7 +1652,7 @@ function applyKeywordHighlight() {
         }
         
         // 处理作者高亮
-        if (highlightAuthorEnabled && highlightKeywords.length > 0) {
+        if (highlightAuthorEnabled && normalizedKeywords.length > 0) {
             // 尝试多种方式获取作者元素
             let authorEl = item.querySelector('.post-author a');
             let author = authorEl ? authorEl.textContent.trim() : '';
@@ -1635,10 +1680,11 @@ function applyKeywordHighlight() {
             }
             
             if (author && authorEl) {
+                const normalizedAuthor = normalizeText(author);
                 // 检查作者是否包含任何高亮关键词
-                const matchedKeywords = highlightKeywords.filter(keyword => 
-                    keyword && normalizeText(author).includes(normalizeText(keyword))
-                );
+                const matchedKeywords = normalizedKeywords.filter(item => 
+                    normalizedAuthor.includes(item.normalized)
+                ).map(item => item.original);
                 
                 if (matchedKeywords.length > 0) {
                     // 高亮显示匹配的关键词
@@ -1646,7 +1692,28 @@ function applyKeywordHighlight() {
                 }
             }
         }
-    });
+    };
+    
+    // 分批处理，避免阻塞UI
+    const batchSize = 10;
+    let currentIndex = 0;
+    
+    const processBatch = () => {
+        const endIndex = Math.min(currentIndex + batchSize, postItems.length);
+        
+        for (let i = currentIndex; i < endIndex; i++) {
+            processItem(postItems[i]);
+        }
+        
+        currentIndex = endIndex;
+        
+        if (currentIndex < postItems.length) {
+            // 使用requestAnimationFrame确保UI响应
+            requestAnimationFrame(processBatch);
+        }
+    };
+    
+    processBatch();
 }
 
 // 清除所有关键词高亮效果
@@ -1701,58 +1768,19 @@ function highlightTitleKeywords(titleEl, originalTitle, keywords) {
         // 按关键词长度排序，优先处理长关键词，避免短关键词覆盖长关键词
         const sortedKeywords = keywords.sort((a, b) => b.length - a.length);
         
-        // 收集所有匹配位置，避免重复替换
-        const matches = [];
+        // 使用简单的字符串替换，避免复杂的算法
+        const highlightColor = getHighlightColor();
         
         sortedKeywords.forEach(keyword => {
             if (!keyword || keyword.trim() === '') return;
             
-            const normalizedKeyword = normalizeText(keyword);
-            if (!normalizedKeyword) return;
+            // 使用正则表达式进行全局替换，支持大小写不敏感
+            const regex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
             
-            // 使用滑动窗口方式查找匹配
-            for (let i = 0; i <= originalTitle.length - keyword.length; i++) {
-                // 尝试不同长度的子字符串，以处理简繁体转换可能的长度变化
-                for (let len = keyword.length; len <= Math.min(originalTitle.length - i, keyword.length + 5); len++) {
-                    const substring = originalTitle.substring(i, i + len);
-                    const normalizedSubstring = normalizeText(substring);
-                    
-                    if (normalizedSubstring === normalizedKeyword) {
-                        const matchStart = i;
-                        const matchEnd = i + len;
-                        
-                        // 检查是否与已有匹配重叠
-                        const overlap = matches.some(existingMatch => 
-                            (matchStart >= existingMatch.start && matchStart < existingMatch.end) ||
-                            (matchEnd > existingMatch.start && matchEnd <= existingMatch.end) ||
-                            (matchStart <= existingMatch.start && matchEnd >= existingMatch.end)
-                        );
-                        
-                        if (!overlap) {
-                            matches.push({
-                                start: matchStart,
-                                end: matchEnd,
-                                original: substring,
-                                keyword: keyword
-                            });
-                        }
-                        break; // 找到匹配后跳出长度循环
-                    }
-                }
-            }
-        });
-        
-        // 按位置倒序排序，从后往前替换，避免位置偏移
-        matches.sort((a, b) => b.start - a.start);
-        
-        // 应用高亮
-        const highlightColor = getHighlightColor();
-        matches.forEach(match => {
-            const before = processedHTML.substring(0, match.start);
-            const after = processedHTML.substring(match.end);
-            // 使用自定义颜色的高亮样式
-            const highlightHTML = `<span class="ns-keyword-highlight" style="background-color: ${highlightColor}; color: #333; font-weight: inherit; display: inline; margin: 0; padding: 0; line-height: inherit; vertical-align: baseline;">${match.original}</span>`;
-            processedHTML = before + highlightHTML + after;
+            processedHTML = processedHTML.replace(regex, (match) => {
+                // 使用自定义颜色的高亮样式
+                return `<span class="ns-keyword-highlight" style="background-color: ${highlightColor}; color: #333; font-weight: inherit; display: inline; margin: 0; padding: 0; line-height: inherit; vertical-align: baseline;">${match}</span>`;
+            });
         });
         
         // 应用处理后的HTML
