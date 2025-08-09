@@ -206,8 +206,8 @@ function addCustomKeyword(keyword) {
     const keywords = getCustomKeywords();
     const normalizedKeyword = keyword.trim();
     
-    // 检查长度限制（10个字符）
-    if (normalizedKeyword.length > 10) {
+    // 检查长度限制（15个字符）
+    if (normalizedKeyword.length > 15) {
         return 'too_long';
     }
     
@@ -232,6 +232,78 @@ function removeCustomKeyword(keyword) {
     return filtered;
 }
 
+// ========== 关键词高亮功能管理 ==========
+
+// 保存高亮关键词列表到 localStorage
+function saveHighlightKeywords(keywords) {
+    localStorage.setItem('ns-filter-highlight-keywords', JSON.stringify(keywords));
+}
+
+// 从 localStorage 获取高亮关键词列表
+function getHighlightKeywords() {
+    const saved = localStorage.getItem('ns-filter-highlight-keywords');
+    return saved ? JSON.parse(saved) : [];
+}
+
+// 添加单个关键词到高亮列表
+function addHighlightKeyword(keyword) {
+    if (!keyword || !keyword.trim()) return false;
+    
+    const keywords = getHighlightKeywords();
+    const normalizedKeyword = keyword.trim();
+    
+    // 检查长度限制（15个字符）
+    if (normalizedKeyword.length > 15) {
+        return 'too_long';
+    }
+    
+    // 检查是否已存在（不区分大小写和简繁体）
+    const exists = keywords.some(existing => 
+        normalizeText(existing) === normalizeText(normalizedKeyword)
+    );
+    
+    if (!exists) {
+        keywords.push(normalizedKeyword);
+        saveHighlightKeywords(keywords);
+        return true;
+    }
+    return false;
+}
+
+// 从高亮列表删除关键词
+function removeHighlightKeyword(keyword) {
+    const keywords = getHighlightKeywords();
+    const filtered = keywords.filter(k => k !== keyword);
+    saveHighlightKeywords(filtered);
+    return filtered;
+}
+
+// ========== 作者高亮功能管理 ==========
+
+// 保存作者高亮选项状态到 localStorage
+function saveHighlightAuthorOption(enabled) {
+    localStorage.setItem('ns-filter-highlight-author-enabled', JSON.stringify(enabled));
+}
+
+// 从 localStorage 获取作者高亮选项状态
+function getHighlightAuthorOption() {
+    const saved = localStorage.getItem('ns-filter-highlight-author-enabled');
+    return saved ? JSON.parse(saved) : false;
+}
+
+// ========== 高亮颜色管理 ==========
+
+// 保存高亮颜色到 localStorage
+function saveHighlightColor(color) {
+    localStorage.setItem('ns-filter-highlight-color', color);
+}
+
+// 从 localStorage 获取高亮颜色
+function getHighlightColor() {
+    const saved = localStorage.getItem('ns-filter-highlight-color');
+    return saved || '#ffeb3b'; // 默认黄色
+}
+
 // 保存弹窗位置到 localStorage
 function saveDialogPosition(position) {
     localStorage.setItem('ns-filter-dialog-position', JSON.stringify(position));
@@ -239,8 +311,29 @@ function saveDialogPosition(position) {
 
 // 从 localStorage 获取弹窗位置
 function getDialogPosition() {
-    const saved = localStorage.getItem('ns-filter-dialog-position');
-    return saved ? JSON.parse(saved) : null;
+    try {
+        const saved = localStorage.getItem('ns-filter-dialog-position');
+        if (!saved) return null;
+        
+        const position = JSON.parse(saved);
+        
+        // 验证位置数据有效性（宽松验证，恢复时会自动调整边界）
+        if (position && 
+            typeof position.left === 'number' && typeof position.top === 'number' &&
+            !isNaN(position.left) && !isNaN(position.top) &&
+            position.left >= -1000 && position.top >= -1000) { // 只检查明显异常的值
+            return position;
+        } else {
+            // 清除无效数据
+            localStorage.removeItem('ns-filter-dialog-position');
+
+            return null;
+        }
+    } catch (error) {
+        // 解析错误时清除数据
+        localStorage.removeItem('ns-filter-dialog-position');
+        return null;
+    }
 }
 
 // 检查是否为移动设备
@@ -261,7 +354,30 @@ function clearFilter() {
     clearFilterDisplay();
     localStorage.removeItem('ns-filter-keywords');
     localStorage.removeItem('ns-filter-custom-keywords'); // 清除自定义关键词
-    localStorage.removeItem('ns-filter-dialog-position'); // 清除弹窗位置
+    localStorage.removeItem('ns-filter-highlight-keywords'); // 清除高亮关键词
+    localStorage.removeItem('ns-filter-highlight-author-enabled'); // 清除作者高亮选项
+    localStorage.removeItem('ns-filter-highlight-color'); // 清除高亮颜色设置
+}
+
+// 清理损坏的位置数据
+function cleanupDialogPosition() {
+    try {
+        const saved = localStorage.getItem('ns-filter-dialog-position');
+        if (saved) {
+            const position = JSON.parse(saved);
+            // 只清除格式完全错误的数据，不清除超出边界的数据（恢复时会自动调整）
+            if (!position || 
+                typeof position.left !== 'number' || typeof position.top !== 'number' ||
+                isNaN(position.left) || isNaN(position.top) ||
+                position.left < -1000 || position.top < -1000) { // 只清除明显异常的值
+                localStorage.removeItem('ns-filter-dialog-position');
+
+            }
+        }
+    } catch (error) {
+        localStorage.removeItem('ns-filter-dialog-position');
+
+    }
 }
 
 // 创建关键词输入界面（弹窗）
@@ -286,9 +402,6 @@ function createFilterUI(onFilter) {
 
     // 检查是否为移动设备
     const isMobile = isMobileDevice();
-    
-    // 获取保存的位置
-    const savedPosition = getDialogPosition();
     
     if (isMobile) {
         // 移动端样式：始终居中，不支持拖拽
@@ -317,24 +430,10 @@ function createFilterUI(onFilter) {
         dialog.style.overflowX = 'hidden';
         dialog.style.transform = 'none';
         
-        // 获取当前显示关键词，判断是否应该恢复位置
-        const currentWhitelistKeywords = getKeywords();
-        
-        // 只有当前有显示关键词时，才应用保存的位置
-        if (currentWhitelistKeywords.length > 0 && savedPosition && savedPosition.left !== undefined && savedPosition.top !== undefined) {
-            // 验证保存的位置是否仍在屏幕内
-            const maxLeft = window.innerWidth - 400; // 弹窗最小宽度
-            const maxTop = window.innerHeight - 200; // 弹窗最小高度
-            
-            dialog.style.left = Math.max(0, Math.min(savedPosition.left, maxLeft)) + 'px';
-            dialog.style.top = Math.max(0, Math.min(savedPosition.top, maxTop)) + 'px';
-            dialog.style.right = 'auto';
-        } else {
-            // 没有显示关键词时，使用默认位置
-            dialog.style.top = '60px';
-            dialog.style.right = '16px';
-            dialog.style.left = 'auto';
-        }
+        // 总是使用默认位置（右上角）
+        dialog.style.top = '60px';
+        dialog.style.right = '16px';
+        dialog.style.left = 'auto';
     }
 
     dialog.innerHTML = `
@@ -347,14 +446,14 @@ function createFilterUI(onFilter) {
         <div style="margin-bottom:12px;">
             <label style="font-weight:bold;color:#f44336;">🚫 屏蔽关键词：</label><br>
             <div style="margin-bottom:6px;font-size:13px;color:#666;line-height:1.4;">
-                添加后永久隐藏包含这些关键词的帖子 • 限制10个字符以内
+                添加后永久隐藏包含这些关键词的帖子 • 限制15个字符以内
             </div>
             <div style="margin-bottom:6px;font-size:12px;color:#2196F3;line-height:1.3;">
                 💡 提示：屏蔽用户请使用官方功能 
                 <a href="https://www.nodeseek.com/setting#block" target="_blank" style="color:#2196F3;text-decoration:underline;">点击跳转</a>
             </div>
             <div style="display:flex;gap:4px;margin-top:4px;">
-                <input id="ns-add-keyword-input" type="text" maxlength="10" style="flex:1;padding:4px 8px;font-size:14px;border:1px solid #ccc;border-radius:4px;" placeholder="输入要屏蔽的关键词(≤10字符)" />
+                <input id="ns-add-keyword-input" type="text" maxlength="15" style="flex:1;padding:4px 8px;font-size:14px;border:1px solid #ccc;border-radius:4px;" placeholder="输入要屏蔽的关键词(≤15字符)" />
                 <button id="ns-add-keyword-btn" style="padding:4px 12px;font-size:14px;background:#f44336;color:#fff;border:none;border-radius:4px;cursor:pointer;">屏蔽</button>
             </div>
             <div id="ns-keyword-length-hint" style="margin-top:2px;font-size:12px;color:#999;min-height:16px;"></div>
@@ -365,6 +464,37 @@ function createFilterUI(onFilter) {
             <label style="font-weight:bold;">已屏蔽的关键词：</label>
             <div id="ns-custom-keywords-list" style="margin-top:6px;height:110px;min-height:110px;max-height:110px;overflow-y:auto;overflow-x:hidden;border:1px solid #eee;border-radius:4px;padding:6px;background:#fafafa;box-sizing:border-box;width:100%;">
                 <!-- 关键词列表将在这里动态生成 -->
+            </div>
+        </div>
+
+        <!-- 高亮关键词管理 -->
+        <div style="margin-bottom:12px;">
+            <label style="font-weight:bold;color:#ff9800;">🔆 高亮关键词：</label><br>
+            <div style="margin-bottom:6px;font-size:13px;color:#666;line-height:1.4;">
+                添加后高亮显示包含这些关键词的帖子标题 • 限制15个字符以内
+            </div>
+            <div style="margin-bottom:6px;">
+                <label style="display:flex;align-items:center;font-size:13px;color:#666;cursor:pointer;">
+                    <input type="checkbox" id="ns-highlight-author-checkbox" style="margin-right:6px;cursor:pointer;" />
+                    同时高亮发帖作者
+                </label>
+            </div>
+            <div style="margin-bottom:6px;display:flex;align-items:center;gap:8px;">
+                <label style="font-size:13px;color:#666;">高亮颜色：</label>
+                <input type="color" id="ns-highlight-color-picker" style="width:40px;height:25px;border:1px solid #ccc;border-radius:4px;cursor:pointer;" />
+            </div>
+            <div style="display:flex;gap:4px;margin-top:4px;">
+                <input id="ns-add-highlight-input" type="text" maxlength="15" style="flex:1;padding:4px 8px;font-size:14px;border:1px solid #ccc;border-radius:4px;" placeholder="输入要高亮的关键词(≤15字符)" />
+                <button id="ns-add-highlight-btn" style="padding:4px 12px;font-size:14px;background:#ff9800;color:#fff;border:none;border-radius:4px;cursor:pointer;">高亮</button>
+            </div>
+            <div id="ns-highlight-length-hint" style="margin-top:2px;font-size:12px;color:#999;min-height:16px;"></div>
+        </div>
+
+        <!-- 已高亮的关键词列表 -->
+        <div id="ns-highlight-keywords-section" style="margin-bottom:12px;margin-top:-5px;">
+            <label style="font-weight:bold;">已高亮的关键词：</label>
+            <div id="ns-highlight-keywords-list" style="margin-top:6px;height:110px;min-height:110px;max-height:110px;overflow-y:auto;overflow-x:hidden;border:1px solid #eee;border-radius:4px;padding:6px;background:#fafafa;box-sizing:border-box;width:100%;">
+                <!-- 高亮关键词列表将在这里动态生成 -->
             </div>
         </div>
 
@@ -416,6 +546,18 @@ function createFilterUI(onFilter) {
             addKeywordBtn.style.padding = '8px 12px';
         }
         
+        // 高亮关键词输入框和按钮
+        const addHighlightInput = dialog.querySelector('#ns-add-highlight-input');
+        const addHighlightBtn = dialog.querySelector('#ns-add-highlight-btn');
+        if (addHighlightInput) {
+            addHighlightInput.style.fontSize = '16px';
+            addHighlightInput.style.padding = '8px 10px';
+        }
+        if (addHighlightBtn) {
+            addHighlightBtn.style.fontSize = '16px';
+            addHighlightBtn.style.padding = '8px 12px';
+        }
+        
         // 调整显示关键词区域的布局
         const showKeywordSection = dialog.querySelector('#ns-keyword-input').parentElement.parentElement;
         if (showKeywordSection) {
@@ -441,10 +583,15 @@ function createFilterUI(onFilter) {
         
         if (customKeywords.length === 0) {
             listContainer.innerHTML = '<div style="color:#999;font-size:13px;text-align:center;padding:38px 8px;">暂无已屏蔽的关键词</div>';
+            // 没有关键词时调整样式，避免滚动条
+            listContainer.style.height = 'auto';
+            listContainer.style.minHeight = '110px';
+            listContainer.style.maxHeight = '110px';
+            listContainer.style.overflowY = 'hidden';
         } else {
             listContainer.innerHTML = customKeywords.map(keyword => {
                 // 检查关键词长度，超长的用不同样式显示
-                const isLong = keyword.length > 10;
+                const isLong = keyword.length > 15;
                 const borderColor = isLong ? '#ff9800' : '#ddd';
                 const textColor = isLong ? '#ff9800' : 'inherit';
                 const title = isLong ? `关键词过长(${keyword.length}字符)，建议删除重新添加` : '删除关键词';
@@ -456,6 +603,11 @@ function createFilterUI(onFilter) {
                     </div>
                 `;
             }).join('');
+            // 有关键词时恢复滚动样式
+            listContainer.style.height = '110px';
+            listContainer.style.minHeight = '110px';
+            listContainer.style.maxHeight = '110px';
+            listContainer.style.overflowY = 'auto';
         }
 
         // 添加删除按钮事件监听器
@@ -473,18 +625,120 @@ function createFilterUI(onFilter) {
         });
     }
 
+    // 渲染高亮关键词列表
+    function renderHighlightKeywordsList() {
+        const highlightKeywords = getHighlightKeywords();
+        const listContainer = dialog.querySelector('#ns-highlight-keywords-list');
+        
+        if (highlightKeywords.length === 0) {
+            listContainer.innerHTML = '<div style="color:#999;font-size:13px;text-align:center;padding:38px 8px;">暂无已高亮的关键词</div>';
+            // 没有关键词时调整样式，避免滚动条
+            listContainer.style.height = 'auto';
+            listContainer.style.minHeight = '110px';
+            listContainer.style.maxHeight = '110px';
+            listContainer.style.overflowY = 'hidden';
+        } else {
+            listContainer.innerHTML = highlightKeywords.map(keyword => {
+                // 检查关键词长度，超长的用不同样式显示
+                const isLong = keyword.length > 15;
+                const borderColor = isLong ? '#ff9800' : '#ddd';
+                const textColor = isLong ? '#ff9800' : 'inherit';
+                const title = isLong ? `关键词过长(${keyword.length}字符)，建议删除重新添加` : '删除关键词';
+                
+                return `
+                    <div style="display:inline-flex;align-items:center;margin:2px;padding:4px 8px;background:#fff;border:1px solid ${borderColor};border-radius:12px;font-size:13px;color:${textColor};max-width:100%;word-break:break-all;">
+                        <span title="${isLong ? '长度超限' : ''}" style="max-width:calc(100% - 22px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${keyword}</span>
+                        <button class="ns-remove-highlight" data-keyword="${keyword}" style="margin-left:6px;background:none;border:none;color:#999;cursor:pointer;font-size:16px;line-height:1;padding:0;width:16px;height:16px;flex-shrink:0;" title="${title}">×</button>
+                    </div>
+                `;
+            }).join('');
+            // 有关键词时恢复滚动样式
+            listContainer.style.height = '110px';
+            listContainer.style.minHeight = '110px';
+            listContainer.style.maxHeight = '110px';
+            listContainer.style.overflowY = 'auto';
+        }
+
+        // 添加删除按钮事件监听器
+        listContainer.querySelectorAll('.ns-remove-highlight').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const keyword = this.dataset.keyword;
+                removeHighlightKeyword(keyword);
+                renderHighlightKeywordsList();
+                // 重新应用高亮
+                applyKeywordHighlight();
+            });
+        });
+    }
+
     // 不再需要getAllActiveKeywords函数
 
     // 初始渲染关键词列表
     renderCustomKeywordsList();
+    renderHighlightKeywordsList();
     
-    // 确保在页面加载时应用已保存的屏蔽关键词过滤
+    // 初始化作者高亮选项状态
+    const highlightAuthorCheckbox = dialog.querySelector('#ns-highlight-author-checkbox');
+    if (highlightAuthorCheckbox) {
+        highlightAuthorCheckbox.checked = getHighlightAuthorOption();
+        
+        // 添加作者高亮选项变化事件监听器
+        highlightAuthorCheckbox.addEventListener('change', function() {
+            saveHighlightAuthorOption(this.checked);
+            // 重新应用高亮
+            applyKeywordHighlight();
+            
+            // 操作日志记录
+            if (typeof window.addLog === 'function') {
+                window.addLog(`${this.checked ? '开启' : '关闭'}作者高亮`);
+            }
+        });
+    }
+    
+    // 初始化高亮颜色选择器
+    const colorPicker = dialog.querySelector('#ns-highlight-color-picker');
+    if (colorPicker) {
+        const currentColor = getHighlightColor();
+        colorPicker.value = currentColor;
+        
+        // 添加颜色变化事件监听器
+        colorPicker.addEventListener('change', function() {
+            const newColor = this.value;
+            saveHighlightColor(newColor);
+            
+            // 重新应用高亮
+            applyKeywordHighlight();
+            
+            // 操作日志记录
+            if (typeof window.addLog === 'function') {
+                window.addLog(`高亮颜色已更改为${newColor}`);
+            }
+        });
+    }
+    
+    // 确保在页面加载时应用已保存的屏蔽关键词过滤和高亮
     setTimeout(() => {
         const blacklistKeywords = getCustomKeywords();
         const whitelistKeywords = input.value.split(/,|，/).map(s => s.trim()).filter(Boolean);
-        if (blacklistKeywords.length > 0 || whitelistKeywords.length > 0) {
-            filterPosts(blacklistKeywords, whitelistKeywords);
+        
+        // 总是应用过滤逻辑（无论关键词是否为空）
+        filterPosts(blacklistKeywords, whitelistKeywords);
+        
+        // 如果显示关键词为空，记录日志
+        if (whitelistKeywords.length === 0 && typeof window.addLog === 'function') {
+            const blackCount = blacklistKeywords.length;
+            let logMessage = '过滤：';
+            if (blackCount > 0) {
+                logMessage += `屏蔽${blackCount}个关键词`;
+            } else {
+                logMessage += '显示全部内容';
+            }
+            window.addLog(logMessage);
         }
+        
+        // 应用高亮
+        applyKeywordHighlight();
     }, 100);
 
     // 添加关键词功能
@@ -499,17 +753,17 @@ function createFilterUI(onFilter) {
     }
 
     // 初始显示字符计数
-    showLengthHint('0/10 字符', '#999');
+    showLengthHint('0/15 字符', '#999');
     
     // 实时字符计数
     addKeywordInput.addEventListener('input', function() {
         const length = this.value.length;
         if (length === 0) {
-            showLengthHint('0/10 字符', '#999');
-        } else if (length <= 10) {
-            showLengthHint(`${length}/10 字符`, '#666');
+            showLengthHint('0/15 字符', '#999');
+        } else if (length <= 15) {
+            showLengthHint(`${length}/15 字符`, '#666');
         } else {
-            showLengthHint(`${length}/10 字符 - 超出限制`, '#f44336');
+            showLengthHint(`${length}/15 字符 - 超出限制`, '#f44336');
         }
     });
 
@@ -525,7 +779,7 @@ function createFilterUI(onFilter) {
             // 添加成功
             addKeywordInput.value = '';
             renderCustomKeywordsList();
-            showLengthHint('0/10 字符', '#999');
+            showLengthHint('0/15 字符', '#999');
             
             // 立即应用过滤（黑名单逻辑）
             const blacklistKeywords = getCustomKeywords();
@@ -539,10 +793,10 @@ function createFilterUI(onFilter) {
         } else if (result === 'too_long') {
             // 长度超限提示
             addKeywordInput.style.borderColor = '#f44336';
-            showLengthHint('关键词长度不能超过10个字符', '#f44336');
+            showLengthHint('关键词长度不能超过15个字符', '#f44336');
             setTimeout(() => {
                 addKeywordInput.style.borderColor = '#ccc';
-                showLengthHint('0/10 字符', '#999');
+                showLengthHint('0/15 字符', '#999');
             }, 2000);
         } else {
             // 关键词已存在的提示
@@ -550,7 +804,7 @@ function createFilterUI(onFilter) {
             showLengthHint('关键词已存在', '#ff9800');
             setTimeout(() => {
                 addKeywordInput.style.borderColor = '#ccc';
-                showLengthHint('0/10 字符', '#999');
+                showLengthHint('0/15 字符', '#999');
             }, 1500);
         }
     }
@@ -573,7 +827,95 @@ function createFilterUI(onFilter) {
     // 输入框失焦时恢复placeholder（如果为空）
     addKeywordInput.addEventListener('blur', function() {
         if (!this.value.trim()) {
-            this.placeholder = '输入要屏蔽的关键词(≤10字符)';
+            this.placeholder = '输入要屏蔽的关键词(≤15字符)';
+        }
+    });
+
+    // ===== 高亮关键词功能 =====
+    const addHighlightInput = dialog.querySelector('#ns-add-highlight-input');
+    const addHighlightBtn = dialog.querySelector('#ns-add-highlight-btn');
+    const highlightLengthHintEl = dialog.querySelector('#ns-highlight-length-hint');
+
+    // 显示高亮长度提示
+    function showHighlightLengthHint(message, color = '#999') {
+        highlightLengthHintEl.textContent = message;
+        highlightLengthHintEl.style.color = color;
+    }
+
+    // 初始显示高亮字符计数
+    showHighlightLengthHint('0/15 字符', '#999');
+    
+    // 实时高亮字符计数
+    addHighlightInput.addEventListener('input', function() {
+        const length = this.value.length;
+        if (length === 0) {
+            showHighlightLengthHint('0/15 字符', '#999');
+        } else if (length <= 15) {
+            showHighlightLengthHint(`${length}/15 字符`, '#666');
+        } else {
+            showHighlightLengthHint(`${length}/15 字符 - 超出限制`, '#f44336');
+        }
+    });
+
+    function addHighlightKeywordAction() {
+        const keyword = addHighlightInput.value.trim();
+        if (!keyword) {
+            addHighlightInput.focus();
+            return;
+        }
+
+        const result = addHighlightKeyword(keyword);
+        if (result === true) {
+            // 添加成功
+            addHighlightInput.value = '';
+            renderHighlightKeywordsList();
+            showHighlightLengthHint('0/15 字符', '#999');
+            
+            // 立即应用高亮
+            applyKeywordHighlight();
+            
+            // 操作日志记录
+            if (typeof window.addLog === 'function') {
+                window.addLog(`高亮关键词"${keyword}"`);
+            }
+        } else if (result === 'too_long') {
+            // 长度超限提示
+            addHighlightInput.style.borderColor = '#f44336';
+            showHighlightLengthHint('关键词长度不能超过15个字符', '#f44336');
+            setTimeout(() => {
+                addHighlightInput.style.borderColor = '#ccc';
+                showHighlightLengthHint('0/15 字符', '#999');
+            }, 2000);
+        } else {
+            // 关键词已存在的提示
+            addHighlightInput.style.borderColor = '#ff9800';
+            showHighlightLengthHint('关键词已存在', '#ff9800');
+            setTimeout(() => {
+                addHighlightInput.style.borderColor = '#ccc';
+                showHighlightLengthHint('0/15 字符', '#999');
+            }, 1500);
+        }
+    }
+
+    // 添加高亮关键词按钮事件
+    addHighlightBtn.addEventListener('click', addHighlightKeywordAction);
+    
+    // 添加高亮关键词输入框回车事件
+    addHighlightInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            addHighlightKeywordAction();
+        }
+    });
+    
+    // 高亮输入框点击时隐藏placeholder
+    addHighlightInput.addEventListener('focus', function() {
+        this.placeholder = '';
+    });
+    
+    // 高亮输入框失焦时恢复placeholder（如果为空）
+    addHighlightInput.addEventListener('blur', function() {
+        if (!this.value.trim()) {
+            this.placeholder = '输入要高亮的关键词(≤15字符)';
         }
     });
 
@@ -589,6 +931,19 @@ function createFilterUI(onFilter) {
         // 清除显示关键词的过滤效果，但保留屏蔽关键词的过滤效果
         const blacklistKeywords = getCustomKeywords();
         filterPosts(blacklistKeywords, []);
+        
+        // 操作日志记录
+        if (typeof window.addLog === 'function') {
+            const blackCount = blacklistKeywords.length;
+            let logMessage = '过滤：';
+            if (blackCount > 0) {
+                logMessage += `屏蔽${blackCount}个关键词`;
+            } else {
+                logMessage += '显示全部内容';
+            }
+            window.addLog(logMessage);
+        }
+        
         dialog.remove();
     };
 
@@ -619,6 +974,29 @@ function createFilterUI(onFilter) {
             doFilter();
         }
     });
+    
+    // 添加输入框内容变化监听，自动过滤
+    input.addEventListener('input', function(e) {
+        // 如果输入框为空，自动显示全部内容（只应用屏蔽关键词过滤）
+        if (!this.value.trim()) {
+            const blacklistKeywords = getCustomKeywords();
+            filterPosts(blacklistKeywords, []);
+            saveKeywords([]); // 清空保存的显示关键词
+            
+            // 操作日志记录
+            if (typeof window.addLog === 'function') {
+                const blackCount = blacklistKeywords.length;
+                let logMessage = '过滤：';
+                if (blackCount > 0) {
+                    logMessage += `屏蔽${blackCount}个关键词`;
+                } else {
+                    logMessage += '显示全部内容';
+                }
+                window.addLog(logMessage);
+            }
+        }
+    });
+    
     input.onclick = function() {
         input.placeholder = '';
     };
@@ -660,12 +1038,7 @@ function createFilterUI(onFilter) {
                             lastLeft = dialog.style.left;
                             lastTop = dialog.style.top;
                             
-                            // 保存新位置
-                            const position = {
-                                left: parseInt(dialog.style.left) || 0,
-                                top: parseInt(dialog.style.top) || 0
-                            };
-                            saveDialogPosition(position);
+                            // 位置变化时不再保存（总是使用默认位置）
                         }
                     };
                     
@@ -688,9 +1061,11 @@ function createFilterUI(onFilter) {
 
 // 关键词过滤的 observer 初始化（用于主插件调用）
 function initFilterObserver() {
+    
     // 检查是否有保存的关键词，如果有则自动应用过滤
     const whitelistKeywords = getKeywords(); // 显示关键词
     const blacklistKeywords = getCustomKeywords(); // 屏蔽关键词
+    const highlightKeywords = getHighlightKeywords(); // 高亮关键词
     
     if (whitelistKeywords.length > 0 || blacklistKeywords.length > 0) {
         // 自动应用过滤
@@ -699,8 +1074,22 @@ function initFilterObserver() {
         // 只有显示关键词时才自动显示过滤弹窗（保持位置）
         // 仅屏蔽关键词时不显示弹窗
         if (whitelistKeywords.length > 0) {
-        createFilterUI();
+            // 延迟创建弹窗，确保页面完全加载
+            setTimeout(() => {
+                createFilterUI(); // 自动打开，恢复保存的位置
+            }, 100);
         }
+    }
+    
+    // 应用高亮关键词（无论是否有过滤关键词）
+    if (highlightKeywords.length > 0) {
+        // 延迟应用高亮，确保DOM完全加载
+        setTimeout(() => {
+            applyKeywordHighlight();
+        }, 100);
+        
+        // 也立即尝试应用一次
+        applyKeywordHighlight();
     }
 }
 
@@ -856,9 +1245,9 @@ function testConversion() {
     
     // 测试长度限制
     console.log('\n  测试长度限制：');
-    console.log('    添加"1234567890"(10字符):', NodeSeekFilter.addCustomKeyword('1234567890') === true ? '✓成功' : '✗失败');
-    console.log('    添加"12345678901"(11字符):', NodeSeekFilter.addCustomKeyword('12345678901') === 'too_long' ? '✓正确拒绝' : '✗应该被拒绝');
-    console.log('    添加"这是一个超级长的关键词"(12字符):', NodeSeekFilter.addCustomKeyword('这是一个超级长的关键词') === 'too_long' ? '✓正确拒绝' : '✗应该被拒绝');
+    console.log('    添加"123456789012345"(15字符):', NodeSeekFilter.addCustomKeyword('123456789012345') === true ? '✓成功' : '✗失败');
+    console.log('    添加"1234567890123456"(16字符):', NodeSeekFilter.addCustomKeyword('1234567890123456') === 'too_long' ? '✓正确拒绝' : '✗应该被拒绝');
+    console.log('    添加"这是一个超级长的关键词测试"(16字符):', NodeSeekFilter.addCustomKeyword('这是一个超级长的关键词测试') === 'too_long' ? '✓正确拒绝' : '✗应该被拒绝');
     
     // 显示当前关键词
     const currentKeywords = NodeSeekFilter.getCustomKeywords();
@@ -975,6 +1364,251 @@ function testLocalStorage() {
     return afterAdd;
 }
 
+// ========== 关键词高亮显示逻辑 ==========
+
+// 应用关键词高亮
+function applyKeywordHighlight() {
+    const highlightKeywords = getHighlightKeywords();
+    const highlightAuthorEnabled = getHighlightAuthorOption();
+    
+    if (highlightKeywords.length === 0 && !highlightAuthorEnabled) {
+        // 如果没有高亮关键词且未开启作者高亮，清除所有高亮效果
+        clearKeywordHighlight();
+        return;
+    }
+    
+    // 尝试多种可能的CSS选择器查找帖子
+    let postItems = document.querySelectorAll('ul.post-list > li.post-list-item');
+    
+    if (postItems.length === 0) {
+        const selectors = [
+            'ul.post-list > li',
+            '.post-list > li',
+            '.post-list-item',
+            '.post-item',
+            '.topic-item',
+            'div[class*="post"]',
+            'li[class*="post"]',
+            'tr[class*="post"]',
+            '.topic-list tr',
+            '.topic-list > tr'
+        ];
+        
+        for (const selector of selectors) {
+            postItems = document.querySelectorAll(selector);
+            if (postItems.length > 0) {
+                break;
+            }
+        }
+    }
+    
+    // 如果还是没找到，直接返回
+    if (postItems.length === 0) {
+        return;
+    }
+    
+    postItems.forEach((item) => {
+        // 先清除该项目的现有高亮
+        clearItemHighlight(item);
+        
+        // 处理标题高亮
+        if (highlightKeywords.length > 0) {
+            // 尝试多种方式获取帖子标题
+            let titleEl = item.querySelector('.post-title a');
+            let title = titleEl ? titleEl.textContent.trim() : '';
+            
+            if (!title) {
+                const titleSelectors = [
+                    'a[href*="/topic/"]',
+                    'a[href*="/post"]', 
+                    '.post-title',
+                    '.topic-title',
+                    '.title',
+                    'h3 a',
+                    'h4 a',
+                    '.subject a',
+                    'td a',
+                    'a[class*="title"]',
+                    'a[class*="subject"]',
+                    'a'
+                ];
+                
+                for (const selector of titleSelectors) {
+                    titleEl = item.querySelector(selector);
+                    if (titleEl && titleEl.textContent.trim()) {
+                        title = titleEl.textContent.trim();
+                        break;
+                    }
+                }
+            }
+            
+            if (title && titleEl) {
+                // 检查标题是否包含任何高亮关键词
+                const matchedKeywords = highlightKeywords.filter(keyword => 
+                    keyword && normalizeText(title).includes(normalizeText(keyword))
+                );
+                
+                if (matchedKeywords.length > 0) {
+                    // 高亮显示匹配的关键词
+                    highlightTitleKeywords(titleEl, title, matchedKeywords);
+                }
+            }
+        }
+        
+        // 处理作者高亮
+        if (highlightAuthorEnabled && highlightKeywords.length > 0) {
+            // 尝试多种方式获取作者元素
+            let authorEl = item.querySelector('.post-author a');
+            let author = authorEl ? authorEl.textContent.trim() : '';
+            
+            if (!author) {
+                const authorSelectors = [
+                    '.post-author',
+                    '.author',
+                    '.post-meta a',
+                    '.meta a',
+                    'a[href*="/user/"]',
+                    'a[href*="/member/"]',
+                    'td:nth-child(2) a', // 表格布局中的作者列
+                    '.post-info a',
+                    '.user-link'
+                ];
+                
+                for (const selector of authorSelectors) {
+                    authorEl = item.querySelector(selector);
+                    if (authorEl && authorEl.textContent.trim()) {
+                        author = authorEl.textContent.trim();
+                        break;
+                    }
+                }
+            }
+            
+            if (author && authorEl) {
+                // 检查作者是否包含任何高亮关键词
+                const matchedKeywords = highlightKeywords.filter(keyword => 
+                    keyword && normalizeText(author).includes(normalizeText(keyword))
+                );
+                
+                if (matchedKeywords.length > 0) {
+                    // 高亮显示匹配的关键词
+                    highlightTitleKeywords(authorEl, author, matchedKeywords);
+                }
+            }
+        }
+    });
+}
+
+// 清除所有关键词高亮效果
+function clearKeywordHighlight() {
+    // 查找所有可能包含高亮的元素
+    const highlightedElements = document.querySelectorAll('.ns-keyword-highlight');
+    highlightedElements.forEach(el => {
+        // 恢复原始文本
+        if (el.parentNode) {
+            el.parentNode.replaceChild(document.createTextNode(el.textContent), el);
+        }
+    });
+    
+    // 标准化文本节点（合并相邻的文本节点）
+    const allPostItems = document.querySelectorAll('ul.post-list > li.post-list-item, ul.post-list > li, .post-list > li, .post-list-item, .post-item, .topic-item');
+    allPostItems.forEach(item => {
+        const titleElements = item.querySelectorAll('a[href*="/topic/"], .post-title a, .topic-title a, .title a');
+        titleElements.forEach(titleEl => {
+            if (titleEl.parentNode) {
+                titleEl.parentNode.normalize();
+            }
+        });
+    });
+}
+
+// 清除单个项目的高亮效果
+function clearItemHighlight(item) {
+    const highlightedElements = item.querySelectorAll('.ns-keyword-highlight');
+    highlightedElements.forEach(el => {
+        if (el.parentNode) {
+            el.parentNode.replaceChild(document.createTextNode(el.textContent), el);
+        }
+    });
+    
+    // 标准化文本节点
+    const titleElements = item.querySelectorAll('a[href*="/topic/"], .post-title a, .topic-title a, .title a');
+    titleElements.forEach(titleEl => {
+        if (titleEl.parentNode) {
+            titleEl.parentNode.normalize();
+        }
+    });
+}
+
+// 高亮标题中的关键词
+function highlightTitleKeywords(titleEl, originalTitle, keywords) {
+    // 保存原始HTML结构
+    const originalHTML = titleEl.innerHTML;
+    
+    try {
+        // 使用更安全的高亮方式，避免影响布局
+        let processedHTML = originalTitle;
+        
+        // 按关键词长度排序，优先处理长关键词，避免短关键词覆盖长关键词
+        const sortedKeywords = keywords.sort((a, b) => b.length - a.length);
+        
+        // 收集所有匹配位置，避免重复替换
+        const matches = [];
+        
+        sortedKeywords.forEach(keyword => {
+            if (!keyword || keyword.trim() === '') return;
+            
+            const normalizedKeyword = normalizeText(keyword);
+            const normalizedTitle = normalizeText(originalTitle);
+            
+            let searchIndex = 0;
+            while (true) {
+                const matchIndex = normalizedTitle.indexOf(normalizedKeyword, searchIndex);
+                if (matchIndex === -1) break;
+                
+                // 检查是否与已有匹配重叠
+                const matchEnd = matchIndex + normalizedKeyword.length;
+                const overlap = matches.some(match => 
+                    (matchIndex >= match.start && matchIndex < match.end) ||
+                    (matchEnd > match.start && matchEnd <= match.end) ||
+                    (matchIndex <= match.start && matchEnd >= match.end)
+                );
+                
+                if (!overlap) {
+                    matches.push({
+                        start: matchIndex,
+                        end: matchEnd,
+                        original: originalTitle.substring(matchIndex, matchEnd),
+                        keyword: keyword
+                    });
+                }
+                
+                searchIndex = matchIndex + 1; // 逐字符搜索，避免遗漏
+            }
+        });
+        
+        // 按位置倒序排序，从后往前替换，避免位置偏移
+        matches.sort((a, b) => b.start - a.start);
+        
+        // 应用高亮
+        const highlightColor = getHighlightColor();
+        matches.forEach(match => {
+            const before = processedHTML.substring(0, match.start);
+            const after = processedHTML.substring(match.end);
+            // 使用自定义颜色的高亮样式
+            const highlightHTML = `<span class="ns-keyword-highlight" style="background-color: ${highlightColor}; color: #333; font-weight: inherit; display: inline; margin: 0; padding: 0; line-height: inherit; vertical-align: baseline;">${match.original}</span>`;
+            processedHTML = before + highlightHTML + after;
+        });
+        
+        // 应用处理后的HTML
+        titleEl.innerHTML = processedHTML;
+        
+    } catch (error) {
+        console.warn('高亮关键词时出错:', error);
+        // 如果出错，恢复原始HTML
+        titleEl.innerHTML = originalHTML;
+    }
+}
+
 // 导出
 window.NodeSeekFilter = {
     filterPosts,
@@ -982,6 +1616,7 @@ window.NodeSeekFilter = {
     initFilterObserver,
     clearFilter,
     clearFilterDisplay,
+    cleanupDialogPosition,
     testConversion,
     normalizeText,
     debugPageStructure,
@@ -991,6 +1626,19 @@ window.NodeSeekFilter = {
     removeCustomKeyword,
     getCustomKeywords,
     saveCustomKeywords,
+    // 高亮关键词功能
+    addHighlightKeyword,
+    removeHighlightKeyword,
+    getHighlightKeywords,
+    saveHighlightKeywords,
+    applyKeywordHighlight,
+    clearKeywordHighlight,
+    // 作者高亮功能
+    saveHighlightAuthorOption,
+    getHighlightAuthorOption,
+    // 高亮颜色功能
+    saveHighlightColor,
+    getHighlightColor,
     // 位置管理功能
     saveDialogPosition,
     getDialogPosition,
