@@ -288,6 +288,24 @@
                         filterData.displayKeywords = JSON.parse(displayKeywords);
                     }
                     
+                    // 高亮关键词
+                    const highlightKeywords = localStorage.getItem('ns-filter-highlight-keywords');
+                    if (highlightKeywords) {
+                        filterData.highlightKeywords = JSON.parse(highlightKeywords);
+                    }
+                    
+                    // 高亮作者选项
+                    const highlightAuthorEnabled = localStorage.getItem('ns-filter-highlight-author-enabled');
+                    if (highlightAuthorEnabled) {
+                        filterData.highlightAuthorEnabled = JSON.parse(highlightAuthorEnabled);
+                    }
+                    
+                    // 高亮颜色
+                    const highlightColor = localStorage.getItem('ns-filter-highlight-color');
+                    if (highlightColor) {
+                        filterData.highlightColor = highlightColor;
+                    }
+                    
                     // 弹窗位置
                     const dialogPosition = localStorage.getItem('ns-filter-dialog-position');
                     if (dialogPosition) {
@@ -467,13 +485,33 @@
                             localStorage.setItem('ns-filter-keywords', JSON.stringify(config.filterData.displayKeywords));
                         }
                         
+                        // 导入高亮关键词
+                        let highlightImportCount = 0;
+                        if (config.filterData.highlightKeywords && Array.isArray(config.filterData.highlightKeywords)) {
+                            localStorage.setItem('ns-filter-highlight-keywords', JSON.stringify(config.filterData.highlightKeywords));
+                            highlightImportCount = config.filterData.highlightKeywords.length;
+                        }
+                        
+                        // 导入高亮作者选项
+                        if (config.filterData.highlightAuthorEnabled !== undefined) {
+                            localStorage.setItem('ns-filter-highlight-author-enabled', JSON.stringify(config.filterData.highlightAuthorEnabled));
+                        }
+                        
+                        // 导入高亮颜色
+                        if (config.filterData.highlightColor) {
+                            localStorage.setItem('ns-filter-highlight-color', config.filterData.highlightColor);
+                        }
+                        
                         // 导入弹窗位置
                         if (config.filterData.dialogPosition && typeof config.filterData.dialogPosition === 'object') {
                             localStorage.setItem('ns-filter-dialog-position', JSON.stringify(config.filterData.dialogPosition));
                         }
                         
-                        if (filterImportCount > 0) {
-                            applied.push(`关键词过滤(${filterImportCount}个屏蔽词)`);
+                        if (filterImportCount > 0 || highlightImportCount > 0) {
+                            const parts = [];
+                            if (filterImportCount > 0) parts.push(`${filterImportCount}个屏蔽词`);
+                            if (highlightImportCount > 0) parts.push(`${highlightImportCount}个高亮词`);
+                            applied.push(`关键词过滤(${parts.join('、')})`);
                         } else {
                             applied.push("关键词过滤");
                         }
