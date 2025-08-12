@@ -161,7 +161,7 @@
             updateExchangeRate: (currencyCode, rates) => {
                 const referenceRateInput = document.getElementById('vps-reference-rate');
                 const exchangeRateInput = document.getElementById('vps-exchange-rate');
-                
+
                 if (referenceRateInput && exchangeRateInput) {
                     let rate;
                     if (currencyCode === 'CNY') {
@@ -206,7 +206,7 @@
             // 尝试多个API
             for (const api of NodeSeekVPS.config.RATE_APIS) {
                 try {
-                    
+
                     const response = await fetch(api.url, {
                         method: 'GET',
                         headers: {
@@ -224,11 +224,11 @@
 
                     if (data && data.rates) {
                         const rates = api.parser(data);
-                        
+
                         // 格式化当前时间
                         const now = new Date();
-                        const lastUpdateDate = now.getFullYear() + '/' + 
-                                             String(now.getMonth() + 1).padStart(2, '0') + '/' + 
+                        const lastUpdateDate = now.getFullYear() + '/' +
+                                             String(now.getMonth() + 1).padStart(2, '0') + '/' +
                                              String(now.getDate()).padStart(2, '0');
 
                         // 更新汇率显示
@@ -253,7 +253,7 @@
                         const currencySelect = document.getElementById('vps-currency-code');
                         if (currencySelect) {
                             NodeSeekVPS.utils.updateExchangeRate(currencySelect.value, NodeSeekVPS.rates);
-                            
+
                             // 交易货币选择框默认选择CNY，不跟随续费货币
                             const tradeCurrencySelect = document.getElementById('vps-trade-currency-code');
                             if (tradeCurrencySelect) {
@@ -270,10 +270,10 @@
             }
 
             // 所有API都失败，使用备用汇率数据
-            
+
             const now = new Date();
-            const lastUpdateDate = now.getFullYear() + '/' + 
-                                 String(now.getMonth() + 1).padStart(2, '0') + '/' + 
+            const lastUpdateDate = now.getFullYear() + '/' +
+                                 String(now.getMonth() + 1).padStart(2, '0') + '/' +
                                  String(now.getDate()).padStart(2, '0');
 
             document.getElementById('vps-updated-date').textContent = lastUpdateDate + ' (备用)';
@@ -283,7 +283,7 @@
             const currencySelect = document.getElementById('vps-currency-code');
             if (currencySelect) {
                 NodeSeekVPS.utils.updateExchangeRate(currencySelect.value, NodeSeekVPS.rates);
-                
+
                 // 交易货币选择框默认选择CNY，不跟随续费货币
                 const tradeCurrencySelect = document.getElementById('vps-trade-currency-code');
                 if (tradeCurrencySelect) {
@@ -451,7 +451,7 @@
                     const usdToTradeCurrency = NodeSeekVPS.rates[data.trade_currency_code] || 1;
                     tradeExchangeRate = usdToCny / usdToTradeCurrency;
                 }
-                
+
                 tradeMoneyCNY = tradeMoney * tradeExchangeRate;
                 premium = tradeMoneyCNY - remainValueCNY;
                 premiumAbs = Math.abs(premium);
@@ -462,8 +462,8 @@
             }
             // 格式化日期
             const formatDate = (date) => {
-                return date.getFullYear() + '-' + 
-                       String(date.getMonth() + 1).padStart(2, '0') + '-' + 
+                return date.getFullYear() + '-' +
+                       String(date.getMonth() + 1).padStart(2, '0') + '-' +
                        String(date.getDate()).padStart(2, '0');
             };
             // 格式化货币
@@ -496,12 +496,12 @@
         updateResultDisplay: (data) => {
             // 检查是否有有效数据，如果没有则清空所有显示
             const hasValidData = data && data.remain_days !== undefined && data.remain_days !== '' && data.remain_days !== '0';
-            
+
             if (!hasValidData) {
                 // 清空所有结果显示
                 const selectors = [
                     '.vps-output-remain-days',
-                    '.vps-output-expiry-date', 
+                    '.vps-output-expiry-date',
                     '.vps-output-remain-value',
                     '.vps-output-custom-future-value',
                     '.vps-output-custom-exchange-rate'
@@ -511,16 +511,16 @@
                         element.textContent = '';
                     });
                 });
-                
+
                 // 清空交易金额和折溢价显示
                 const tradeMoneyRow = document.getElementById('vps-trade-money-row');
                 const premiumRow = document.getElementById('vps-premium-row');
                 if (tradeMoneyRow) tradeMoneyRow.innerHTML = '<span style="font-weight:bold;">交易金额:</span> <span></span>';
                 if (premiumRow) premiumRow.innerHTML = '<span style="font-weight:bold;">溢价:</span> <span></span>';
-                
+
                 return;
             }
-            
+
             // 计算剩余价值对应的人民币金额
             let remainValueCNY = (data.remain_value_cny !== undefined && data.remain_value_cny !== '' ? data.remain_value_cny : '0.000');
             const currency = data.currency_code || 'CNY';
@@ -673,7 +673,7 @@
             try {
                 // 生成自定义分享图片
                 const imageDataUrl = await NodeSeekVPS.generateShareImage();
-                
+
                 // 创建临时下载链接
                 const link = document.createElement('a');
                 link.download = 'vps-calculator-result.png';
@@ -711,7 +711,7 @@
             try {
                 // 生成自定义分享图片
                 const imageDataUrl = await NodeSeekVPS.generateShareImage();
-                
+
                 const modal = document.getElementById('vps-modal');
                 const modalImg = document.getElementById('vps-modal-img');
 
@@ -747,7 +747,7 @@
             const remainDaysElement = document.querySelector('.vps-output-remain-days');
             const expiryDateElement = document.querySelector('.vps-output-expiry-date');
             const remainValueElement = document.querySelector('.vps-output-remain-value');
-            
+
             const tradeDateResult = tradeDateElement ? tradeDateElement.textContent : '';
             const exchangeRateResult = exchangeRateElement ? exchangeRateElement.textContent : '';
             const renewalResult = renewalElement ? renewalElement.textContent : '';
@@ -811,9 +811,9 @@
             if (currencySelect) {
                 currencySelect.addEventListener('change', function() {
                     NodeSeekVPS.utils.updateExchangeRate(this.value, NodeSeekVPS.rates);
-                    
+
                     // 交易货币选择框保持独立，不自动同步
-                    
+
                     // 币种切换时，自动重新计算并显示结果
                     const isCalculated = document.getElementById('vps-is-calculated').value;
                     if (isCalculated === '1') {
@@ -946,7 +946,7 @@
                     <div style="display: flex; gap: 20px; min-height: 500px;">
                         <!-- 左侧输入面板 -->
                         <div style="flex: 1; background: #ededed; padding: 20px; border-radius: 12px; color: #333;">
-                            
+
                             <form id="vps-form">
                                 <div style="margin-bottom: 15px;">
                                     <div style="margin-bottom: 5px;">
@@ -1046,7 +1046,7 @@
                         <!-- 右侧结果面板 -->
                         <div style="flex: 1; background: #f0f0f0; padding: 20px; border-radius: 12px; color: #333;">
                             <h3 style="margin: 0 0 20px 0; text-align: center;">计算结果</h3>
-                            
+
                             <div id="vps-result" style="background: #fafafa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                                 <div style="margin-bottom: 10px;">
                                     <span style="font-weight: bold;">剩余天数:</span>
@@ -1164,11 +1164,11 @@
                             left: 2.5% !important;
                             top: 2.5% !important;
                         }
-                        
+
                         #vps-calculator-dialog > div > div {
                             flex-direction: column !important;
                         }
-                        
+
                         #vps-calculator-dialog > div > div > div {
                             margin-bottom: 15px;
                         }
@@ -1270,7 +1270,9 @@
             // 移除已存在的弹窗
             const existingDialog = document.getElementById('vps-calculator-dialog');
             if (existingDialog) {
+                // 若已存在则作为“切换”行为：直接关闭并返回
                 existingDialog.remove();
+                return;
             }
 
             const dialog = NodeSeekVPS.createCalculatorDialog();
@@ -1293,7 +1295,7 @@
 
             // 初始化汇率数据
             NodeSeekVPS.rates = {};
-            
+
         }
     };
 
