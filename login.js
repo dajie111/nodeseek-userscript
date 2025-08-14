@@ -5,7 +5,7 @@
 
     // 配置
     const CONFIG = {
-        SERVER_URL: 'https://log.396663.xyz',
+        SERVER_URL: 'https://hb.396663.xyz',
         STORAGE_KEY: 'nodeseek_login_token',
         USER_KEY: 'nodeseek_login_user'
     };
@@ -1865,7 +1865,7 @@
                 text-align: center;
             `;
             policyTip.innerHTML = `
-                <div>数据自动保留7天（超期删除）</div>
+                <div>数据自动保留30天（每日00:00清理过期）</div>
                 <div>30天无活动账号自动删除</div>
             `;
 
