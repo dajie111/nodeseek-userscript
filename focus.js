@@ -717,8 +717,8 @@
                 return this.rssCache;
             }
 
-            // 新版：直接从服务器API拉取JSON
-            const apiUrl = 'https://cka.396663.xyz/api/articles?days=7';
+            // 新版：直接从服务器API拉取JSON（新域名 hb.396663.xyz）
+            const apiUrl = 'https://hb.396663.xyz/api/articles?days=7';
             try {
                 this.log('开始从服务器API拉取热点数据...');
                 const response = await fetch(apiUrl);
@@ -3551,3 +3551,4 @@
     NodeSeekFocus.init();
 
 })();
+
