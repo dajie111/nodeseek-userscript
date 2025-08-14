@@ -75,35 +75,48 @@
 			const style = document.createElement('style');
 			style.id = this.stylesId;
 			style.textContent = `
-				.ns-emoji-panel{position:fixed;right:20px;bottom:320px;width:1000px;max-width:96vw;max-height:70vh;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.12);z-index:10002;display:flex;flex-direction:column}
+				/* 容器 */
+				.ns-emoji-panel{position:fixed;right:24px;bottom:320px;width:980px;max-width:96vw;background:#ffffff;border:1px solid #e6e8eb;border-radius:14px;box-shadow:0 12px 32px rgba(15,23,42,.16);z-index:10002;display:flex;flex-direction:column;animation:ns-emoji-fade-in .18s ease-out}
 				/* 固定高度 360px */
 				.ns-emoji-panel{height:360px;max-height:360px}
-				.ns-emoji-header{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #f1f3f5;position:relative}
+				@keyframes ns-emoji-fade-in{from{opacity:.0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+				/* 头部 */
+				.ns-emoji-header{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #eef1f4;background:linear-gradient(180deg,#fafbfd,#f7f9fc)}
 				.ns-emoji-title{display:none}
-				.ns-emoji-btn{appearance:none;border:1px solid #e5e7eb;background:#fff;border-radius:8px;padding:6px 10px;font-size:12px;color:#374151;cursor:pointer}
-				.ns-emoji-btn:hover{background:#f8fafc}
-				.ns-emoji-search{flex:1;border:1px solid #e5e7eb;background:#fff;border-radius:8px;padding:7px 10px;font-size:12px}
-				.ns-emoji-body{padding:10px;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable both-edges}
-				.ns-emoji-grid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:10px;padding-right:12px;padding-bottom:12px}
-				.ns-emoji-item{position:relative;border:1px solid #eef2f7;border-radius:10px;padding:8px;background:#fafbfc;display:flex;flex-direction:column;align-items:center;gap:6px;overflow:visible}
-				.ns-emoji-thumb{width:100%;aspect-ratio:1/1;object-fit:contain;background:#fff;border-radius:6px;cursor:pointer;transition:transform .12s ease;transform-origin:center center;will-change:transform}
+				.ns-emoji-btn{appearance:none;border:1px solid #e6e8eb;background:#ffffff;border-radius:10px;padding:7px 12px;font-size:12px;color:#334155;cursor:pointer;transition:all .15s}
+				.ns-emoji-btn:hover{background:#f5f8ff;border-color:#c7d2fe;color:#1d4ed8;box-shadow:0 2px 8px rgba(29,78,216,.12)}
+
+				/* 内容区域 */
+				.ns-emoji-body{padding:12px;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable both-edges}
+				.ns-emoji-grid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:12px;padding-right:12px;padding-bottom:12px}
+				
+				/* 卡片 */
+				.ns-emoji-item{position:relative;border:1px solid #eef2f6;border-radius:12px;padding:10px;background:#fbfdff;display:flex;flex-direction:column;align-items:center;gap:8px;overflow:visible;transition:box-shadow .15s,transform .15s}
+				.ns-emoji-item:hover{box-shadow:0 8px 20px rgba(2,6,23,.08);transform:translateY(-2px)}
+				.ns-emoji-thumb{width:100%;aspect-ratio:1/1;object-fit:contain;background:#fff;border-radius:10px;cursor:pointer;transition:transform .12s ease;transform-origin:center center;will-change:transform;border:1px solid #eef2f6}
 				.ns-emoji-thumb:hover{transform:scale(1.8);z-index:2}
-				.ns-emoji-name{font-size:11px;color:#6b7280;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+				.ns-emoji-name{font-size:11px;color:#64748b;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 				.ns-emoji-actions{display:flex;gap:6px}
-				.ns-emoji-mini-btn{appearance:none;border:1px solid #e5e7eb;background:#fff;border-radius:6px;padding:4px 6px;font-size:11px;color:#374151;cursor:pointer}
-				.ns-emoji-mini-btn:hover{background:#f3f4f6}
-				.ns-emoji-empty{padding:20px;color:#6b7280;text-align:center}
-				.ns-emoji-loading{padding:18px;text-align:center;color:#6b7280}
-				.ns-emoji-server{font-size:12px;color:#6b7280;white-space:nowrap}
-				.ns-emoji-cats{flex:1;display:flex;gap:8px;overflow:auto;padding:4px 0}
-				.ns-emoji-cat{white-space:nowrap;border:1px solid #e5e7eb;background:#fff;border-radius:9999px;padding:6px 10px;font-size:12px;color:#374151;cursor:pointer}
-				.ns-emoji-cat.active{background:#2563eb;color:#fff;border-color:#2563eb}
+				.ns-emoji-mini-btn{appearance:none;border:1px solid #e6e8eb;background:#ffffff;border-radius:8px;padding:4px 8px;font-size:11px;color:#334155;cursor:pointer;transition:all .15s}
+				.ns-emoji-mini-btn:hover{background:#f5f8ff;border-color:#c7d2fe;color:#1d4ed8}
+				.ns-emoji-empty{padding:28px;color:#64748b;text-align:center}
+				.ns-emoji-loading{padding:22px;text-align:center;color:#64748b}
+				.ns-emoji-server{font-size:12px;color:#64748b;white-space:nowrap}
+
+				/* 分类按钮 */
+				.ns-emoji-cats{flex:1;display:flex;gap:10px;overflow:auto;padding:4px 0}
+				.ns-emoji-cat{white-space:nowrap;border:1px solid #e6e8eb;background:#ffffff;border-radius:9999px;padding:7px 12px;font-size:12px;color:#334155;cursor:pointer;transition:all .15s}
+				.ns-emoji-cat:hover{background:#f5f8ff;border-color:#c7d2fe;color:#1d4ed8}
+				.ns-emoji-cat.active{background:#2563eb;color:#fff;border-color:#2563eb;box-shadow:0 4px 12px rgba(37,99,235,.22)}
+
 				/* 拖动把手：左上角15px区域 */
-				.ns-emoji-drag{position:absolute;left:6px;top:6px;width:15px;height:15px;border-radius:4px;cursor:move;}
+				.ns-emoji-drag{position:absolute;left:8px;top:8px;width:16px;height:16px;border-radius:4px;cursor:move;opacity:.55}
+
 				/* 右键菜单 */
-				#ns-emoji-menu{position:fixed;z-index:10003;min-width:120px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 10px 20px rgba(0,0,0,.12);overflow:hidden}
-				#ns-emoji-menu button{display:block;width:100%;text-align:left;background:#fff;border:0;padding:8px 12px;font-size:13px;color:#374151;cursor:pointer}
-				#ns-emoji-menu button:hover{background:#f3f4f6}
+				#ns-emoji-menu{position:fixed;z-index:10003;min-width:140px;background:#ffffff;border:1px solid #e6e8eb;border-radius:10px;box-shadow:0 12px 28px rgba(15,23,42,.16);overflow:hidden}
+				#ns-emoji-menu button{display:block;width:100%;text-align:left;background:#fff;border:0;padding:10px 14px;font-size:13px;color:#334155;cursor:pointer;transition:background .15s}
+				#ns-emoji-menu button:hover{background:#f5f8ff}
 			`;
 			document.head.appendChild(style);
 		},
