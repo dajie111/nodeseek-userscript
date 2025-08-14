@@ -1,17 +1,4 @@
-// ==UserScript==
-// @name         NodeSeek 表情面板 (NS Emoji Panel)
-// @namespace    ns-emoji
-// @version      1.0.0
-// @description  表情图片
-// @match        https://www.nodeseek.com/*
-// @match        https://nodeseek.com/*
-// @grant        GM_xmlhttpRequest
-// @connect      *
-// @run-at       document-end
-// @license      MIT
-// @noframes
-// ==/UserScript==
-
+// ========== 表情包模块 ==========
 
 (function(){
 	'use strict';
