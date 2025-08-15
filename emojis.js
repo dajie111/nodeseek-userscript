@@ -9,9 +9,11 @@
         STATIC_PREFIX: '/emojis/',
         // 分类名称映射：英文路径 -> 中文显示名称
         CATEGORY_NAMES: {
-            'funny': '滑稽大佬',
+			'xiaohuangji': '小黄鸡',
+			'dabiaoqing': 'Q图',
+            'funny': '滑稽',
             'panda': '熊猫',
-            'vtb': '万恶vtb'
+            'vtb': '万恶',            
         }
     };
 
@@ -300,15 +302,30 @@
 				};
 				catsWrap.appendChild(favBtn);
 
-				cats.forEach(c => {
+				// 手动添加"小黄鸡"分类按钮到常用表情右边
+				if (cats.includes('xiaohuangji')) {
+					const xiaohuangjiBtn = document.createElement('button');
+					xiaohuangjiBtn.className = 'ns-emoji-cat';
+					xiaohuangjiBtn.dataset.cat = 'xiaohuangji';
+					xiaohuangjiBtn.textContent = '小黄鸡';
+					xiaohuangjiBtn.onclick = () => {
+						[...catsWrap.querySelectorAll('.ns-emoji-cat')].forEach(b=>b.classList.remove('active'));
+						xiaohuangjiBtn.classList.add('active');
+						this.currentCategory = 'xiaohuangji';
+						this.loadList();
+					};
+					catsWrap.appendChild(xiaohuangjiBtn);
+				}
+
+				cats.filter(c => c !== 'xiaohuangji').forEach(c => {
 					const btn = document.createElement('button');
 					btn.className = 'ns-emoji-cat';
 					btn.dataset.cat = c;
 					btn.textContent = CONFIG.CATEGORY_NAMES[c] || c; // 使用映射显示中文
-				btn.onclick = () => {
+					btn.onclick = () => {
 						[...catsWrap.querySelectorAll('.ns-emoji-cat')].forEach(b=>b.classList.remove('active'));
 						btn.classList.add('active');
-					this.currentCategory = btn.dataset.cat || '';
+						this.currentCategory = btn.dataset.cat || '';
 						this.loadList();
 					};
 					catsWrap.appendChild(btn);
