@@ -149,7 +149,7 @@
             
             // 如果没有选择特定项目，默认获取所有配置
             if (!selectedItems || selectedItems.length === 0) {
-                selectedItems = ['blacklist', 'friends', 'favorites', 'logs', 'browseHistory', 'quickReplies', 'chickenLegStats', 'hotTopicsData'];
+                selectedItems = ['blacklist', 'friends', 'favorites', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'hotTopicsData'];
             }
             
             // 获取黑名单数据
@@ -200,6 +200,16 @@
                     }
                 } catch (error) {
                     config.quickReplies = {};
+                }
+            }
+
+            // 获取常用表情数据（emojis.js 本地收藏）
+            if (selectedItems.includes('emojiFavorites')) {
+                try {
+                    const ef = JSON.parse(localStorage.getItem('ns_emoji_favorites') || '[]');
+                    config.emojiFavorites = Array.isArray(ef) ? ef : [];
+                } catch (error) {
+                    config.emojiFavorites = [];
                 }
             }
             
@@ -331,7 +341,7 @@
             
             // 如果没有选择特定项目，默认应用所有配置
             if (!selectedItems || selectedItems.length === 0) {
-                selectedItems = ['blacklist', 'friends', 'favorites', 'logs', 'browseHistory', 'quickReplies', 'chickenLegStats', 'hotTopicsData'];
+                selectedItems = ['blacklist', 'friends', 'favorites', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'hotTopicsData'];
             }
             
             try {
@@ -383,6 +393,13 @@
                     }
                     const categoriesCount = config.quickReplies.categoryOrder ? config.quickReplies.categoryOrder.length : Object.keys(config.quickReplies).filter(key => key !== 'categoryOrder').length;
                     applied.push(`快捷回复(${categoriesCount}个分类)`);
+                }
+
+                // 应用常用表情数据
+                if (selectedItems.includes('emojiFavorites') && Array.isArray(config.emojiFavorites)) {
+                    localStorage.setItem('ns_emoji_favorites', JSON.stringify(config.emojiFavorites));
+                    const favCount = config.emojiFavorites.length || 0;
+                    applied.push(`常用表情(${favCount}个)`);
                 }
 
                 // 应用鸡腿统计数据
@@ -752,6 +769,7 @@
                 { key: 'logs', label: '操作日志' },
                 { key: 'browseHistory', label: '浏览历史' },
                 { key: 'quickReplies', label: '快捷回复' },
+                { key: 'emojiFavorites', label: '常用表情' },
                 { key: 'chickenLegStats', label: '鸡腿统计' },
                 { key: 'hotTopicsData', label: '热点统计' },
                 { key: 'filterData', label: '关键词过滤' }
@@ -787,8 +805,8 @@
             const configList = document.createElement('div');
             configList.style.cssText = `
                 margin-bottom: 20px;
-                display: flex;
-                flex-wrap: wrap;
+                display: grid;
+                grid-template-columns: ${isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)'};
                 gap: ${isMobile ? '6px' : '8px'};
                 max-height: 200px;
                 overflow-y: auto;
@@ -799,8 +817,7 @@
             configOptions.forEach(option => {
                 const item = document.createElement('div');
                 item.style.cssText = `
-                    flex: 0 0 auto;
-                    min-width: ${isMobile ? '70px' : '90px'};
+                    min-width: 0;
                     padding: ${isMobile ? '6px 8px' : '8px 12px'};
                     background: #f8f9fa;
                     border-radius: 4px;
@@ -1107,6 +1124,7 @@
                                 'logs': '操作日志',
                                 'browseHistory': '浏览历史',
                                 'quickReplies': '快捷回复',
+                                'emojiFavorites': '常用表情',
                                 'chickenLegStats': '鸡腿统计',
                                 'hotTopicsData': '热点统计',
                                 'filterData': '关键词过滤'
