@@ -456,7 +456,22 @@
 		open(){
 			this.ensureStyles();
 			let panel = document.getElementById(this.panelId);
-			if(panel){ panel.style.display='flex'; return; }
+			// 如果弹窗已存在且显示，则关闭它
+			if(panel && panel.style.display !== 'none'){
+				panel.style.display = 'none';
+				return;
+			}
+			// 如果弹窗存在但隐藏，则显示它并重置位置
+			if(panel){ 
+				panel.style.display = 'flex';
+				// 重置弹窗位置到默认位置
+				panel.style.left = 'auto';
+				panel.style.top = 'auto';
+				panel.style.right = '24px';
+				panel.style.bottom = '320px';
+				return; 
+			}
+			// 创建新弹窗
 			panel = document.createElement('div');
 			panel.id = this.panelId;
 			panel.className = 'ns-emoji-panel';
