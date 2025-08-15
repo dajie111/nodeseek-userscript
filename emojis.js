@@ -6,7 +6,13 @@
     const CONFIG = {
         SERVER_URL_CACHED: null,
         API_LIST: '/api/emojis',
-        STATIC_PREFIX: '/emojis/'
+        STATIC_PREFIX: '/emojis/',
+        // 分类名称映射：英文路径 -> 中文显示名称
+        CATEGORY_NAMES: {
+            'funny': '滑稽大佬😏',
+            'panda': '金馆长熊猫🐼',
+            'vtb': '万恶vtb'
+        }
     };
 
 	// 允许在本地保存服务器地址，便于快速切换
@@ -298,7 +304,7 @@
 					const btn = document.createElement('button');
 					btn.className = 'ns-emoji-cat';
 					btn.dataset.cat = c;
-					btn.textContent = c;
+					btn.textContent = CONFIG.CATEGORY_NAMES[c] || c; // 使用映射显示中文
 				btn.onclick = () => {
 						[...catsWrap.querySelectorAll('.ns-emoji-cat')].forEach(b=>b.classList.remove('active'));
 						btn.classList.add('active');
@@ -603,5 +609,4 @@
 		});
 	}
 })();
-
 
