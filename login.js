@@ -1490,26 +1490,28 @@
                 try {
                     loginBtn.disabled = true;
                     registerBtn.disabled = true;
-                    if (isRegisterMode) {
-                        registerBtn.textContent = '处理中...';
-                    } else {
-                        loginBtn.textContent = '处理中...';
-                    }
+                    // 显示处理中状态（不会影响最终恢复）
+                    if (isRegisterMode) { registerBtn.textContent = '处理中...'; }
+                    else { loginBtn.textContent = '处理中...'; }
 
                     if (isLogin) {
                         await Auth.login(username, password);
                     } else {
+                        // 先注册
                         await Auth.register(username, password, securityCode);
-                        // 注册成功后清空输入框
+                        // 注册成功后自动登录
+                        await Auth.login(username, password);
+                        // 清空输入框
                         usernameInput.value = '';
                         passwordInput.value = '';
                         securityCodeInput.value = '';
-                        // 切换回登录模式
-                        toggleMode();
+                        // 恢复按钮文案
+                        loginBtn.textContent = '登录';
+                        registerBtn.textContent = '注册';
                     }
 
-                    // 登录成功后更新界面
-                    if (isLogin && Auth.isLoggedIn()) {
+                    // 登录成功后更新界面（包括注册后自动登录的场景）
+                    if (Auth.isLoggedIn()) {
                         container.innerHTML = '';
                         
                         // 添加左上角拖拽区域
@@ -1559,13 +1561,11 @@
                 } catch (error) {
                     // 错误已在Auth模块中处理
                 } finally {
+                    // 无论当前模式如何，统一恢复两个按钮的状态与文案
                     loginBtn.disabled = false;
                     registerBtn.disabled = false;
-                    if (isRegisterMode) {
-                        registerBtn.textContent = '注册';
-                    } else {
-                        loginBtn.textContent = '登录';
-                    }
+                    loginBtn.textContent = '登录';
+                    registerBtn.textContent = '注册';
                 }
             };
 
