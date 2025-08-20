@@ -1,4 +1,4 @@
-// ========== 查看好友功能模块 ==========
+// ========== 查看好友功能 ==========
 
 (function() {
     'use strict';
@@ -91,6 +91,12 @@
             a.classList.remove('friend-user');
             const oldRemark = a.parentNode.querySelector('.friend-remark');
             if (oldRemark) oldRemark.remove();
+            // 移除旧的添加时间
+            const metaForRemove = a.closest('.nsk-content-meta-info');
+            if (metaForRemove) {
+                const oldFriendTime = metaForRemove.querySelector('.friend-time');
+                if (oldFriendTime) oldFriendTime.remove();
+            }
 
             // 检查是否是好友
             const friend = friends.find(f => f.username === username);
@@ -104,6 +110,35 @@
                     span.className = 'friend-remark';
                     span.textContent = friend.remark;
                     a.parentNode.appendChild(span);
+                }
+
+                // 右侧显示添加时间（与拉黑时间一致的布局）
+                const metaInfo = a.closest('.nsk-content-meta-info');
+                if (metaInfo && friend.timestamp) {
+                    metaInfo.style.position = 'relative';
+                    let timeSpan = metaInfo.querySelector('.friend-time');
+                    if (!timeSpan) {
+                        timeSpan = document.createElement('span');
+                        timeSpan.className = 'friend-time';
+                        metaInfo.appendChild(timeSpan);
+                    }
+                    const date = new Date(friend.timestamp);
+                    const timeStr = date.getFullYear() + '-' +
+                        String(date.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(date.getDate()).padStart(2, '0') + ' ' +
+                        String(date.getHours()).padStart(2, '0') + ':' +
+                        String(date.getMinutes()).padStart(2, '0') + ':' +
+                        String(date.getSeconds()).padStart(2, '0');
+                    timeSpan.textContent = ' 添加时间：' + timeStr;
+                    timeSpan.style.position = 'absolute';
+                    timeSpan.style.right = '-2px';
+                    timeSpan.style.top = '21px';
+                    timeSpan.style.marginLeft = '16px';
+                    timeSpan.style.color = '#2ea44f';
+                    timeSpan.style.fontSize = '10px';
+                    timeSpan.style.background = '#fff';
+                    timeSpan.style.padding = '0 4px';
+                    timeSpan.style.zIndex = '10';
                 }
             }
         });
