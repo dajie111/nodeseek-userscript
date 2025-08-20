@@ -394,19 +394,8 @@
                     return; // 非法数据，放弃清理
                 }
 
-                // 分类为空，视为服务端无任何表情（非“图片加载失败”场景），清空无效常用
+                // 分类为空时不进行任何清理，避免误删用户常用表情（可能是临时网络/服务异常）
                 if(categories.length === 0){
-                    this.loadFavorites();
-                    if(Array.isArray(this.favorites) && this.favorites.length){
-                        this.favorites = [];
-                        this.saveFavorites();
-                        const catsWrap = document.getElementById('ns-emoji-cats');
-                        const active = catsWrap ? catsWrap.querySelector('.ns-emoji-cat.active') : null;
-                        const curCat = active ? (active.dataset.cat || '') : '';
-                        if(curCat === '__fav__'){
-                            this.loadList();
-                        }
-                    }
                     return;
                 }
 
