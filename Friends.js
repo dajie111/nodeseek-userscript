@@ -397,6 +397,12 @@
                                     // 移除备注
                                     const oldRemark = link.parentNode.querySelector('.friend-remark');
                                     if (oldRemark) oldRemark.remove();
+                                    // 移除右侧“添加时间”显示
+                                    const metaInfo = link.closest('.nsk-content-meta-info');
+                                    if (metaInfo) {
+                                        const oldFriendTime = metaInfo.querySelector('.friend-time');
+                                        if (oldFriendTime) oldFriendTime.remove();
+                                    }
                                     
                                     // 更新页面上该用户的好友按钮状态
                                     const userButtons = link.parentNode.querySelectorAll('.userscript-nodeseek-interaction-btn');
@@ -657,6 +663,12 @@
                             // 移除备注
                             const oldRemark = link.parentNode.querySelector('.friend-remark');
                             if (oldRemark) oldRemark.remove();
+                            // 移除右侧“添加时间”显示
+                            const metaInfo = link.closest('.nsk-content-meta-info');
+                            if (metaInfo) {
+                                const oldFriendTime = metaInfo.querySelector('.friend-time');
+                                if (oldFriendTime) oldFriendTime.remove();
+                            }
                             
                             // 更新页面上该用户的好友按钮状态
                             const userButtons = link.parentNode.querySelectorAll('.userscript-nodeseek-interaction-btn');
