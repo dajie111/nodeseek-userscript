@@ -29,6 +29,13 @@
 
         // 工具函数
         utils: {
+            // 获取北京时间
+            getBeijingDate: () => {
+                const now = new Date();
+                const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+                return new Date(utc + (8 * 60 * 60 * 1000));
+            },
+
             // 延迟函数
             delay: (ms) => new Promise(resolve => setTimeout(resolve, ms)),
 
@@ -131,20 +138,17 @@
 
             // 设置默认日期
             setDefaultDates: () => {
-                // 获取中国北京时间（UTC+8）
-                function getBeijingDate() {
-                    const now = new Date();
-                    // 当前本地时间的UTC时间戳
-                    const utcTimestamp = now.getTime() + now.getTimezoneOffset() * 60000;
-                    // 北京时间 = UTC+8
-                    return new Date(utcTimestamp + 8 * 60 * 60 * 1000);
-                }
-                const today = getBeijingDate();
-                const tomorrow = new Date(today);
-                tomorrow.setDate(today.getDate() + 1);
+                const beijingNow = NodeSeekVPS.utils.getBeijingDate();
+                const beijingTomorrow = new Date(beijingNow);
+                beijingTomorrow.setDate(beijingNow.getDate() + 1);
 
-                const todayStr = today.toISOString().split('T')[0];
-                const tomorrowStr = tomorrow.toISOString().split('T')[0];
+                // 格式化为 YYYY-MM-DD 格式
+                const todayStr = beijingNow.getFullYear() + '-' + 
+                               String(beijingNow.getMonth() + 1).padStart(2, '0') + '-' + 
+                               String(beijingNow.getDate()).padStart(2, '0');
+                const tomorrowStr = beijingTomorrow.getFullYear() + '-' + 
+                                  String(beijingTomorrow.getMonth() + 1).padStart(2, '0') + '-' + 
+                                  String(beijingTomorrow.getDate()).padStart(2, '0');
 
                 const tradeDateInput = document.getElementById('vps-trade-date');
                 const expiryDateInput = document.getElementById('vps-expiry-date');
@@ -155,6 +159,11 @@
                 if (expiryDateInput) {
                     expiryDateInput.value = tomorrowStr;
                 }
+                
+                // 调试日志
+                console.log('北京时间:', beijingNow.toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'}));
+                console.log('设置的交易日期:', todayStr);
+                console.log('设置的到期日期:', tomorrowStr);
             },
 
                         // 更新汇率显示
@@ -225,11 +234,11 @@
                     if (data && data.rates) {
                         const rates = api.parser(data);
 
-                        // 格式化当前时间
-                        const now = new Date();
-                        const lastUpdateDate = now.getFullYear() + '/' +
-                                             String(now.getMonth() + 1).padStart(2, '0') + '/' +
-                                             String(now.getDate()).padStart(2, '0');
+                                            // 格式化当前北京时间
+                    const beijingNow = NodeSeekVPS.utils.getBeijingDate();
+                    const lastUpdateDate = beijingNow.getFullYear() + '/' +
+                                         String(beijingNow.getMonth() + 1).padStart(2, '0') + '/' +
+                                         String(beijingNow.getDate()).padStart(2, '0');
 
                         // 更新汇率显示
                         document.getElementById('vps-updated-date').textContent = lastUpdateDate + ` (${api.name})`;
@@ -271,10 +280,10 @@
 
             // 所有API都失败，使用备用汇率数据
 
-            const now = new Date();
-            const lastUpdateDate = now.getFullYear() + '/' +
-                                 String(now.getMonth() + 1).padStart(2, '0') + '/' +
-                                 String(now.getDate()).padStart(2, '0');
+            const beijingNow = NodeSeekVPS.utils.getBeijingDate();
+            const lastUpdateDate = beijingNow.getFullYear() + '/' +
+                                 String(beijingNow.getMonth() + 1).padStart(2, '0') + '/' +
+                                 String(beijingNow.getDate()).padStart(2, '0');
 
             document.getElementById('vps-updated-date').textContent = lastUpdateDate + ' (备用)';
             NodeSeekVPS.rates = fallbackRates;
