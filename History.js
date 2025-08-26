@@ -397,14 +397,23 @@
 
         renderTable(history);
 
+        function resetToInitialState() {
+            const latest = getBrowseHistory();
+            searchInput.value = '';
+            title.textContent = `历史浏览记录 (${latest.length}条)`;
+            tableContainer.innerHTML = '';
+            renderTable(latest);
+            try { dialog.scrollTop = 0; } catch (e) {}
+        }
+
         function performSearch() {
             const searchTerm = searchInput.value.trim().toLowerCase();
             if (!searchTerm) {
-                renderTable(history);
-                title.textContent = `历史浏览记录 (${history.length}条)`;
+                resetToInitialState();
                 return;
             }
-            const filteredHistory = history.filter(item => item.title.toLowerCase().includes(searchTerm));
+            const source = getBrowseHistory();
+            const filteredHistory = source.filter(item => (item.title || '').toLowerCase().includes(searchTerm));
             renderTable(filteredHistory);
             title.textContent = `历史浏览记录 (${filteredHistory.length}条搜索结果)`;
         }
@@ -414,11 +423,7 @@
             if (e.key === 'Enter') performSearch();
         });
 
-        clearSearchBtn.onclick = function() {
-            searchInput.value = '';
-            renderTable(history);
-            title.textContent = `历史浏览记录 (${history.length}条)`;
-        };
+        clearSearchBtn.onclick = function() { resetToInitialState(); };
 
         dialog.appendChild(tableContainer);
         document.body.appendChild(dialog);
