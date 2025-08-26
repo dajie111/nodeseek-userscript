@@ -70,8 +70,8 @@
             }
         }
 
-        if (uniqueHistory.length > 100) {
-            uniqueHistory.length = 100;
+        if (uniqueHistory.length > 150) {
+            uniqueHistory.length = 150;
         }
 
         setBrowseHistory(uniqueHistory);
