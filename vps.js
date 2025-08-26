@@ -806,7 +806,7 @@
         // 绑定事件监听器
         bindEventListeners: () => {
             // 表单字段变化监听
-            ['vps-exchange-rate', 'vps-renew-money', 'vps-payment-cycle', 'vps-expiry-date', 'vps-trade-date', 'vps-trade-money', 'vps-trade-currency-code'].forEach(id => {
+            ['vps-exchange-rate', 'vps-renew-money', 'vps-payment-cycle', 'vps-expiry-date', 'vps-trade-date', 'vps-trade-money'].forEach(id => {
                 const element = document.getElementById(id);
                 if (element) {
                     element.addEventListener('change', function() {
@@ -814,6 +814,24 @@
                     });
                 }
             });
+
+            // 交易金额货币单位变化监听 - 特殊处理
+            const tradeCurrencySelect = document.getElementById('vps-trade-currency-code');
+            if (tradeCurrencySelect) {
+                tradeCurrencySelect.addEventListener('change', function() {
+                    // 仅当已计算且“交易金额”有值时才自动重新计算
+                    const isCalculated = document.getElementById('vps-is-calculated').value;
+                    const tradeMoneyInput = document.getElementById('vps-trade-money');
+                    const hasTradeMoney = tradeMoneyInput && typeof tradeMoneyInput.value === 'string' && tradeMoneyInput.value.trim() !== '';
+                    if (isCalculated === '1' && hasTradeMoney) {
+                        NodeSeekVPS.calculateVPSValue();
+                    } else if (!isCalculated || isCalculated === '') {
+                        // 如果还没计算过，标记为未计算状态
+                        document.getElementById('vps-is-calculated').value = '0';
+                    }
+                    // 若“交易金额”为空则不触发任何计算
+                });
+            }
 
             // 币种变化监听 - 特殊处理
             const currencySelect = document.getElementById('vps-currency-code');
