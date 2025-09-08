@@ -107,12 +107,15 @@
             };
         },
 
-        // HTTP请求
+        // HTTP请求（带重试机制）
         request: async function(url, options = {}) {
             const defaultOptions = {
                 headers: {
                     'Content-Type': 'application/json',
                 },
+                timeout: 15000, // 15秒超时
+                retries: 2, // 重试次数
+                retryDelay: 1000, // 重试延迟（毫秒）
             };
 
             if (authToken) {
@@ -128,19 +131,82 @@
                 }
             };
 
-            try {
-                const response = await fetch(url, finalOptions);
-                const data = await response.json();
+            const maxRetries = finalOptions.retries || 0;
+            let lastError;
+
+            for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                // 添加超时控制
+                const controller = new AbortController();
+                const timeout = finalOptions.timeout || 15000;
+                const timeoutId = setTimeout(() => controller.abort(), timeout);
                 
-                if (!response.ok) {
-                    throw new Error(data.message || `HTTP error! status: ${response.status}`);
+                const requestOptions = {
+                    ...finalOptions,
+                    signal: controller.signal
+                };
+                
+                // 移除自定义选项
+                delete requestOptions.timeout;
+                delete requestOptions.retries;
+                delete requestOptions.retryDelay;
+
+                try {
+                    const response = await fetch(url, requestOptions);
+                    clearTimeout(timeoutId);
+                    
+                    // 检查响应是否成功
+                    if (!response.ok) {
+                        let errorMessage;
+                        try {
+                            const errorData = await response.json();
+                            errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+                        } catch {
+                            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                        }
+                        
+                        // 对于某些状态码，不需要重试
+                        if (response.status === 401 || response.status === 403 || response.status === 404) {
+                            throw new Error(errorMessage);
+                        }
+                        
+                        lastError = new Error(errorMessage);
+                        if (attempt === maxRetries) throw lastError;
+                        
+                        // 等待后重试
+                        await new Promise(resolve => setTimeout(resolve, finalOptions.retryDelay || 1000));
+                        continue;
+                    }
+                    
+                    // 解析JSON响应
+                    const data = await response.json();
+                    return data;
+                } catch (error) {
+                    clearTimeout(timeoutId);
+                    
+                    // 处理不同类型的错误
+                    if (error.name === 'AbortError') {
+                        lastError = new Error('请求超时，请检查网络连接');
+                    } else if (error instanceof TypeError && error.message.includes('fetch')) {
+                        lastError = new Error('网络连接失败，请检查网络或服务器状态');
+                    } else if (error.message.includes('JSON')) {
+                        lastError = new Error('服务器响应格式错误');
+                    } else {
+                        lastError = error;
+                    }
+                    
+                    // 对于网络错误，尝试重试
+                    if (attempt < maxRetries && (error.name === 'AbortError' || error instanceof TypeError)) {
+                        console.log(`请求失败，${finalOptions.retryDelay}ms后进行第${attempt + 1}次重试...`);
+                        await new Promise(resolve => setTimeout(resolve, finalOptions.retryDelay || 1000));
+                        continue;
+                    }
+                    
+                    console.error('Request failed after all retries:', lastError);
+                    throw lastError;
                 }
-                
-                return data;
-            } catch (error) {
-                console.error('Request failed:', error);
-                throw error;
             }
+            
+            throw lastError;
         },
 
         // 获取所有配置数据
@@ -673,12 +739,16 @@
             }
         },
 
-        // 验证token
+        // 验证token（增强错误处理）
         validateToken: async function() {
             if (!authToken) return false;
 
             try {
-                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/user`);
+                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/user`, {
+                    method: 'GET',
+                    retries: 1 // 减少重试次数，因为token验证失败通常不是网络问题
+                });
+                
                 if (data.success) {
                     currentUser = data.user;
                     localStorage.setItem(CONFIG.USER_KEY, JSON.stringify(currentUser));
@@ -686,7 +756,14 @@
                 }
             } catch (error) {
                 console.error('Token验证失败:', error);
-                this.clearAuth();
+                // 如果是认证错误，清除本地存储的认证信息
+                if (error.message.includes('401') || error.message.includes('403')) {
+                    this.clearAuth();
+                    Utils.showMessage('登录已过期，请重新登录', 'warning');
+                } else {
+                    // 网络错误时不清除认证信息，保持登录状态
+                    console.warn('网络错误，保持当前登录状态');
+                }
             }
             return false;
         }
@@ -695,7 +772,8 @@
     // 配置同步
     const Sync = {
         // 显示配置选择对话框
-        showConfigSelectionDialog: function(mode, callback) {
+        // onCancel: 可选，当用户关闭/取消对话框且未执行同步时触发
+        showConfigSelectionDialog: function(mode, callback, onCancel) {
             // 移除已存在的对话框
             const existingDialog = document.getElementById('config-selection-dialog');
             if (existingDialog) {
@@ -759,7 +837,14 @@
                 cursor: pointer;
                 font-size: 20px;
             `;
-            closeBtn.onclick = () => dialog.remove();
+            closeBtn.onclick = () => {
+                // 用户主动关闭对话框
+                try {
+                    if (typeof onCancel === 'function') onCancel();
+                } finally {
+                    dialog.remove();
+                }
+            };
 
             // 配置选项
             const configOptions = [
@@ -1031,6 +1116,7 @@
                 progressLabel.textContent = mode === 'upload' ? '准备上传配置...' : '准备下载配置...';
                 progressFill.style.width = '10%';
                 
+                let opSuccess = false;
                 try {
                     // 进度步骤1：数据准备
                     progressLabel.textContent = mode === 'upload' ? '正在收集配置数据...' : '正在获取服务器配置...';
@@ -1040,9 +1126,11 @@
                     // 进度步骤2：执行同步
                     progressLabel.textContent = mode === 'upload' ? '正在上传配置...' : '正在应用配置...';
                     progressFill.style.width = '70%';
+                    // 通知开始（只在用户真正点击确认后触发）
+                    try { window.dispatchEvent(new CustomEvent('ns-sync-start', { detail: { mode } })); } catch (e) {}
                     
                     // 执行同步操作
-                    await callback(selectedItems);
+                    opSuccess = await callback(selectedItems);
                     
                     // 进度步骤3：完成
                     progressLabel.textContent = mode === 'upload' ? '上传完成!' : '下载完成!';
@@ -1073,11 +1161,20 @@
                     cancelBtn.disabled = false;
                     confirmBtn.textContent = originalText;
                     confirmBtn.style.background = '#1890ff';
+                    // 通知结束
+                    try { window.dispatchEvent(new CustomEvent('ns-sync-end', { detail: { mode, success: !!opSuccess } })); } catch (e) {}
                     dialog.remove();
                 }
             };
 
-            cancelBtn.onclick = () => dialog.remove();
+            cancelBtn.onclick = () => {
+                // 用户点击取消
+                try {
+                    if (typeof onCancel === 'function') onCancel();
+                } finally {
+                    dialog.remove();
+                }
+            };
 
             // 组装对话框
             dialog.appendChild(dragHandle);
@@ -1103,43 +1200,393 @@
                 return false;
             }
 
-            // 显示配置选择对话框
-            this.showConfigSelectionDialog('upload', async (selectedItems) => {
-                try {
-                    // 收集配置数据
-                    const config = Utils.getAllConfig(selectedItems);
-                    
-                    // 发送到服务器
-                    const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`, {
-                        method: 'POST',
-                        body: JSON.stringify({ config })
-                    });
-
-                    if (data.success) {
-                        const itemNames = selectedItems.map(item => {
-                            const option = {
-                                'blacklist': '黑名单',
-                                'friends': '好友',
-                                'favorites': '收藏',
-                                'logs': '操作日志',
-                                'browseHistory': '浏览历史',
-                                'quickReplies': '快捷回复',
-                                'emojiFavorites': '常用表情',
-                                'chickenLegStats': '鸡腿统计',
-                                'hotTopicsData': '热点统计',
-                                'filterData': '关键词过滤'
-                            }[item];
-                            return option || item;
+            // 返回一个Promise，等待配置选择对话框完成
+            return new Promise((resolve, reject) => {
+                // 显示配置选择对话框
+                this.showConfigSelectionDialog('upload', async (selectedItems) => {
+                    try {
+                        // 收集配置数据
+                        const config = Utils.getAllConfig(selectedItems);
+                        
+                        // 发送到服务器
+                        const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`, {
+                            method: 'POST',
+                            body: JSON.stringify({ config })
                         });
-                        Utils.showMessage(`配置已同步到服务器 (${itemNames.join('、')})`, 'success');
-                        return true;
+
+                        if (data.success) {
+                            const itemNames = selectedItems.map(item => {
+                                const option = {
+                                    'blacklist': '黑名单',
+                                    'friends': '好友',
+                                    'favorites': '收藏',
+                                    'logs': '操作日志',
+                                    'browseHistory': '浏览历史',
+                                    'quickReplies': '快捷回复',
+                                    'emojiFavorites': '常用表情',
+                                    'chickenLegStats': '鸡腿统计',
+                                    'hotTopicsData': '热点统计',
+                                    'filterData': '关键词过滤'
+                                }[item];
+                                return option || item;
+                            });
+                            Utils.showMessage(`配置已同步到服务器 (${itemNames.join('、')})`, 'success');
+                            
+                            // 延迟更新存储空间信息，确保对话框关闭后再更新
+                            setTimeout(() => {
+                                // 查找当前页面上的存储空间信息元素并更新
+                                const currentStorageInfo = document.querySelector('#login-auth-dialog .storage-info-container');
+                                if (currentStorageInfo) {
+                                    UI.loadStorageInfo(currentStorageInfo);
+                                }
+                            }, 500);
+                            
+                            resolve(true);
+                        } else {
+                            resolve(false);
+                        }
+                    } catch (error) {
+                        Utils.showMessage(`配置同步失败: ${error.message}`, 'error');
+                        reject(error); // 重新抛出错误，让进度条能够显示失败状态
                     }
-                } catch (error) {
-                    Utils.showMessage(`配置同步失败: ${error.message}`, 'error');
-                    throw error; // 重新抛出错误，让进度条能够显示失败状态
+                }, () => {
+                    // 取消/关闭对话框
+                    try { resolve(false); } catch (e) { /* no-op */ }
+                });
+            });
+        },
+
+        // 删除同步数据
+        deleteServerConfig: async function() {
+            if (!Auth.isLoggedIn()) {
+                Utils.showMessage('请先登录', 'error');
+                return false;
+            }
+
+            // 确认删除操作
+            if (!confirm('确定要删除服务器上的所有同步数据吗？\n\n⚠️ 此操作不可恢复！')) {
+                return false;
+            }
+
+            try {
+                // 发送删除请求
+                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`, {
+                    method: 'DELETE',
+                    retries: 1 // 删除操作只重试1次
+                });
+
+                if (data.success) {
+                    Utils.showMessage('服务器同步数据已清除', 'success');
+                    return true;
+                } else {
+                    Utils.showMessage(data.message || '删除失败', 'error');
+                    return false;
+                }
+            } catch (error) {
+                if (error.message.includes('404')) {
+                    Utils.showMessage('服务器上没有同步数据', 'warning');
+                } else {
+                    Utils.showMessage(`删除失败: ${error.message}`, 'error');
                 }
                 return false;
+            }
+        },
+
+        // 显示删除同步数据确认对话框
+        showDeleteConfigDialog: function() {
+            // 移除已存在的对话框
+            const existingDialog = document.getElementById('delete-config-dialog');
+            if (existingDialog) {
+                existingDialog.remove();
+            }
+
+            const dialog = document.createElement('div');
+            dialog.id = 'delete-config-dialog';
+            const isMobile = window.innerWidth <= 768;
+            
+            dialog.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: ${isMobile ? '90vw' : '420px'};
+                max-width: ${isMobile ? '90vw' : '420px'};
+                z-index: 10001;
+                background: #fff;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+                padding: 20px;
+                box-sizing: border-box;
+            `;
+
+            // 添加左上角拖拽区域
+            const dragHandle = document.createElement('div');
+            dragHandle.className = 'dialog-title-draggable';
+            dragHandle.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 30px;
+                height: 30px;
+                cursor: move;
+                background: transparent;
+                z-index: 1;
+                user-select: none;
+            `;
+
+            // 标题
+            const title = document.createElement('div');
+            title.textContent = '清除同步数据';
+            title.style.cssText = `
+                font-weight: bold;
+                font-size: 16px;
+                margin-bottom: 15px;
+                text-align: center;
+                color: #f44336;
+            `;
+
+            // 关闭按钮
+            const closeBtn = document.createElement('span');
+            closeBtn.textContent = '×';
+            closeBtn.style.cssText = `
+                position: absolute;
+                right: 12px;
+                top: 8px;
+                cursor: pointer;
+                font-size: 20px;
+            `;
+            closeBtn.onclick = () => dialog.remove();
+
+            // 警告内容
+            const warningContent = document.createElement('div');
+            warningContent.style.cssText = `
+                background: #fff3cd;
+                border: 1px solid #ffeaa7;
+                border-radius: 6px;
+                padding: 15px;
+                margin-bottom: 20px;
+                color: #856404;
+                line-height: 1.5;
+            `;
+            warningContent.innerHTML = `
+                <div style="font-weight: bold; margin-bottom: 8px; color: #f44336;">⚠️ 危险操作警告</div>
+                <div>此操作将永久删除服务器上存储的所有同步数据，包括：</div>
+                <ul style="margin: 8px 0; padding-left: 20px;">
+                    <li>黑名单、好友列表</li>
+                    <li>收藏、操作日志</li>
+                    <li>浏览历史、快捷回复</li>
+                    <li>常用表情、统计数据</li>
+                    <li>关键词过滤设置</li>
+                </ul>
+                <div style="color: #f44336; font-weight: bold;">该操作不可恢复！</div>
+                <div style="margin-top: 8px; color: #666;">本地数据不会受到影响，仅删除服务器上的备份数据。</div>
+            `;
+
+            // 进度条容器
+            const progressContainer = document.createElement('div');
+            progressContainer.style.cssText = `
+                margin-bottom: 15px;
+                display: none;
+            `;
+
+            // 进度条标签
+            const progressLabel = document.createElement('div');
+            progressLabel.style.cssText = `
+                font-size: 12px;
+                color: #666;
+                margin-bottom: 5px;
+                text-align: center;
+            `;
+
+            // 进度条背景
+            const progressBar = document.createElement('div');
+            progressBar.style.cssText = `
+                width: 100%;
+                height: 8px;
+                background: #f0f0f0;
+                border-radius: 4px;
+                overflow: hidden;
+                box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+            `;
+
+            // 进度条填充
+            const progressFill = document.createElement('div');
+            progressFill.style.cssText = `
+                height: 100%;
+                background: linear-gradient(90deg, #f44336, #e57373);
+                width: 0%;
+                transition: width 0.5s ease;
+                border-radius: 4px;
+            `;
+
+            progressBar.appendChild(progressFill);
+            progressContainer.appendChild(progressLabel);
+            progressContainer.appendChild(progressBar);
+
+            // 确认输入框
+            const confirmContainer = document.createElement('div');
+            confirmContainer.style.cssText = `
+                margin-bottom: 20px;
+            `;
+
+            const confirmLabel = document.createElement('div');
+            confirmLabel.textContent = '请输入 "DELETE" 确认删除操作：';
+            confirmLabel.style.cssText = `
+                font-weight: bold;
+                margin-bottom: 8px;
+                color: #f44336;
+            `;
+
+            const confirmInput = document.createElement('input');
+            confirmInput.type = 'text';
+            confirmInput.placeholder = '请输入 DELETE';
+            confirmInput.style.cssText = `
+                width: 100%;
+                padding: 8px 12px;
+                border: 2px solid #f44336;
+                border-radius: 4px;
+                box-sizing: border-box;
+                font-size: 14px;
+                text-align: center;
+                font-weight: bold;
+            `;
+
+            confirmContainer.appendChild(confirmLabel);
+            confirmContainer.appendChild(confirmInput);
+
+            // 按钮容器
+            const buttonContainer = document.createElement('div');
+            buttonContainer.style.cssText = `
+                display: flex;
+                gap: 10px;
+                justify-content: center;
+            `;
+
+            // 确认删除按钮
+            const confirmBtn = document.createElement('button');
+            confirmBtn.textContent = '确认清除';
+            confirmBtn.disabled = true;
+            confirmBtn.style.cssText = `
+                flex: 1;
+                padding: 8px 16px;
+                background: #ccc;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: not-allowed;
+                font-size: 14px;
+                font-weight: bold;
+            `;
+
+            // 取消按钮
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = '取消';
+            cancelBtn.style.cssText = `
+                flex: 1;
+                padding: 8px 16px;
+                background: #f0f0f0;
+                color: #666;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+            `;
+
+            // 输入验证
+            confirmInput.addEventListener('input', function() {
+                const isValid = this.value.trim() === 'DELETE';
+                confirmBtn.disabled = !isValid;
+                if (isValid) {
+                    confirmBtn.style.background = '#f44336';
+                    confirmBtn.style.cursor = 'pointer';
+                } else {
+                    confirmBtn.style.background = '#ccc';
+                    confirmBtn.style.cursor = 'not-allowed';
+                }
             });
+
+            // 事件处理
+            confirmBtn.onclick = async () => {
+                if (confirmInput.value.trim() !== 'DELETE') {
+                    Utils.showMessage('请正确输入 DELETE 确认删除', 'warning');
+                    return;
+                }
+
+                // 禁用按钮并显示删除中状态
+                confirmBtn.disabled = true;
+                cancelBtn.disabled = true;
+                const originalText = confirmBtn.textContent;
+                confirmBtn.textContent = '清除中...';
+                confirmBtn.style.background = '#ccc';
+                
+                // 显示进度条
+                progressContainer.style.display = 'block';
+                progressLabel.textContent = '正在清除服务器同步数据...';
+                progressFill.style.width = '30%';
+                
+                try {
+                    // 进度步骤
+                    progressLabel.textContent = '正在发送删除请求...';
+                    progressFill.style.width = '70%';
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    
+                    // 执行删除操作
+                    await Sync.deleteServerConfig();
+                    
+                    // 完成
+                    progressLabel.textContent = '清除完成!';
+                    progressFill.style.width = '100%';
+                    
+                    // 等待一下让用户看到完成状态
+                    await new Promise(resolve => setTimeout(resolve, 800));
+                    
+                } catch (error) {
+                    console.error('删除操作失败:', error);
+                    progressLabel.textContent = '清除失败';
+                    progressFill.style.background = 'linear-gradient(90deg, #f44336, #e57373)';
+                    progressFill.style.width = '100%';
+                    
+                    // 等待一下让用户看到失败状态
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } finally {
+                    // 恢复按钮状态并关闭对话框
+                    confirmBtn.disabled = false;
+                    cancelBtn.disabled = false;
+                    confirmBtn.textContent = originalText;
+                    confirmBtn.style.background = '#f44336';
+                    dialog.remove();
+                }
+            };
+
+            cancelBtn.onclick = () => dialog.remove();
+
+            // 回车确认
+            confirmInput.onkeydown = (e) => {
+                if (e.key === 'Enter' && !confirmBtn.disabled) {
+                    confirmBtn.click();
+                }
+            };
+
+            // 组装对话框
+            buttonContainer.appendChild(confirmBtn);
+            buttonContainer.appendChild(cancelBtn);
+
+            dialog.appendChild(dragHandle);
+            dialog.appendChild(title);
+            dialog.appendChild(closeBtn);
+            dialog.appendChild(warningContent);
+            dialog.appendChild(confirmContainer);
+            dialog.appendChild(progressContainer);
+            dialog.appendChild(buttonContainer);
+
+            document.body.appendChild(dialog);
+            
+            // 使对话框可拖动
+            UI.makeDraggable(dialog);
+            
+            // 聚焦输入框
+            confirmInput.focus();
         },
 
         // 从服务器下载配置
@@ -1149,43 +1596,55 @@
                 return false;
             }
 
-            // 显示配置选择对话框
-            this.showConfigSelectionDialog('download', async (selectedItems) => {
-                try {
-                    // 获取服务器配置数据
-                    const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`);
+            // 返回一个Promise，等待配置选择对话框完成
+            return new Promise((resolve, reject) => {
+                // 显示配置选择对话框
+                this.showConfigSelectionDialog('download', async (selectedItems) => {
+                    try {
+                        // 获取服务器配置数据
+                        const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`);
 
-                    if (data.success && data.config) {
-                        // 应用配置
-                        const applied = Utils.applyConfig(data.config, selectedItems);
-                        
-                        if (applied.length > 0) {
-                            // 延迟显示确认对话框，让成功提示先显示
-                            setTimeout(() => {
-                                const shouldReload = confirm(`配置同步成功！\n\n已同步: ${applied.join('、')}\n\n是否刷新页面以应用更改？`);
-                                if (shouldReload) {
-                                    location.reload();
-                                } else {
-                                    Utils.showMessage('配置已同步，建议刷新页面以完全应用更改', 'info');
-                                }
-                            }, 500);
-                            return true;
+                        if (data.success && data.config) {
+                            // 应用配置
+                            const applied = Utils.applyConfig(data.config, selectedItems);
+                            
+                            if (applied.length > 0) {
+                                // 延迟显示确认对话框，让成功提示先显示
+                                setTimeout(() => {
+                                    const shouldReload = confirm(`配置同步成功！\n\n已同步: ${applied.join('、')}\n\n是否刷新页面以应用更改？`);
+                                    if (shouldReload) {
+                                        location.reload();
+                                    } else {
+                                        Utils.showMessage('配置已同步，建议刷新页面以完全应用更改', 'info');
+                                        
+                                        // 更新存储空间信息
+                                        const currentStorageInfo = document.querySelector('#login-auth-dialog .storage-info-container');
+                                        if (currentStorageInfo) {
+                                            UI.loadStorageInfo(currentStorageInfo);
+                                        }
+                                    }
+                                }, 500);
+                                resolve(true);
+                            } else {
+                                Utils.showMessage('从服务器获取配置成功，但没有数据需要应用', 'info');
+                                resolve(false);
+                            }
                         } else {
-                            Utils.showMessage('从服务器获取配置成功，但没有数据需要应用', 'info');
-                            return false;
+                            Utils.showMessage('服务器返回的配置数据格式错误', 'error');
+                            reject(new Error('配置数据格式错误'));
                         }
-                    } else {
-                        Utils.showMessage('服务器返回的配置数据格式错误', 'error');
-                        throw new Error('配置数据格式错误');
+                    } catch (error) {
+                        if (error.message.includes('404')) {
+                            Utils.showMessage('服务器上没有配置数据，请先上传配置', 'warning');
+                        } else {
+                            Utils.showMessage(`配置下载失败: ${error.message}`, 'error');
+                        }
+                        reject(error); // 重新抛出错误，让进度条能够显示失败状态
                     }
-                } catch (error) {
-                    if (error.message.includes('404')) {
-                        Utils.showMessage('服务器上没有配置数据，请先上传配置', 'warning');
-                    } else {
-                        Utils.showMessage(`配置下载失败: ${error.message}`, 'error');
-                    }
-                    throw error; // 重新抛出错误，让进度条能够显示失败状态
-                }
+                }, () => {
+                    // 取消/关闭对话框
+                    try { resolve(false); } catch (e) { /* no-op */ }
+                });
             });
         }
     };
@@ -1869,6 +2328,27 @@
                 <div style="margin-top: 5px;">${user.username}</div>
             `;
 
+            // 存储空间信息（异步加载）
+            const storageInfo = document.createElement('div');
+            storageInfo.className = 'storage-info-container'; // 添加特殊类名以便查找
+            storageInfo.style.cssText = `
+                background: #e6f7ff;
+                border: 1px solid #91d5ff;
+                border-radius: 4px;
+                padding: 8px 12px;
+                margin-bottom: 15px;
+                font-size: 12px;
+                color: #1890ff;
+                line-height: 1.4;
+                text-align: center;
+            `;
+            storageInfo.innerHTML = `
+                <div>存储空间: 加载中...</div>
+            `;
+            
+            // 异步加载存储空间信息
+            UI.loadStorageInfo(storageInfo);
+
             // 数据保留政策提示
             const policyTip = document.createElement('div');
             policyTip.style.cssText = `
@@ -1886,6 +2366,11 @@
                 <div>数据自动保留30天（每日00:00清理过期）</div>
                 <div>30天无活动账号自动删除</div>
             `;
+
+            // 添加元素到容器
+            container.appendChild(userInfo);
+            container.appendChild(storageInfo);
+            container.appendChild(policyTip);
 
             // 同步按钮容器
             const syncContainer = document.createElement('div');
@@ -1908,14 +2393,27 @@
                 cursor: pointer;
             `;
             uploadBtn.onclick = async () => {
-                uploadBtn.disabled = true;
-                uploadBtn.textContent = '同步中...';
-                try {
-                    await Sync.upload();
-                } finally {
+                // 只监听事件来切换状态，避免弹窗未确认就进入“同步中”
+                const onStart = (e) => {
+                    if (e && e.detail && e.detail.mode === 'upload') {
+                        uploadBtn.disabled = true;
+                        uploadBtn.textContent = '同步中...';
+                    }
+                };
+                const onEnd = (e) => {
+                    if (!e || !e.detail || e.detail.mode !== 'upload') return;
                     uploadBtn.disabled = false;
                     uploadBtn.textContent = '同步到服务器';
-                }
+                    if (e.detail.success) {
+                        // 同步成功后刷新存储空间信息
+                        UI.loadStorageInfo(storageInfo);
+                    }
+                    window.removeEventListener('ns-sync-start', onStart);
+                    window.removeEventListener('ns-sync-end', onEnd);
+                };
+                window.addEventListener('ns-sync-start', onStart, { once: false });
+                window.addEventListener('ns-sync-end', onEnd, { once: false });
+                await Sync.upload();
             };
 
             // 下载配置按钮
@@ -1930,14 +2428,25 @@
                 cursor: pointer;
             `;
             downloadBtn.onclick = async () => {
-                downloadBtn.disabled = true;
-                downloadBtn.textContent = '同步中...';
-                try {
-                    await Sync.download();
-                } finally {
+                const onStart = (e) => {
+                    if (e && e.detail && e.detail.mode === 'download') {
+                        downloadBtn.disabled = true;
+                        downloadBtn.textContent = '同步中...';
+                    }
+                };
+                const onEnd = (e) => {
+                    if (!e || !e.detail || e.detail.mode !== 'download') return;
                     downloadBtn.disabled = false;
                     downloadBtn.textContent = '从服务器同步';
-                }
+                    if (e.detail.success) {
+                        UI.loadStorageInfo(storageInfo);
+                    }
+                    window.removeEventListener('ns-sync-start', onStart);
+                    window.removeEventListener('ns-sync-end', onEnd);
+                };
+                window.addEventListener('ns-sync-start', onStart, { once: false });
+                window.addEventListener('ns-sync-end', onEnd, { once: false });
+                await Sync.download();
             };
 
             // 修改密码按钮
@@ -1953,6 +2462,32 @@
             `;
             changePasswordBtn.onclick = () => {
                 this.createChangePasswordDialog();
+            };
+
+            // 删除同步数据按钮
+            const deleteConfigBtn = document.createElement('button');
+            deleteConfigBtn.textContent = '清除同步数据';
+            deleteConfigBtn.style.cssText = `
+                padding: 8px;
+                background: #f44336;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                min-width: 120px;
+            `;
+            deleteConfigBtn.onclick = async () => {
+                deleteConfigBtn.disabled = true;
+                const originalText = deleteConfigBtn.textContent;
+                deleteConfigBtn.textContent = '清除中...';
+                try {
+                    await Sync.deleteServerConfig();
+                    // 清除成功后刷新存储空间信息
+                    UI.loadStorageInfo(storageInfo);
+                } finally {
+                    deleteConfigBtn.disabled = false;
+                    deleteConfigBtn.textContent = originalText;
+                }
             };
 
             // 退出登录按钮
@@ -1977,14 +2512,14 @@
             this.optimizeButtonForMobile(uploadBtn, isMobile);
             this.optimizeButtonForMobile(downloadBtn, isMobile);
             this.optimizeButtonForMobile(changePasswordBtn, isMobile);
+            this.optimizeButtonForMobile(deleteConfigBtn, isMobile);
             this.optimizeButtonForMobile(logoutBtn, isMobile);
             
             syncContainer.appendChild(uploadBtn);
             syncContainer.appendChild(downloadBtn);
             syncContainer.appendChild(changePasswordBtn);
+            syncContainer.appendChild(deleteConfigBtn);
 
-            container.appendChild(userInfo);
-            container.appendChild(policyTip);
             container.appendChild(syncContainer);
             container.appendChild(logoutBtn);
         },
@@ -2208,6 +2743,52 @@
             
             // 聚焦当前密码输入框
             currentPasswordInput.focus();
+        },
+
+        // 获取当前token
+        getToken: function() {
+            return authToken;
+        },
+
+        // 加载存储空间信息
+        loadStorageInfo: async function(storageElement) {
+            try {
+                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/user`, {
+                    method: 'GET'
+                });
+
+                if (data.success && data.user && data.user.storage) {
+                    const storage = data.user.storage;
+                    const usageColor = storage.usage_percent >= 90 ? '#ff4d4f' : 
+                                     storage.usage_percent >= 70 ? '#faad14' : '#52c41a';
+                    
+                    storageElement.innerHTML = `
+                        <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
+                        <div>已使用: ${storage.usage_mb}MB / ${storage.limit_mb}MB</div>
+                        <div style="color: ${usageColor}; font-weight: bold;">剩余: ${storage.remaining_mb}MB (${storage.usage_percent}%)</div>
+                    `;
+                } else {
+                    storageElement.innerHTML = `
+                        <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
+                        <div style="color: #999;">数据格式错误</div>
+                    `;
+                }
+            } catch (error) {
+                console.error('获取存储空间信息失败:', error);
+                let errorMessage = '获取失败';
+                if (error.message.includes('超时')) {
+                    errorMessage = '请求超时';
+                } else if (error.message.includes('网络')) {
+                    errorMessage = '网络错误';
+                } else if (error.message.includes('401') || error.message.includes('403')) {
+                    errorMessage = '认证失败';
+                }
+                
+                storageElement.innerHTML = `
+                    <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
+                    <div style="color: #999;">${errorMessage}</div>
+                `;
+            }
         },
 
         // 使对话框可拖动（支持PC和移动端）
