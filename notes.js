@@ -1,3 +1,5 @@
+// ========== 笔记 ==========
+
 (function () {
     if (window.NodeSeekNotes) {
         return;
