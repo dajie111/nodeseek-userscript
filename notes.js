@@ -1,16 +1,14 @@
 // ========== 笔记 ==========
 
 (function () {
-    if (window.NodeSeekNotes) {
-        return;
-    }
 
     const LS_KEYS = {
         categories: 'nodeseek_notes_categories',
         notes: 'nodeseek_notes_data',
         fontColors: 'nodeseek_notes_font_colors',
         bgColors: 'nodeseek_notes_bg_colors',
-        trash: 'nodeseek_notes_trash' // 回收站数据
+        trash: 'nodeseek_notes_trash', // 回收站数据
+        lastSelectedNote: 'nodeseek_notes_last_selected' // 上次选择的笔记
     };
 
     function readJSON(key, fallback) {
@@ -49,6 +47,22 @@
     }
 
     // 清理存储空间
+    // 保存上次选择的笔记信息
+    function saveLastSelectedNote(categoryId, noteId) {
+        if (categoryId && noteId) {
+            writeJSON(LS_KEYS.lastSelectedNote, {
+                categoryId: categoryId,
+                noteId: noteId,
+                timestamp: Date.now()
+            });
+        }
+    }
+    
+    // 获取上次选择的笔记信息
+    function getLastSelectedNote() {
+        return readJSON(LS_KEYS.lastSelectedNote, null);
+    }
+    
     function cleanupStorageSpace() {
         try {
             // 1. 清理过期的回收站数据（超过30天）
@@ -73,17 +87,7 @@
                         note.history = note.history.slice(0, 10);
                         cleanedHistoryCount += originalLength - note.history.length;
                     }
-                    // 清理过大的附件（超过5MB的附件）
-                    if (note.attachments && note.attachments.length > 0) {
-                        const maxSize = 5 * 1024 * 1024; // 5MB
-                        note.attachments = note.attachments.filter(attachment => {
-                            if (attachment.size > maxSize) {
-                                console.log(`Removed large attachment: ${attachment.name} (${Math.round(attachment.size / 1024 / 1024)}MB)`);
-                                return false;
-                            }
-                            return true;
-                        });
-                    }
+
                 });
             });
             
@@ -357,11 +361,9 @@
         }
         
         const historyBtn = document.querySelector('.nsn-btn[title="历史记录"]');
-        const attachmentBtn = document.querySelector('.nsn-btn[title="附件"]');
         
         if (!window.currentNoteId) {
             if (historyBtn) historyBtn.textContent = '历史记录';
-            if (attachmentBtn) attachmentBtn.textContent = '附件';
             return;
         }
         
@@ -376,14 +378,10 @@
                 historyBtn.textContent = historyCount > 0 ? `历史记录 (${historyCount})` : '历史记录';
             }
             
-            // 更新附件按钮
-            if (attachmentBtn) {
-                const attachmentCount = (note.attachments && note.attachments.length > 0) ? note.attachments.length : 0;
-                attachmentBtn.textContent = attachmentCount > 0 ? `附件 (${attachmentCount})` : '附件';
-            }
+
         } else {
             if (historyBtn) historyBtn.textContent = '历史记录';
-            if (attachmentBtn) attachmentBtn.textContent = '附件';
+
         }
     }
 
@@ -656,7 +654,7 @@
             setTimeout(() => {
                 const url = prompt('输入图片URL');
                 if (url && url.trim()) {
-                    const imgHtml = `<div class="nsn-resizable-img-container" data-origin="toolbar" contenteditable="false" style="display: inline-block; position: relative; border: 1px dashed transparent;"><img src="${url.trim()}" style="max-width: 300px; height: auto; display: block;"><div class="nsn-resize-handle" style="position: absolute; bottom: -3px; right: -3px; width: 8px; height: 8px; background: #409eff; cursor: nw-resize; border-radius: 2px; display: none;"></div><div class="nsn-delete-handle" title="删除图片" style="position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; background: #ef4444; color: #fff; font-size: 12px; border-radius: 50%; display: none; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.3);">×</div></div>`;
+                    const imgHtml = `<div class="nsn-resizable-img-container" data-origin="toolbar" contenteditable="false" style="display: inline-block; position: relative; border: 1px dashed transparent;"><img src="${url.trim()}" style="max-width: 300px; height: auto; display: block;"><div class="nsn-resize-handle" style="position: absolute; bottom: -3px; right: -3px; width: 8px; height: 8px; background: #409eff; cursor: nw-resize; border-radius: 2px; display: none;"></div><div class="nsn-delete-handle" title="删除图片" style="position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; background: #ef4444; color: #fff; font-size: 12px; border-radius: 50%; display: none; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.3);">×</div></div><br>`;
                     cmd('insertHTML', imgHtml);
                     // 为新插入的图片添加调整大小功能
                     setTimeout(() => {
@@ -694,11 +692,6 @@
             const codeTemplate = `<div class="nsn-code-wrapper" contenteditable="false"><div class="nsn-code-toolbar"><button class="nsn-code-copy" title="复制">复制</button><button class="nsn-code-delete" title="删除">删除</button></div><pre class="nsn-code-block" contenteditable="true"></pre></div><p></p>`;
             cmd('insertHTML', codeTemplate);
         });
-        // 编辑器按钮 - 延迟绑定事件避免作用域问题
-        const editorBtn = createElement('button', { className: 'nsn-btn', title: '源码编辑器' }, ['编辑器']);
-        // 使用全局变量存储按钮引用，稍后绑定事件
-        window.nsn_editorBtn = editorBtn;
-        bar.appendChild(editorBtn);
         
         // 表格配置弹窗
         function showTableConfigDialog() {
@@ -1205,8 +1198,8 @@
         });
         
         // 处理图片和链接（在转义之前）
-        // 在图片容器后面补一个空段落<p></p>，确保插入后换行
-        html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<div class="nsn-resizable-img-container" contenteditable="false" style="display: inline-block; position: relative; border: 1px dashed transparent; margin: 4px;"><img src="$2" alt="$1" style="max-width: 300px; height: auto; display: block; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 1px solid #e5e7eb;"><div class="nsn-resize-handle" style="position: absolute; bottom: -3px; right: -3px; width: 8px; height: 8px; background: #409eff; cursor: nw-resize; border-radius: 2px; display: none;"></div></div><p></p>');
+        // 在图片容器后面补一个换行符，确保插入后换行
+        html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<div class="nsn-resizable-img-container" contenteditable="false" style="display: inline-block; position: relative; border: 1px dashed transparent; margin: 4px;"><img src="$2" alt="$1" style="max-width: 300px; height: auto; display: block; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 1px solid #e5e7eb;"><div class="nsn-resize-handle" style="position: absolute; bottom: -3px; right: -3px; width: 8px; height: 8px; background: #409eff; cursor: nw-resize; border-radius: 2px; display: none;"></div></div><br>');
         html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color: #409eff; text-decoration: none;">$1</a>');
         
         // 转义 HTML 特殊字符（但保留已处理的HTML标签）
@@ -1417,22 +1410,37 @@
         const toolbar = buildToolbar(execCommand);
         const editor = createElement('div', { className: 'nsn-editor' });
         editor.contentEditable = 'true';
+        
+        // 添加输入事件监听器，处理空编辑器的<br>标签显示问题
+        editor.addEventListener('input', () => {
+            // 如果编辑器内容只有<br>标签，清空它
+            setTimeout(() => {
+                if (editor.innerHTML === '<br>' || editor.innerHTML === '<br/>') {
+                    editor.innerHTML = '';
+                }
+            }, 0);
+        });
+        
+        // 监听粘贴事件，确保粘贴后的内容正确处理
+        editor.addEventListener('paste', () => {
+            setTimeout(() => {
+                if (editor.innerHTML === '<br>' || editor.innerHTML === '<br/>') {
+                    editor.innerHTML = '';
+                }
+            }, 10);
+        });
 
         const bottomBar = createElement('div', { className: 'nsn-bottom' });
         const saveBtn = createElement('button', { className: 'nsn-primary' }, ['保存']);
         const historyBtn = createElement('button', { className: 'nsn-default' }, ['历史记录']);
-        const attachmentBtn = createElement('button', { className: 'nsn-default' }, ['附件']);
-        const exportBtn = createElement('button', { className: 'nsn-default' }, ['导出']);
-        const importBtn = createElement('button', { className: 'nsn-default' }, ['导入']);
+
         const trashBtn = createElement('button', { className: 'nsn-default' }, ['回收站']);
         const deleteNoteBtn = createElement('button', { className: 'nsn-danger' }, ['删除笔记']);
         
         // updateButtonTexts函数已移到全局作用域
         bottomBar.appendChild(saveBtn);
         bottomBar.appendChild(historyBtn);
-        bottomBar.appendChild(attachmentBtn);
-        bottomBar.appendChild(exportBtn);
-        bottomBar.appendChild(importBtn);
+
         bottomBar.appendChild(trashBtn);
         bottomBar.appendChild(deleteNoteBtn);
 
@@ -1633,6 +1641,48 @@
             });
         }
 
+        // 尝试恢复上次选择的笔记
+        function restoreLastSelectedNote() {
+            const lastSelected = getLastSelectedNote();
+            if (!lastSelected) return false;
+            
+            // 检查上次选择的分类是否存在
+            const categories = readJSON(LS_KEYS.categories, []);
+            const categoryExists = categories.some(c => c.id === lastSelected.categoryId);
+            if (!categoryExists) return false;
+            
+            // 检查上次选择的笔记是否存在
+            const map = readJSON(LS_KEYS.notes, {});
+            const list = map[lastSelected.categoryId] || [];
+            const noteExists = list.some(n => n.id === lastSelected.noteId);
+            if (!noteExists) return false;
+            
+            // 切换到上次选择的分类
+            if (currentCategoryId !== lastSelected.categoryId) {
+                currentCategoryId = lastSelected.categoryId;
+                window.currentCategoryId = currentCategoryId;
+                renderCategories(); // 更新分类选择器
+            }
+            
+            // 选择上次的笔记
+            const selectedNote = list.find(n => n.id === lastSelected.noteId);
+            if (selectedNote) {
+                currentNoteId = lastSelected.noteId;
+                window.currentNoteId = currentNoteId;
+                titleInput.value = selectedNote.title || '';
+                editor.innerHTML = filterEditorContent(selectedNote.content || '');
+                // 清除可能自动插入的<br>标签
+                setTimeout(() => {
+                    if (editor.innerHTML === '<br>' || editor.innerHTML === '<br/>') {
+                        editor.innerHTML = '';
+                    }
+                }, 10);
+                return true;
+            }
+            
+            return false;
+        }
+
         function renderNotes() {
             noteList.innerHTML = '';
             const map = readJSON(LS_KEYS.notes, {});
@@ -1669,23 +1719,7 @@
                 //     item.appendChild(historyBadge);
                 // }
                 
-                // 如果有附件，添加附件标识
-                // if (n.attachments && n.attachments.length > 0) {
-                //     const attachmentBadge = createElement('div', {
-                //         style: {
-                //             position: 'absolute',
-                //             top: '4px',
-                //             left: '4px',
-                //             background: '#f59e0b',
-                //             color: '#fff',
-                //             fontSize: '10px',
-                //             padding: '2px 6px',
-                //             borderRadius: '10px',
-                //             fontWeight: '500'
-                //         }
-                //     }, [`📎${n.attachments.length}`]);
-                //     item.appendChild(attachmentBadge);
-                // }
+
                 
                 item.appendChild(t);
                 // 为笔记项添加数据属性，用于恢复时查找
@@ -1694,8 +1728,16 @@
                     currentNoteId = n.id;
                 window.currentNoteId = currentNoteId;
                     titleInput.value = n.title || '';
-                    editor.innerHTML = n.content || '';
+                    editor.innerHTML = filterEditorContent(n.content || '');
+                    // 清除可能自动插入的<br>标签
+                    setTimeout(() => {
+                        if (editor.innerHTML === '<br>' || editor.innerHTML === '<br/>') {
+                            editor.innerHTML = '';
+                        }
+                    }, 10);
                     highlightActive(item);
+                    // 保存上次选择的笔记
+                    saveLastSelectedNote(currentCategoryId, currentNoteId);
                     // 更新保存状态
                     updateSaveState();
                     // 更新按钮文本
@@ -1707,6 +1749,13 @@
                     }, 100);
                 });
                 noteList.appendChild(item);
+                
+                // 如果这是当前选中的笔记，添加高亮
+                if (currentNoteId && n.id === currentNoteId) {
+                    setTimeout(() => {
+                        highlightActive(item);
+                    }, 0);
+                }
             });
         }
 
@@ -1715,17 +1764,34 @@
             if (activeEl) activeEl.classList.add('active');
         }
 
-        function clearEditor(){
-            titleInput.value = '';
-            editor.innerHTML = '';
-            // 重置标题计数器
-            titleCounter.textContent = '0/59';
-            titleCounter.style.color = '#6b7280';
-            // 更新保存状态
-            updateSaveState();
-            // 更新按钮文本
-            updateButtonTexts();
+    // 过滤编辑器内容，移除多余的<br>标签
+    function filterEditorContent(content) {
+        if (!content) return '';
+        // 如果内容只包含空的<br>标签，返回空字符串
+        const cleanContent = content.replace(/<br\s*\/?>/gi, '').trim();
+        if (!cleanContent || cleanContent === '') {
+            return '';
         }
+        return content;
+    }
+
+    function clearEditor(){
+        titleInput.value = '';
+        editor.innerHTML = '';
+        // 清除可能自动插入的<br>标签
+        setTimeout(() => {
+            if (editor.innerHTML === '<br>' || editor.innerHTML === '<br/>') {
+                editor.innerHTML = '';
+            }
+        }, 10);
+        // 重置标题计数器
+        titleCounter.textContent = '0/59';
+        titleCounter.style.color = '#6b7280';
+        // 更新保存状态
+        updateSaveState();
+        // 更新按钮文本
+        updateButtonTexts();
+    }
 
         function saveCurrent(){
             const map = readJSON(LS_KEYS.notes, {});
@@ -1739,8 +1805,7 @@
                     content: editor.innerHTML, 
                     createdAt: Date.now(), 
                     updatedAt: Date.now(),
-                    history: [], // 初始化历史记录数组
-                    attachments: [] // 初始化附件数组
+                    history: [] // 初始化历史记录数组
                 });
             } else {
                 const idx = list.findIndex(n => n.id === currentNoteId);
@@ -1774,6 +1839,8 @@
             map[currentCategoryId] = list;
             writeJSON(LS_KEYS.notes, map);
             renderNotes();
+            // 保存上次选择的笔记
+            saveLastSelectedNote(currentCategoryId, currentNoteId);
             // 更新保存状态
             updateSaveState();
             // 更新按钮文本
@@ -2163,7 +2230,13 @@
             
             // 更新编辑器显示
             titleInput.value = note.title || '';
-            editor.innerHTML = note.content || '';
+            editor.innerHTML = filterEditorContent(note.content || '');
+            // 清除可能自动插入的<br>标签
+            setTimeout(() => {
+                if (editor.innerHTML === '<br>' || editor.innerHTML === '<br/>') {
+                    editor.innerHTML = '';
+                }
+            }, 10);
             
             // 保存到localStorage
             map[currentCategoryId] = list;
@@ -2238,590 +2311,11 @@
             }, 5000);
         }
         
-        // 显示附件管理弹窗
-        function showAttachmentDialog() {
-            if (!currentNoteId) {
-                alert('请先选择一篇笔记');
-                return;
-            }
-            
-            const map = readJSON(LS_KEYS.notes, {});
-            const list = map[currentCategoryId] || [];
-            const note = list.find(n => n.id === currentNoteId);
-            
-            if (!note) {
-                alert('找不到当前笔记');
-                return;
-            }
-            
-            // 创建附件管理弹窗
-            const attachmentModal = createElement('div', {
-                className: 'nsn-attachment-modal',
-                style: {
-                    position: 'fixed',
-                    inset: '0',
-                    background: 'rgba(0,0,0,0.5)',
-                    zIndex: '999999999',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                }
-            });
-            
-            const modalContent = createElement('div', {
-                className: 'nsn-attachment-modal-content',
-                style: {
-                    background: '#fff',
-                    borderRadius: '12px',
-                    padding: '20px',
-                    maxWidth: '90vw',
-                    width: '600px',
-                    maxHeight: '80vh',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                    display: 'flex',
-                    flexDirection: 'column'
-                }
-            });
-            
-            // 标题
-            const title = createElement('div', {
-                style: {
-                    fontSize: '18px',
-                    fontWeight: '600',
-                    color: '#333',
-                    marginBottom: '16px',
-                    textAlign: 'center',
-                    borderBottom: '1px solid #e5e7eb',
-                    paddingBottom: '12px'
-                }
-            }, [`附件管理 - ${note.title || '未命名'}`]);
-            
-            // 上传区域
-            const uploadArea = createElement('div', {
-                style: {
-                    border: '2px dashed #d1d5db',
-                    borderRadius: '8px',
-                    padding: '20px',
-                    textAlign: 'center',
-                    marginBottom: '16px',
-                    background: '#f9fafb',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s'
-                }
-            });
-            
-            uploadArea.addEventListener('mouseenter', () => {
-                uploadArea.style.borderColor = '#409eff';
-                uploadArea.style.background = '#f0f9ff';
-            });
-            
-            uploadArea.addEventListener('mouseleave', () => {
-                uploadArea.style.borderColor = '#d1d5db';
-                uploadArea.style.background = '#f9fafb';
-            });
-            
-            const uploadIcon = createElement('div', {
-                style: {
-                    fontSize: '24px',
-                    color: '#6b7280',
-                    marginBottom: '8px'
-                }
-            }, ['📎']);
-            
-            const uploadText = createElement('div', {
-                style: {
-                    color: '#6b7280',
-                    fontSize: '14px'
-                }
-            }, ['点击或拖拽文件到此处上传（最大10MB）']);
-            
-            uploadArea.appendChild(uploadIcon);
-            uploadArea.appendChild(uploadText);
-            
-            // 隐藏的文件输入
-            const fileInput = createElement('input', {
-                type: 'file',
-                multiple: true,
-                style: { display: 'none' }
-            });
-            
-            // 点击上传
-            uploadArea.addEventListener('click', () => {
-                fileInput.click();
-            });
-            
-            // 拖拽上传
-            uploadArea.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                uploadArea.style.borderColor = '#409eff';
-                uploadArea.style.background = '#f0f9ff';
-            });
-            
-            uploadArea.addEventListener('dragleave', (e) => {
-                e.preventDefault();
-                uploadArea.style.borderColor = '#d1d5db';
-                uploadArea.style.background = '#f9fafb';
-            });
-            
-            uploadArea.addEventListener('drop', (e) => {
-                e.preventDefault();
-                uploadArea.style.borderColor = '#d1d5db';
-                uploadArea.style.background = '#f9fafb';
-                
-                const files = Array.from(e.dataTransfer.files);
-                handleFileUpload(files, note, list, map);
-            });
-            
-            // 文件选择处理
-            fileInput.addEventListener('change', (e) => {
-                const files = Array.from(e.target.files);
-                handleFileUpload(files, note, list, map);
-                e.target.value = ''; // 清空选择
-            });
-            
-            // 附件列表容器
-            const attachmentList = createElement('div', {
-                className: 'nsn-attachment-list',
-                style: {
-                    flex: '1',
-                    overflow: 'auto',
-                    maxHeight: '300px',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px',
-                    marginBottom: '16px'
-                }
-            });
-            
-            // 渲染附件列表
-            function renderAttachmentList() {
-                attachmentList.innerHTML = '';
-                
-                if (!note.attachments || note.attachments.length === 0) {
-                    const emptyMsg = createElement('div', {
-                        style: {
-                            padding: '20px',
-                            textAlign: 'center',
-                            color: '#6b7280',
-                            fontSize: '14px'
-                        }
-                    }, ['暂无附件']);
-                    attachmentList.appendChild(emptyMsg);
-                    return;
-                }
-                
-                note.attachments.forEach((attachment, index) => {
-                    const attachmentItem = createElement('div', {
-                        style: {
-                            padding: '12px',
-                            borderBottom: '1px solid #f3f4f6',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between'
-                        }
-                    });
-                    
-                    const fileInfo = createElement('div', {
-                        style: { flex: '1' }
-                    });
-                    
-                    const fileName = createElement('div', {
-                        style: {
-                            fontWeight: '500',
-                            color: '#374151',
-                            marginBottom: '4px'
-                        }
-                    }, [attachment.name]);
-                    
-                    const fileSize = createElement('div', {
-                        style: {
-                            fontSize: '12px',
-                            color: '#6b7280'
-                        }
-                    }, [formatFileSize(attachment.size)]);
-                    
-                    fileInfo.appendChild(fileName);
-                    fileInfo.appendChild(fileSize);
-                    
-                    const actionButtons = createElement('div', {
-                        style: {
-                            display: 'flex',
-                            gap: '8px'
-                        }
-                    });
-                    
-                    const insertBtn = createElement('button', {
-                        style: {
-                            padding: '4px 8px',
-                            background: '#10b981',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontSize: '12px',
-                            cursor: 'pointer'
-                        }
-                    }, ['插入']);
-                    
-                    insertBtn.addEventListener('click', () => {
-                        insertAttachmentToNote(attachment);
-                        attachmentModal.remove();
-                    });
-                    
-                    const downloadBtn = createElement('button', {
-                        style: {
-                            padding: '4px 8px',
-                            background: '#409eff',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontSize: '12px',
-                            cursor: 'pointer'
-                        }
-                    }, ['下载']);
-                    
-                    downloadBtn.addEventListener('click', () => {
-                        downloadAttachment(attachment);
-                    });
-                    
-                    const deleteBtn = createElement('button', {
-                        style: {
-                            padding: '4px 8px',
-                            background: '#ef4444',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontSize: '12px',
-                            cursor: 'pointer'
-                        }
-                    }, ['删除']);
-                    
-                    deleteBtn.addEventListener('click', () => {
-                        if (confirm(`确定要删除附件"${attachment.name}"吗？`)) {
-                            deleteAttachment(index, note, list, map);
-                            renderAttachmentList();
-                        }
-                    });
-                    
-                    actionButtons.appendChild(insertBtn);
-                    actionButtons.appendChild(downloadBtn);
-                    actionButtons.appendChild(deleteBtn);
-                    
-                    attachmentItem.appendChild(fileInfo);
-                    attachmentItem.appendChild(actionButtons);
-                    attachmentList.appendChild(attachmentItem);
-                });
-            }
-            
-            // 按钮区域
-            const buttonArea = createElement('div', {
-                style: {
-                    display: 'flex',
-                    gap: '12px',
-                    justifyContent: 'flex-end'
-                }
-            });
-            
-            const closeBtn = createElement('button', {
-                style: {
-                    padding: '8px 16px',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '6px',
-                    background: '#f9fafb',
-                    color: '#374151',
-                    cursor: 'pointer'
-                }
-            }, ['关闭']);
-            
-            closeBtn.addEventListener('click', () => {
-                attachmentModal.remove();
-            });
-            
-            buttonArea.appendChild(closeBtn);
-            
-            modalContent.appendChild(title);
-            modalContent.appendChild(uploadArea);
-            modalContent.appendChild(fileInput);
-            modalContent.appendChild(attachmentList);
-            modalContent.appendChild(buttonArea);
-            attachmentModal.appendChild(modalContent);
-            
-            // 注释掉点击背景关闭弹窗的功能
-            // attachmentModal.addEventListener('click', (e) => {
-            //     if (e.target === attachmentModal) {
-            //         attachmentModal.remove();
-            //     }
-            // });
-            
-            // 初始渲染附件列表
-            renderAttachmentList();
-            
-            document.body.appendChild(attachmentModal);
-        }
+
         
-        // 处理文件上传
-        function handleFileUpload(files, note, list, map) {
-            const maxSize = 10 * 1024 * 1024; // 10MB
-            const validFiles = [];
-            const invalidFiles = [];
-            
-            files.forEach(file => {
-                if (file.size > maxSize) {
-                    invalidFiles.push(file.name);
-                } else {
-                    validFiles.push(file);
-                }
-            });
-            
-            if (invalidFiles.length > 0) {
-                alert(`以下文件超过10MB限制，无法上传：\n${invalidFiles.join('\n')}`);
-            }
-            
-            if (validFiles.length === 0) return;
-            
-            // 初始化附件数组
-            if (!note.attachments) {
-                note.attachments = [];
-            }
-            
-            // 处理有效文件
-            validFiles.forEach(file => {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const attachment = {
-                        name: file.name,
-                        size: file.size,
-                        type: file.type,
-                        data: e.target.result,
-                        uploadedAt: Date.now()
-                    };
-                    
-                    note.attachments.push(attachment);
-                    
-                    // 保存到localStorage
-                    map[currentCategoryId] = list;
-                    writeJSON(LS_KEYS.notes, map);
-                    
-                    // 重新渲染附件列表
-                    const attachmentList = document.querySelector('.nsn-attachment-list');
-                    if (attachmentList) {
-                        // 重新渲染附件列表
-                        attachmentList.innerHTML = '';
-                        
-                        if (!note.attachments || note.attachments.length === 0) {
-                            const emptyMsg = createElement('div', {
-                                style: {
-                                    padding: '20px',
-                                    textAlign: 'center',
-                                    color: '#6b7280',
-                                    fontSize: '14px'
-                                }
-                            }, ['暂无附件']);
-                            attachmentList.appendChild(emptyMsg);
-                        } else {
-                            note.attachments.forEach((attachment, index) => {
-                                const attachmentItem = createElement('div', {
-                                    style: {
-                                        padding: '12px',
-                                        borderBottom: '1px solid #f3f4f6',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between'
-                                    }
-                                });
-                                
-                                const fileInfo = createElement('div', {
-                                    style: { flex: '1' }
-                                });
-                                
-                                const fileName = createElement('div', {
-                                    style: {
-                                        fontWeight: '500',
-                                        color: '#374151',
-                                        marginBottom: '4px'
-                                    }
-                                }, [attachment.name]);
-                                
-                                const fileSize = createElement('div', {
-                                    style: {
-                                        fontSize: '12px',
-                                        color: '#6b7280'
-                                    }
-                                }, [formatFileSize(attachment.size)]);
-                                
-                                fileInfo.appendChild(fileName);
-                                fileInfo.appendChild(fileSize);
-                                
-                                const actionButtons = createElement('div', {
-                                    style: {
-                                        display: 'flex',
-                                        gap: '8px'
-                                    }
-                                });
-                                
-                                const insertBtn = createElement('button', {
-                                    style: {
-                                        padding: '4px 8px',
-                                        background: '#10b981',
-                                        color: '#fff',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        fontSize: '12px',
-                                        cursor: 'pointer'
-                                    }
-                                }, ['插入']);
-                                
-                                insertBtn.addEventListener('click', () => {
-                                    insertAttachmentToNote(attachment);
-                                    const modal = document.querySelector('.nsn-attachment-modal');
-                                    if (modal) {
-                                        modal.remove();
-                                    }
-                                });
-                                
-                                const downloadBtn = createElement('button', {
-                                    style: {
-                                        padding: '4px 8px',
-                                        background: '#409eff',
-                                        color: '#fff',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        fontSize: '12px',
-                                        cursor: 'pointer'
-                                    }
-                                }, ['下载']);
-                                
-                                downloadBtn.addEventListener('click', () => {
-                                    downloadAttachment(attachment);
-                                });
-                                
-                                const deleteBtn = createElement('button', {
-                                    style: {
-                                        padding: '4px 8px',
-                                        background: '#ef4444',
-                                        color: '#fff',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        fontSize: '12px',
-                                        cursor: 'pointer'
-                                    }
-                                }, ['删除']);
-                                
-                                deleteBtn.addEventListener('click', () => {
-                                    if (confirm(`确定要删除附件"${attachment.name}"吗？`)) {
-                                        deleteAttachment(index, note, list, map);
-                                        // 重新渲染整个列表
-                                        const modal = document.querySelector('.nsn-attachment-modal');
-                                        if (modal) {
-                                            modal.remove();
-                                            showAttachmentDialog();
-                                        }
-                                    }
-                                });
-                                
-                                actionButtons.appendChild(insertBtn);
-                                actionButtons.appendChild(downloadBtn);
-                                actionButtons.appendChild(deleteBtn);
-                                
-                                attachmentItem.appendChild(fileInfo);
-                                attachmentItem.appendChild(actionButtons);
-                                attachmentList.appendChild(attachmentItem);
-                            });
-                        }
-                    }
-                    
-                    // 显示上传成功提示
-                    showUploadNotification(file.name);
-                };
-                reader.readAsDataURL(file);
-            });
-        }
+
         
-        // 下载附件
-        function downloadAttachment(attachment) {
-            const link = document.createElement('a');
-            link.href = attachment.data;
-            link.download = attachment.name;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-        
-        // 删除附件
-        function deleteAttachment(index, note, list, map) {
-            note.attachments.splice(index, 1);
-            map[currentCategoryId] = list;
-            writeJSON(LS_KEYS.notes, map);
-        }
-        
-        // 格式化文件大小
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
-        
-        // 插入附件到笔记
-        function insertAttachmentToNote(attachment) {
-            // 根据文件类型生成不同的插入内容
-            let insertHtml = '';
-            
-            if (attachment.type.startsWith('image/')) {
-                // 图片文件：插入图片
-                insertHtml = `<div class="nsn-attachment-image" contenteditable="false" style="margin: 10px 0; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; position: relative;">
-                    <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-                        <span>📎 附件：${attachment.name}</span>
-                        <button class="nsn-attachment-delete" onclick="this.parentElement.parentElement.remove()" style="padding: 2px 6px; background: #ef4444; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 11px;" title="删除附件">×</button>
-                    </div>
-                    <img src="${attachment.data}" style="max-width: 100%; height: auto; border-radius: 4px;" alt="${attachment.name}">
-                </div>`;
-            } else if (attachment.type.startsWith('video/')) {
-                // 视频文件：插入视频
-                insertHtml = `<div class="nsn-attachment-video" contenteditable="false" style="margin: 10px 0; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; position: relative;">
-                    <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-                        <span>📎 附件：${attachment.name}</span>
-                        <button class="nsn-attachment-delete" onclick="this.parentElement.parentElement.remove()" style="padding: 2px 6px; background: #ef4444; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 11px;" title="删除附件">×</button>
-                    </div>
-                    <video src="${attachment.data}" controls style="max-width: 100%; border-radius: 4px;"></video>
-                </div>`;
-            } else if (attachment.type.startsWith('audio/')) {
-                // 音频文件：插入音频
-                insertHtml = `<div class="nsn-attachment-audio" contenteditable="false" style="margin: 10px 0; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; position: relative;">
-                    <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-                        <span>📎 附件：${attachment.name}</span>
-                        <button class="nsn-attachment-delete" onclick="this.parentElement.parentElement.remove()" style="padding: 2px 6px; background: #ef4444; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 11px;" title="删除附件">×</button>
-                    </div>
-                    <audio src="${attachment.data}" controls style="width: 100%;"></audio>
-                </div>`;
-            } else {
-                // 其他文件：插入下载链接
-                insertHtml = `<div class="nsn-attachment-file" contenteditable="false" style="margin: 10px 0; padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; display: flex; align-items: center; gap: 12px; position: relative;">
-                    <div style="font-size: 20px; color: #6b7280;">📎</div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: 500; color: #374151; margin-bottom: 4px;">${attachment.name}</div>
-                        <div style="font-size: 12px; color: #6b7280;">${formatFileSize(attachment.size)}</div>
-                    </div>
-                    <button onclick="downloadAttachmentFromNote('${attachment.name}', '${attachment.data}')" style="padding: 6px 12px; background: #409eff; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">下载</button>
-                    <button class="nsn-attachment-delete" onclick="this.parentElement.remove()" style="padding: 6px 12px; background: #ef4444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;" title="删除附件">删除</button>
-                </div>`;
-            }
-            
-            // 插入到编辑器
-            insertHTMLAtCursor(insertHtml);
-            
-            // 显示插入成功提示
-            showInsertNotification(attachment.name);
-        }
-        
-        // 从笔记中下载附件
-        function downloadAttachmentFromNote(fileName, fileData) {
-            const link = document.createElement('a');
-            link.href = fileData;
-            link.download = fileName;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
+
         
         // 显示插入成功提示
         function showInsertNotification(fileName) {
@@ -2853,7 +2347,7 @@
                     backdropFilter: 'blur(10px)',
                     border: '1px solid rgba(255, 255, 255, 0.2)'
                 }
-            }, [`✓ 附件"${fileName}"已插入到笔记`]);
+            }, [`✓ 文件"${fileName}"已插入到笔记`]);
             
             // 确保提示框显示在弹窗内部
             dialog.appendChild(notification);
@@ -2962,7 +2456,7 @@
                     backdropFilter: 'blur(10px)',
                     border: '1px solid rgba(255, 255, 255, 0.2)'
                 }
-            }, [`✓ 附件"${fileName}"上传成功`]);
+            }, [`✓ 文件"${fileName}"上传成功`]);
             
             // 确保提示框显示在弹窗内部
             dialog.appendChild(notification);
@@ -2988,674 +2482,18 @@
             }, 5000);
         }
 
-        function exportAll(){
-            const data = {
-                categories: readJSON(LS_KEYS.categories, []),
-                notes: readJSON(LS_KEYS.notes, {})
-            };
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'nodeseek_notes_backup.json';
-            a.click();
-            URL.revokeObjectURL(a.href);
-        }
 
-        function importAll(){
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = 'application/json';
-            input.onchange = () => {
-                const f = input.files && input.files[0];
-                if (!f) return;
-                const reader = new FileReader();
-                reader.onload = () => {
-                    try {
-                        const obj = JSON.parse(String(reader.result || '{}'));
-                        if (obj && obj.categories && obj.notes) {
-                            writeJSON(LS_KEYS.categories, obj.categories);
-                            writeJSON(LS_KEYS.notes, obj.notes);
-                            currentCategoryId = obj.categories[0]?.id || 'default';
-                            currentNoteId = null;
-                            renderCategories();
-                            renderNotes();
-                            clearEditor();
-                            alert('导入完成');
-                        } else {
-                            alert('文件格式不正确');
-                        }
-                    } catch (e) {
-                        alert('导入失败：' + e.message);
-                    }
-                };
-                reader.readAsText(f);
-            };
-            input.click();
-        }
-
-        // 智能将HTML转换为可编辑格式（HTML或Markdown）
-        function convertHTMLToEditableFormat(html) {
-            // 优先：若包含颜色/背景/字号等样式（包括font标签的color属性或style），一律进入简化流程
-            const hasColorLikeStyles = /color\s*:|background(?:-color)?\s*:|font-size\s*:/i.test(html);
-            const hasInlineColorTags = /<(font|span)\b[^>]*(\bcolor\s*=|\bstyle\s*=)/i.test(html);
-            if (hasColorLikeStyles || hasInlineColorTags) {
-                return simplifyHTMLForEditing(html);
-            }
-
-            // 若包含基础容器标签（div/p 等），也进行简化，去除这些标签仅保留文本与颜色
-            const hasBasicContainers = /<\/?(?:div|p)\b/i.test(html);
-            if (hasBasicContainers) {
-                return simplifyHTMLForEditing(html);
-            }
-
-            // 其次：纯文本很短且无图片容器，直接返回原HTML
-            const textContent = html.replace(/<[^>]*>/g, '').trim();
-            if (textContent.length < 50 && !html.includes('nsn-resizable-img-container')) {
-                return html;
-            }
-            
-            // 检测是否主要包含Markdown转换的特征元素
-            const hasMarkdownImages = html.includes('nsn-resizable-img-container');
-            const hasMarkdownHeaders = html.match(/<h[1-3][^>]*style[^>]*>/g);
-            const hasMarkdownBlockquotes = html.includes('border-left: 4px solid #409eff');
-            const hasMarkdownCodeBlocks = html.includes('nsn-code-wrapper') || html.includes('font-family: Consolas');
-            
-            // 只有当内容明确包含Markdown特征时才转换
-            const markdownFeatureCount = [hasMarkdownImages, hasMarkdownHeaders, hasMarkdownBlockquotes, hasMarkdownCodeBlocks].filter(Boolean).length;
-            
-            if (markdownFeatureCount >= 2 || hasMarkdownImages) {
-                const converted = convertHTMLToMarkdown(html);
-                // 如果转换结果仍然包含大量HTML标签，则返回原HTML
-                const htmlTagCount = (converted.match(/<[^>]*>/g) || []).length;
-                const totalLength = converted.length;
-                
-                // 如果HTML标签占比超过20%，说明转换失败，返回原HTML
-                if (htmlTagCount > 0 && (htmlTagCount * 10) / totalLength > 0.2) {
-                    return html;
-                }
-                
-                return converted;
-            }
-            
-            return html;
-        }
         
-        // 将颜色值转换为十六进制格式
-        function convertColorToHex(color) {
-            if (!color) return color;
-            
-            // 清理颜色值，移除前后空白
-            color = color.toString().trim();
-            
-            // 如果已经是十六进制格式，直接返回
-            if (color.startsWith('#')) {
-                return color;
-            }
-            
-            // 处理rgb()格式 - 增强匹配
-            if (color.includes('rgb(')) {
-                const rgbMatch = color.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
-                if (rgbMatch) {
-                    const r = parseInt(rgbMatch[1]);
-                    const g = parseInt(rgbMatch[2]);
-                    const b = parseInt(rgbMatch[3]);
-                    
-                    // 转换为十六进制
-                    const hex = '#' + 
-                        r.toString(16).padStart(2, '0') + 
-                        g.toString(16).padStart(2, '0') + 
-                        b.toString(16).padStart(2, '0');
-                    
-                    return hex;
-                }
-            }
-            
-            // 处理rgba()格式
-            if (color.includes('rgba(')) {
-                const rgbaMatch = color.match(/rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*[\d.]+\s*\)/);
-                if (rgbaMatch) {
-                    const r = parseInt(rgbaMatch[1]);
-                    const g = parseInt(rgbaMatch[2]);
-                    const b = parseInt(rgbaMatch[3]);
-                    
-                    // 转换为十六进制（忽略透明度）
-                    const hex = '#' + 
-                        r.toString(16).padStart(2, '0') + 
-                        g.toString(16).padStart(2, '0') + 
-                        b.toString(16).padStart(2, '0');
-                    return hex;
-                }
-            }
-            
-            // 处理常见颜色名称
-            const colorNames = {
-                'yellow': '#ffff00',
-                'red': '#ff0000',
-                'blue': '#0000ff',
-                'green': '#008000',
-                'black': '#000000',
-                'white': '#ffffff',
-                'orange': '#ffa500',
-                'purple': '#800080',
-                'pink': '#ffc0cb',
-                'gray': '#808080',
-                'grey': '#808080'
-            };
-            
-            if (colorNames[color.toLowerCase()]) {
-                return colorNames[color.toLowerCase()];
-            }
-            
-            // 如果无法识别，返回原值
-            return color;
-        }
         
-        // 简化HTML，只保留颜色相关的代码
-        function simplifyHTMLForEditing(html) {
-            // 使用临时div来解析HTML
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = html;
-            
-            let result = '';
-            
-            // 递归处理节点，只保留文本和颜色
-            function processNode(node) {
-                if (node.nodeType === Node.TEXT_NODE) {
-                    // 文本节点直接返回内容
-                    return node.textContent;
-                } else if (node.nodeType === Node.ELEMENT_NODE) {
-                    const tagName = node.tagName.toLowerCase();
-                    // 处理图片容器：在源码中显示为Markdown图片链接；
-                    // 忽略操作手柄等元素
-                    if (node.classList) {
-                        if (node.classList.contains('nsn-resizable-img-container')) {
-                            const imgEl = node.querySelector('img');
-                            const src = imgEl ? (imgEl.getAttribute('src') || '') : '';
-                            const alt = imgEl ? (imgEl.getAttribute('alt') || 'image') : 'image';
-                            if (src) {
-                                const origin = node.getAttribute('data-origin');
-                                // 工具栏插入：输出为纯链接；Markdown插入：输出为MD图片
-                                if (origin === 'toolbar') {
-                                    return src + '\n';
-                                }
-                                return `![${alt}](${src})\n`;
-                            }
-                            return '';
-                        }
-                        if (node.classList.contains('nsn-resize-handle') || node.classList.contains('nsn-delete-handle')) {
-                            return '';
-                        }
-                    }
-                    
-                    // 处理换行相关的标签
-                    if (tagName === 'br') {
-                        return '\n';
-                    }
-                    if (tagName === 'div' || tagName === 'p') {
-                        // 处理子节点
-                        let childContent = '';
-                        for (let child of node.childNodes) {
-                            childContent += processNode(child);
-                        }
-                        // 块级元素后面添加换行符（除非是最后一个元素）
-                        return childContent + '\n';
-                    }
-                    
-                    let hasColor = false;
-                    let colorInfo = '';
-                    
-                    // 检查font标签，需要合并color属性和style属性
-                    if (tagName === 'font') {
-                        const stylesToApply = new Map();
-                        
-                        // 处理color属性
-                        if (node.hasAttribute('color')) {
-                            const colorValue = node.getAttribute('color');
-                            const hexColor = convertColorToHex(colorValue);
-                            stylesToApply.set('color', hexColor);
-                            hasColor = true;
-                        }
-                        
-                        // 处理style属性中的颜色和字体大小
-                        if (node.style) {
-                            if (node.style.color) {
-                                const hexColor = convertColorToHex(node.style.color);
-                                stylesToApply.set('color', hexColor); // 覆盖color属性
-                                hasColor = true;
-                            }
-                            if (node.style.backgroundColor) {
-                                const hexBgColor = convertColorToHex(node.style.backgroundColor);
-                                stylesToApply.set('background-color', hexBgColor);
-                                hasColor = true;
-                            }
-                            if (node.style.fontSize) {
-                                const fontSize = node.style.fontSize;
-                                const sizeValue = parseInt(fontSize);
-                                if (sizeValue > 32) {
-                                    stylesToApply.set('font-size', '32px');
-                                } else {
-                                    stylesToApply.set('font-size', fontSize);
-                                }
-                                hasColor = true;
-                            }
-                        }
-                        
-                        // 额外处理：如果有style属性字符串，也要解析其中的颜色
-                        if (node.hasAttribute('style')) {
-                            const styleAttr = node.getAttribute('style');
-                            // 解析background-color - 使用更强健的正则表达式
-                            const bgColorMatch = styleAttr.match(/background-color\s*:\s*([^;]+?)(?:;|$)/i);
-                            if (bgColorMatch) {
-                                const originalColor = bgColorMatch[1].trim();
-                                
-                                
-                                // 特别处理rgb格式
-                                if (originalColor.includes('rgb(')) {
-                                    const rgbMatch = originalColor.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
-                                    if (rgbMatch) {
-                                        const r = parseInt(rgbMatch[1]);
-                                        const g = parseInt(rgbMatch[2]);
-                                        const b = parseInt(rgbMatch[3]);
-                                        const hex = '#' + 
-                                            r.toString(16).padStart(2, '0') + 
-                                            g.toString(16).padStart(2, '0') + 
-                                            b.toString(16).padStart(2, '0');
-                                        stylesToApply.set('background-color', hex);
-                                        hasColor = true;
-                                    }
-                                } else {
-                                    const hexBgColor = convertColorToHex(originalColor);
-                                    stylesToApply.set('background-color', hexBgColor);
-                                    hasColor = true;
-                                }
-                            }
-                            // 解析color
-                            const colorMatch = styleAttr.match(/(?:^|;)\s*color:\s*([^;]+)/i);
-                            if (colorMatch) {
-                                const hexColor = convertColorToHex(colorMatch[1].trim());
-                                stylesToApply.set('color', hexColor);
-                                hasColor = true;
-                            }
-                            // 解析font-size
-                            const fontSizeMatch = styleAttr.match(/font-size:\s*([^;]+)/i);
-                            if (fontSizeMatch) {
-                                const fontSize = fontSizeMatch[1].trim();
-                                const sizeValue = parseInt(fontSize);
-                                if (sizeValue > 32) {
-                                    stylesToApply.set('font-size', '32px');
-                                } else {
-                                    stylesToApply.set('font-size', fontSize);
-                                }
-                                hasColor = true;
-                            }
-                        }
-                        
-                        // 生成style属性
-                        if (stylesToApply.size > 0) {
-                            const styleArray = [];
-                            for (const [property, value] of stylesToApply) {
-                                styleArray.push(`${property}: ${value}`);
-                            }
-                            colorInfo = ` style="${styleArray.join('; ')}"`;
-                        }
-                    }
-                    // 检查其他标签的style中的颜色和字体大小
-                    else if (node.style && (node.style.color || node.style.backgroundColor || node.style.fontSize)) {
-                        hasColor = true;
-                        const styles = [];
-                        if (node.style.color) {
-                            const color = convertColorToHex(node.style.color);
-                            styles.push(`color: ${color}`);
-                        }
-                        if (node.style.backgroundColor) {
-                            const bgColor = convertColorToHex(node.style.backgroundColor);
-                            styles.push(`background-color: ${bgColor}`);
-                        }
-                        if (node.style.fontSize) {
-                            // 限制字体大小最大为32px
-                            const fontSize = node.style.fontSize;
-                            const sizeValue = parseInt(fontSize);
-                            if (sizeValue > 32) {
-                                styles.push(`font-size: 32px`);
-                            } else {
-                                styles.push(`font-size: ${fontSize}`);
-                            }
-                        }
-                        if (styles.length > 0) {
-                            colorInfo = ` style="${styles.join('; ')}"`;
-                        }
-                    }
-                    
-                    // 处理子节点
-                    let childContent = '';
-                    for (let child of node.childNodes) {
-                        childContent += processNode(child);
-                    }
-                    
-                    // 只保留有颜色或字体大小的font标签
-                    if (hasColor && tagName === 'font') {
-                        // 如果内容为空（仅空格/换行），则不输出空font标签
-                        if (!/[\S]/.test(childContent)) {
-                            return '';
-                        }
-                        return `<font${colorInfo}>${childContent}</font>`;
-                    }
-                    // 其他情况只返回内容，不要标签
-                    else {
-                        return childContent;
-                    }
-                }
-                return '';
-            }
-            
-            // 处理所有子节点（保留顶层文本后的换行）
-            const topChildren = Array.from(tempDiv.childNodes);
-            for (let i = 0; i < topChildren.length; i++) {
-                const child = topChildren[i];
-                const part = processNode(child);
-                result += part;
-                // 若顶层是纯文本节点，且后面还有内容，则补一个换行，避免与下一块级内容合并
-                if (child.nodeType === Node.TEXT_NODE && /\S/.test(part) && i < topChildren.length - 1) {
-                    if (!result.endsWith('\n')) {
-                        result += '\n';
-                    }
-                }
-            }
-            
-            // 保持换行符，只清理多余的空格和多余的连续换行符，并清理空的font标签
-            result = result.replace(/[ \t]+/g, ' ') // 清理多余空格和制表符
-                          .replace(/\r\n/g, '\n') // 统一换行
-                          .replace(/\n{3,}/g, '\n\n') // 最多保留两个连续换行符
-                          // 清理空的font标签（包含空格/换行的情形）
-                          .replace(/<font[^>]*>\s*<\/font>/gi, '')
-                          .trim();
-            
-            return result;
-        }
         
-        // 将HTML转换为Markdown格式
-        function convertHTMLToMarkdown(html) {
-            let markdown = html;
-            
-            // 转换可调整大小的图片容器为Markdown语法
-            markdown = markdown.replace(
-                /<div class="nsn-resizable-img-container"[^>]*><img src="([^"]*)"[^>]*alt="([^"]*)"[^>]*><div class="nsn-resize-handle"[^>]*><\/div><\/div>/g,
-                '![$2]($1)'
-            );
-            
-            // 处理没有alt属性的图片
-            markdown = markdown.replace(
-                /<div class="nsn-resizable-img-container"[^>]*><img src="([^"]*)"[^>]*><div class="nsn-resize-handle"[^>]*><\/div><\/div>/g,
-                '![image]($1)'
-            );
-            
-            // 转换标题
-            markdown = markdown.replace(/<h1[^>]*>(.*?)<\/h1>/gs, '# $1');
-            markdown = markdown.replace(/<h2[^>]*>(.*?)<\/h2>/gs, '## $1');
-            markdown = markdown.replace(/<h3[^>]*>(.*?)<\/h3>/gs, '### $1');
-            
-            // 转换粗体和斜体
-            markdown = markdown.replace(/<strong[^>]*>(.*?)<\/strong>/gs, '**$1**');
-            markdown = markdown.replace(/<b[^>]*>(.*?)<\/b>/gs, '**$1**');
-            markdown = markdown.replace(/<em[^>]*>(.*?)<\/em>/gs, '*$1*');
-            markdown = markdown.replace(/<i[^>]*>(.*?)<\/i>/gs, '*$1*');
-            
-            // 转换引用
-            markdown = markdown.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gs, '> $1');
-            
-            // 转换代码块
-            markdown = markdown.replace(/<div class="nsn-code-wrapper"[^>]*>.*?<pre class="nsn-code-block"[^>]*>(.*?)<\/pre><\/div>/gs, '```\n$1\n```');
-            
-            // 转换行内代码
-            markdown = markdown.replace(/<code[^>]*>(.*?)<\/code>/gs, '`$1`');
-            
-            // 转换链接
-            markdown = markdown.replace(/<span class="nsn-editable-link"[^>]*data-href="([^"]*)"[^>]*>(.*?)<\/span>/gs, '[$2]($1)');
-            markdown = markdown.replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gs, '[$2]($1)');
-            
-            // 转换列表
-            markdown = markdown.replace(/<ul[^>]*>(.*?)<\/ul>/gs, '$1');
-            markdown = markdown.replace(/<ol[^>]*>(.*?)<\/ol>/gs, '$1');
-            markdown = markdown.replace(/<li[^>]*>(.*?)<\/li>/gs, '- $1');
-            
-            // 清理常见的HTML标签
-            markdown = markdown.replace(/<div[^>]*>/g, '');
-            markdown = markdown.replace(/<\/div>/g, '');
-            markdown = markdown.replace(/<span[^>]*>/g, '');
-            markdown = markdown.replace(/<\/span>/g, '');
-            
-            // 清理段落标签
-            markdown = markdown.replace(/<p[^>]*>/g, '');
-            markdown = markdown.replace(/<\/p>/g, '\n\n');
-            
-            // 清理换行标签
-            markdown = markdown.replace(/<br\s*\/?>/g, '\n');
-            
-            // 清理其他常见标签
-            markdown = markdown.replace(/<\/?[^>]+(>|$)/g, '');
-            
-            // 清理多余的空行
-            markdown = markdown.replace(/\n{3,}/g, '\n\n');
-            
-            // 清理首尾空白
-            return markdown.trim();
-        }
         
-        // 智能将编辑后的内容转换为HTML
-        function convertEditableFormatToHTML(content) {
-            // 检测内容格式
-            const isMarkdown = detectMarkdownFormat(content);
-            
-            let result;
-            if (isMarkdown) {
-                // 如果是Markdown格式，转换为HTML
-                result = convertMarkdownToHTML(content);
-            } else {
-                // 如果是HTML格式，直接使用
-                result = content;
-            }
-            
-            // 限制字体大小最大为32px
-            result = result.replace(/font-size:\s*(\d+)px/g, (match, size) => {
-                const sizeValue = parseInt(size);
-                if (sizeValue > 32) {
-                    return 'font-size: 32px';
-                }
-                return match;
-            });
-            
-            // 转换颜色格式为十六进制
-            result = result.replace(/color:\s*([^;]+)/g, (match, color) => {
-                const hexColor = convertColorToHex(color.trim());
-                return `color: ${hexColor}`;
-            });
-            
-            result = result.replace(/background-color:\s*([^;]+)/g, (match, color) => {
-                const hexColor = convertColorToHex(color.trim());
-                return `background-color: ${hexColor}`;
-            });
-            
-            // 额外处理直接的RGB格式
-            result = result.replace(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/g, (match, r, g, b) => {
-                const hex = '#' + 
-                    parseInt(r).toString(16).padStart(2, '0') + 
-                    parseInt(g).toString(16).padStart(2, '0') + 
-                    parseInt(b).toString(16).padStart(2, '0');
-                return hex;
-            });
-            
-            return result;
-        }
         
-        // 检测内容是否为Markdown格式
-        function detectMarkdownFormat(content) {
-            const markdownPatterns = [
-                /^#{1,6}\s+/m,           // 标题
-                /!\[.*?\]\(.*?\)/,       // 图片
-                /\[.*?\]\(.*?\)/,        // 链接
-                /^\*\*.*?\*\*/m,         // 粗体
-                /^\*.*?\*/m,             // 斜体
-                /^>\s+/m,                // 引用
-                /^```/m,                 // 代码块
-                /`.*?`/,                 // 行内代码
-            ];
-            
-            // 如果包含HTML标签但不包含Markdown语法，判断为HTML
-            const hasHTMLTags = /<[^>]+>/.test(content);
-            const hasMarkdownSyntax = markdownPatterns.some(pattern => pattern.test(content));
-            
-            // 如果有Markdown语法或者没有HTML标签，判断为Markdown
-            return hasMarkdownSyntax || !hasHTMLTags;
-        }
 
-        function showSourceDialog() {
-            // 检查是否有选中的笔记
-            if (!currentNoteId) {
-                alert('请先选择一个笔记');
-                return;
-            }
 
-            // 创建源码编辑弹窗
-            const sourceModal = createElement('div', {
-                style: {
-                    position: 'fixed',
-                    top: '0',
-                    left: '0',
-                    width: '100%',
-                    height: '100%',
-                    background: 'rgba(0,0,0,0.5)',
-                    zIndex: '1000000002',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                }
-            });
-
-            const modalContent = createElement('div', {
-                style: {
-                    background: '#fff',
-                    borderRadius: '12px',
-                    padding: '20px',
-                    maxWidth: '90vw',
-                    width: '800px',
-                    maxHeight: '80vh',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                    overflow: 'hidden',
-                    display: 'flex',
-                    flexDirection: 'column'
-                }
-            });
-
-            // 标题
-            const title = createElement('div', {
-                style: {
-                    fontSize: '18px',
-                    fontWeight: '600',
-                    color: '#333',
-                    marginBottom: '16px',
-                    textAlign: 'center'
-                }
-            }, ['编辑器']);
-
-            // 源码输入区域
-            const sourceTextarea = createElement('textarea', {
-                style: {
-                    flex: '1',
-                    padding: '12px',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-                    resize: 'none',
-                    boxSizing: 'border-box',
-                    minHeight: '400px',
-                    marginBottom: '16px'
-                },
-                placeholder: '支持HTML和Markdown格式编辑...\n\n示例Markdown语法：\n# 标题\n**粗体** *斜体*\n![图片](URL)\n[链接](URL)\n> 引用\n```代码块```'
-            });
-
-            // 智能转换HTML内容为可编辑格式
-            sourceTextarea.value = convertHTMLToEditableFormat(editor.innerHTML);
-
-            // 按钮区域
-            const buttonArea = createElement('div', {
-                style: {
-                    display: 'flex',
-                    gap: '12px',
-                    justifyContent: 'flex-end'
-                }
-            });
-
-            const cancelBtn = createElement('button', {
-                style: {
-                    padding: '8px 16px',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '6px',
-                    background: '#f9fafb',
-                    color: '#374151',
-                    cursor: 'pointer'
-                }
-            }, ['取消']);
-
-            const applyBtn = createElement('button', {
-                style: {
-                    padding: '8px 16px',
-                    border: 'none',
-                    borderRadius: '6px',
-                    background: '#409eff',
-                    color: '#fff',
-                    cursor: 'pointer'
-                }
-            }, ['应用']);
-
-            buttonArea.appendChild(cancelBtn);
-            buttonArea.appendChild(applyBtn);
-
-            modalContent.appendChild(title);
-            modalContent.appendChild(sourceTextarea);
-            modalContent.appendChild(buttonArea);
-            sourceModal.appendChild(modalContent);
-            document.body.appendChild(sourceModal);
-
-            // 自动聚焦到文本框
-            sourceTextarea.focus();
-
-            // 事件处理
-            cancelBtn.addEventListener('click', () => {
-                sourceModal.remove();
-            });
-
-            applyBtn.addEventListener('click', () => {
-                // 智能转换编辑后的内容并应用到编辑器
-                const processedHtml = convertEditableFormatToHTML(sourceTextarea.value);
-                editor.innerHTML = processedHtml;
-                
-                // 重新初始化图片和表格功能
-                setTimeout(() => {
-                    attachResizeListeners();
-                    attachTableOperations();
-                }, 100);
-                
-                sourceModal.remove();
-            });
-
-            // 点击背景关闭弹窗
-            sourceModal.addEventListener('click', (e) => {
-                if (e.target === sourceModal) {
-                    sourceModal.remove();
-                }
-            });
-        }
-
-        // 绑定编辑器按钮事件（在函数定义后）
-        if (window.nsn_editorBtn) {
-            window.nsn_editorBtn.addEventListener('click', () => {
-                showSourceDialog();
-            });
-        }
 
         function attachResizeListeners() {
-            const containers = editor.querySelectorAll('.nsn-resizable-img-container:not([data-listeners-attached])');
+            // 重新绑定所有图片容器的事件，由内部幂等检查避免重复
+            const containers = editor.querySelectorAll('.nsn-resizable-img-container');
             containers.forEach(container => {
                 attachResizeListenersToContainer(container);
             });
@@ -3687,6 +2525,48 @@
             }
             
             if (!img || !handle) return;
+            
+            // 初始化：将图片初始显示尺寸限制为与拖拽放大一致的最大值，避免初始尺寸过大
+            if (!container.getAttribute('data-size-clamped')) {
+                const clampToMax = () => {
+                    const rect = img.getBoundingClientRect();
+                    let curW = rect.width || img.offsetWidth || parseFloat(getComputedStyle(img).width) || 0;
+                    let curH = rect.height || img.offsetHeight || parseFloat(getComputedStyle(img).height) || 0;
+                    if ((!curW || !curH) && img.naturalWidth && img.naturalHeight) {
+                        curW = img.naturalWidth;
+                        curH = img.naturalHeight;
+                    }
+                    if (!curW || !curH) return;
+
+                    const aspect = curW / curH;
+                    const maxWidth = editor.offsetWidth - 40;
+                    const bottomBar = editor.parentElement.querySelector('.nsn-bottom');
+                    const bottomBarHeight = bottomBar ? bottomBar.offsetHeight + 20 : 60;
+                    const maxHeight = editor.offsetHeight - bottomBarHeight;
+
+                    let targetW = Math.min(curW, maxWidth);
+                    let targetH = targetW / aspect;
+                    if (targetH > maxHeight) {
+                        targetH = maxHeight;
+                        targetW = targetH * aspect;
+                        if (targetW > maxWidth) {
+                            targetW = maxWidth;
+                            targetH = targetW / aspect;
+                        }
+                    }
+
+                    img.style.width = Math.round(targetW) + 'px';
+                    img.style.height = Math.round(targetH) + 'px';
+                    img.style.maxWidth = 'none';
+                    container.setAttribute('data-size-clamped', '1');
+                };
+
+                if (!img.complete || img.naturalWidth === 0) {
+                    img.addEventListener('load', clampToMax, { once: true });
+                } else {
+                    clampToMax();
+                }
+            }
             
             // 鼠标进入显示拖拽手柄
             const mouseEnterHandler = () => {
@@ -4012,15 +2892,22 @@
             }
         });
         historyBtn.addEventListener('click', showHistoryDialog);
-        attachmentBtn.addEventListener('click', showAttachmentDialog);
+
         trashBtn.addEventListener('click', showTrashDialog);
         deleteNoteBtn.addEventListener('click', deleteCurrentNote);
-        exportBtn.addEventListener('click', exportAll);
-        importBtn.addEventListener('click', importAll);
 
         // 首次渲染
         renderCategories();
+        
+        // 尝试恢复上次选择的笔记
+        const restored = restoreLastSelectedNote();
+        
         renderNotes();
+        
+        // 如果没有恢复任何笔记，更新保存状态和按钮文本
+        if (!restored) {
+            updateSaveState();
+        }
         
         // 初始化按钮文本
         updateButtonTexts();
@@ -4299,7 +3186,7 @@
         /* 内容两列 */
         .nsn-content{display:flex;gap:12px;flex:1;min-height:0;overflow:hidden}
         .nsn-mid{width:260px;display:flex;flex-direction:column;min-width:220px}
-        .nsn-notelist{flex:1;background:#fff;border:1px solid #eef2f7;border-radius:10px;padding:8px;overflow:auto;max-height:500px;margin-top:30px}
+        .nsn-notelist{flex:1;background:#fff;border:1px solid #eef2f7;border-radius:10px;padding:8px;overflow:auto;max-height:none;margin-top:30px}
         .nsn-notelist::-webkit-scrollbar{width:16px}
         .nsn-notelist::-webkit-scrollbar-track{background:#f1f1f1;border-radius:8px}
         .nsn-notelist::-webkit-scrollbar-thumb{background:#c1c1c1;border-radius:8px;border:2px solid #f1f1f1}
@@ -4485,61 +3372,7 @@
         .nsn-table-btn[style*="color: #ef4444"]:hover{background:#fef2f2;color:#dc2626}
         .nsn-table-container:hover .nsn-table-toolbar{display:flex}
         
-        /* 附件样式 */
-        .nsn-editor .nsn-attachment-image,
-        .nsn-editor .nsn-attachment-video,
-        .nsn-editor .nsn-attachment-audio,
-        .nsn-editor .nsn-attachment-file {
-            margin: 10px 0;
-            padding: 10px;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            background: #f9fafb;
-            transition: all 0.2s ease;
-        }
-        .nsn-editor .nsn-attachment-image:hover,
-        .nsn-editor .nsn-attachment-video:hover,
-        .nsn-editor .nsn-attachment-audio:hover,
-        .nsn-editor .nsn-attachment-file:hover {
-            border-color: #409eff;
-            box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
-        }
-        .nsn-editor .nsn-attachment-file {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        .nsn-editor .nsn-attachment-file button {
-            padding: 6px 12px;
-            background: #409eff;
-            color: #fff;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: background-color 0.2s ease;
-        }
-        .nsn-editor .nsn-attachment-file button:hover {
-            background: #66b3ff;
-        }
-        /* 附件删除按钮样式 */
-        .nsn-editor .nsn-attachment-delete {
-            background: #ef4444 !important;
-            color: #fff !important;
-            border: none !important;
-            border-radius: 3px !important;
-            cursor: pointer !important;
-            font-size: 11px !important;
-            padding: 2px 6px !important;
-            transition: background-color 0.2s ease !important;
-        }
-        .nsn-editor .nsn-attachment-delete:hover {
-            background: #dc2626 !important;
-        }
-        .nsn-editor .nsn-attachment-file .nsn-attachment-delete {
-            font-size: 12px !important;
-            padding: 6px 12px !important;
-        }
+
         
         /* Markdown弹窗样式 */
         .nsn-markdown-modal {
@@ -5034,17 +3867,51 @@
         }
     }
 
+    // 导出笔记数据（供配置同步使用）
+    function exportNotesData() {
+        return {
+            categories: readJSON(LS_KEYS.categories, []),
+            notes: readJSON(LS_KEYS.notes, {}),
+            fontColors: readJSON(LS_KEYS.fontColors, []),
+            bgColors: readJSON(LS_KEYS.bgColors, []),
+            trash: readJSON(LS_KEYS.trash, []), // 添加回收站数据
+            lastSelectedNote: readJSON(LS_KEYS.lastSelectedNote, null)
+        };
+    }
+
+    // 导入笔记数据（供配置同步使用）
+    function importNotesData(data) {
+        try {
+            if (data.categories && Array.isArray(data.categories)) {
+                writeJSON(LS_KEYS.categories, data.categories);
+            }
+            if (data.notes && typeof data.notes === 'object') {
+                writeJSON(LS_KEYS.notes, data.notes);
+            }
+            if (data.fontColors && Array.isArray(data.fontColors)) {
+                writeJSON(LS_KEYS.fontColors, data.fontColors);
+            }
+            if (data.bgColors && Array.isArray(data.bgColors)) {
+                writeJSON(LS_KEYS.bgColors, data.bgColors);
+            }
+            if (data.trash && Array.isArray(data.trash)) {
+                writeJSON(LS_KEYS.trash, data.trash); // 添加回收站数据导入
+            }
+            if (data.lastSelectedNote) {
+                writeJSON(LS_KEYS.lastSelectedNote, data.lastSelectedNote);
+            }
+            return true;
+        } catch (error) {
+            console.error('导入笔记数据失败:', error);
+            return false;
+        }
+    }
+
     window.NodeSeekNotes = {
-        showNotesDialog: buildDialog
+        showNotesDialog: buildDialog,
+        exportNotesData: exportNotesData,
+        importNotesData: importNotesData
     };
     
-    // 暴露下载函数到全局作用域，供笔记中的下载按钮使用
-    window.downloadAttachmentFromNote = function(fileName, fileData) {
-        const link = document.createElement('a');
-        link.href = fileData;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
+
 })();
