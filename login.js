@@ -24,7 +24,7 @@
             } else {
                 console.log(`[配置同步] ${message}`);
             }
-            
+
             // 显示界面提示
             this.showToast(message, type);
         },
@@ -41,11 +41,11 @@
             const toast = document.createElement('div');
             toast.id = 'nodeseek-login-toast';
             toast.textContent = message;
-            
+
             // 根据类型设置样式
             let backgroundColor = '#2196F3'; // 默认蓝色
             let textColor = '#fff';
-            
+
             if (type === 'error') {
                 backgroundColor = '#f44336'; // 红色
             } else if (type === 'success') {
@@ -53,7 +53,7 @@
             } else if (type === 'warning') {
                 backgroundColor = '#ff9800'; // 橙色
             }
-            
+
             toast.style.cssText = `
                 position: fixed;
                 top: 20px;
@@ -109,13 +109,16 @@
 
         // HTTP请求（带重试机制）
         request: async function(url, options = {}) {
+            // 检测是否为同步操作，使用更长的超时和重试
+            const isSyncOperation = url.includes('/api/sync');
+
             const defaultOptions = {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                timeout: 15000, // 15秒超时
-                retries: 2, // 重试次数
-                retryDelay: 1000, // 重试延迟（毫秒）
+                timeout: isSyncOperation ? 60000 : 15000, // 同步操作60秒，其他15秒
+                retries: isSyncOperation ? 5 : 2, // 同步操作更多重试次数
+                retryDelay: isSyncOperation ? 2000 : 1000, // 同步操作更长延迟
             };
 
             if (authToken) {
@@ -139,12 +142,12 @@
                 const controller = new AbortController();
                 const timeout = finalOptions.timeout || 15000;
                 const timeoutId = setTimeout(() => controller.abort(), timeout);
-                
+
                 const requestOptions = {
                     ...finalOptions,
                     signal: controller.signal
                 };
-                
+
                 // 移除自定义选项
                 delete requestOptions.timeout;
                 delete requestOptions.retries;
@@ -153,7 +156,7 @@
                 try {
                     const response = await fetch(url, requestOptions);
                     clearTimeout(timeoutId);
-                    
+
                     // 检查响应是否成功
                     if (!response.ok) {
                         let errorMessage;
@@ -163,26 +166,26 @@
                         } catch {
                             errorMessage = `HTTP ${response.status}: ${response.statusText}`;
                         }
-                        
+
                         // 对于某些状态码，不需要重试
                         if (response.status === 401 || response.status === 403 || response.status === 404) {
                             throw new Error(errorMessage);
                         }
-                        
+
                         lastError = new Error(errorMessage);
                         if (attempt === maxRetries) throw lastError;
-                        
+
                         // 等待后重试
                         await new Promise(resolve => setTimeout(resolve, finalOptions.retryDelay || 1000));
                         continue;
                     }
-                    
+
                     // 解析JSON响应
                     const data = await response.json();
                     return data;
                 } catch (error) {
                     clearTimeout(timeoutId);
-                    
+
                     // 处理不同类型的错误
                     if (error.name === 'AbortError') {
                         lastError = new Error('请求超时，请检查网络连接');
@@ -193,36 +196,46 @@
                     } else {
                         lastError = error;
                     }
-                    
+
                     // 对于网络错误，尝试重试
                     if (attempt < maxRetries && (error.name === 'AbortError' || error instanceof TypeError)) {
-                        console.log(`请求失败，${finalOptions.retryDelay}ms后进行第${attempt + 1}次重试...`);
-                        await new Promise(resolve => setTimeout(resolve, finalOptions.retryDelay || 1000));
+                        const retryDelay = finalOptions.retryDelay || 1000;
+                        console.log(`请求失败，${retryDelay}ms后进行第${attempt + 1}次重试...`);
+
+                        // 同步操作显示重试提示
+                        if (isSyncOperation) {
+                            if (typeof Utils.showMessage === 'function') {
+                                const errorType = error.name === 'AbortError' ? '请求超时' : '网络连接失败';
+                                Utils.showMessage(`${errorType}，正在重试... (${attempt + 1}/${maxRetries})`, 'warning');
+                            }
+                        }
+
+                        await new Promise(resolve => setTimeout(resolve, retryDelay));
                         continue;
                     }
-                    
+
                     console.error('Request failed after all retries:', lastError);
                     throw lastError;
                 }
             }
-            
+
             throw lastError;
         },
 
         // 获取所有配置数据
         getAllConfig: function(selectedItems) {
             const config = {};
-            
+
             // 如果没有选择特定项目，默认获取所有配置
             if (!selectedItems || selectedItems.length === 0) {
-                selectedItems = ['blacklist', 'friends', 'favorites', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'hotTopicsData'];
+                selectedItems = ['blacklist', 'friends', 'favorites', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'hotTopicsData', 'filterData', 'notesData'];
             }
-            
+
             // 获取黑名单数据
             if (selectedItems.includes('blacklist')) {
                 config.blacklist = JSON.parse(localStorage.getItem('nodeseek_blacklist') || '{}');
             }
-            
+
             // 获取好友数据
             if (selectedItems.includes('friends')) {
                 try {
@@ -235,22 +248,22 @@
                     config.friends = {};
                 }
             }
-            
+
             // 获取收藏数据
             if (selectedItems.includes('favorites')) {
                 config.favorites = JSON.parse(localStorage.getItem('nodeseek_favorites') || '[]');
             }
-            
+
             // 获取操作日志
             if (selectedItems.includes('logs')) {
                 config.logs = JSON.parse(localStorage.getItem('nodeseek_sign_logs') || '[]');
             }
-            
+
             // 获取浏览历史
             if (selectedItems.includes('browseHistory')) {
                 config.browseHistory = JSON.parse(localStorage.getItem('nodeseek_browse_history') || '[]');
             }
-            
+
             // 获取快捷回复数据
             if (selectedItems.includes('quickReplies')) {
                 try {
@@ -278,7 +291,7 @@
                     config.emojiFavorites = [];
                 }
             }
-            
+
             // 获取鸡腿统计数据
             if (selectedItems.includes('chickenLegStats')) {
                 try {
@@ -290,7 +303,7 @@
                         const nextAllow = localStorage.getItem('nodeseek_chicken_leg_next_allow');
                         const lastHtml = localStorage.getItem('nodeseek_chicken_leg_last_html');
                         const history = localStorage.getItem('nodeseek_chicken_leg_history');
-                        
+
                         if (lastFetch || nextAllow || lastHtml || history) {
                             config.chickenLegStats = {
                                 lastFetch: lastFetch,
@@ -304,7 +317,7 @@
                     console.error('获取鸡腿统计数据失败:', error);
                 }
             }
-            
+
             // 获取热点统计数据
             if (selectedItems.includes('hotTopicsData')) {
                 const hotTopicsData = {};
@@ -314,31 +327,31 @@
                     if (rssHistory) {
                         hotTopicsData.rssHistory = JSON.parse(rssHistory);
                     }
-                    
+
                     // 热词历史数据
                     const hotWordsHistory = localStorage.getItem('nodeseek_hot_words_history');
                     if (hotWordsHistory) {
                         hotTopicsData.hotWordsHistory = JSON.parse(hotWordsHistory);
                     }
-                    
+
                     // 时间分布统计数据
                     const timeDistributionHistory = localStorage.getItem('nodeseek_time_distribution_history');
                     if (timeDistributionHistory) {
                         hotTopicsData.timeDistributionHistory = JSON.parse(timeDistributionHistory);
                     }
-                    
+
                     // 用户统计数据
                     const userStatsHistory = localStorage.getItem('nodeseek_user_stats_history');
                     if (userStatsHistory) {
                         hotTopicsData.userStatsHistory = JSON.parse(userStatsHistory);
                     }
-                    
+
                     // 全局状态数据
                     const globalState = localStorage.getItem('nodeseek_focus_global_state');
                     if (globalState) {
                         hotTopicsData.globalState = JSON.parse(globalState);
                     }
-                    
+
                     // 只在有数据时才添加到配置中
                     if (Object.keys(hotTopicsData).length > 0) {
                         config.hotTopicsData = hotTopicsData;
@@ -347,7 +360,7 @@
                     console.error('获取热点统计数据失败:', error);
                 }
             }
-            
+
             // 获取关键词过滤数据
             if (selectedItems.includes('filterData')) {
                 const filterData = {};
@@ -357,43 +370,71 @@
                     if (customKeywords) {
                         filterData.customKeywords = JSON.parse(customKeywords);
                     }
-                    
+
                     // 显示关键词
                     const displayKeywords = localStorage.getItem('ns-filter-keywords');
                     if (displayKeywords) {
                         filterData.displayKeywords = JSON.parse(displayKeywords);
                     }
-                    
+
                     // 高亮关键词
                     const highlightKeywords = localStorage.getItem('ns-filter-highlight-keywords');
                     if (highlightKeywords) {
                         filterData.highlightKeywords = JSON.parse(highlightKeywords);
                     }
-                    
+
                     // 高亮作者选项
                     const highlightAuthorEnabled = localStorage.getItem('ns-filter-highlight-author-enabled');
                     if (highlightAuthorEnabled) {
                         filterData.highlightAuthorEnabled = JSON.parse(highlightAuthorEnabled);
                     }
-                    
+
                     // 高亮颜色
                     const highlightColor = localStorage.getItem('ns-filter-highlight-color');
                     if (highlightColor) {
                         filterData.highlightColor = highlightColor;
                     }
-                    
+
                     // 弹窗位置
                     const dialogPosition = localStorage.getItem('ns-filter-dialog-position');
                     if (dialogPosition) {
                         filterData.dialogPosition = JSON.parse(dialogPosition);
                     }
-                    
+
                     // 只在有数据时才添加到配置中
                     if (Object.keys(filterData).length > 0) {
                         config.filterData = filterData;
                     }
                 } catch (error) {
                     console.error('获取关键词过滤数据失败:', error);
+                }
+            }
+
+            // 获取笔记数据
+            if (selectedItems.includes('notesData')) {
+                try {
+                    if (window.NodeSeekNotes && typeof window.NodeSeekNotes.exportNotesData === 'function') {
+                        config.notesData = window.NodeSeekNotes.exportNotesData();
+                    } else {
+                        // 如果模块未加载，尝试直接从localStorage获取
+                        const categories = localStorage.getItem('nodeseek_notes_categories');
+                        const notes = localStorage.getItem('nodeseek_notes_data');
+                        const fontColors = localStorage.getItem('nodeseek_notes_font_colors');
+                        const bgColors = localStorage.getItem('nodeseek_notes_bg_colors');
+                        const lastSelectedNote = localStorage.getItem('nodeseek_notes_last_selected');
+
+                        if (categories || notes || fontColors || bgColors || lastSelectedNote) {
+                            config.notesData = {
+                                categories: categories ? JSON.parse(categories) : [],
+                                notes: notes ? JSON.parse(notes) : {},
+                                fontColors: fontColors ? JSON.parse(fontColors) : [],
+                                bgColors: bgColors ? JSON.parse(bgColors) : [],
+                                lastSelectedNote: lastSelectedNote ? JSON.parse(lastSelectedNote) : null
+                            };
+                        }
+                    }
+                } catch (error) {
+                    console.error('获取笔记数据失败:', error);
                 }
             }
 
@@ -404,12 +445,12 @@
         // 应用配置数据
         applyConfig: function(config, selectedItems) {
             let applied = [];
-            
+
             // 如果没有选择特定项目，默认应用所有配置
             if (!selectedItems || selectedItems.length === 0) {
                 selectedItems = ['blacklist', 'friends', 'favorites', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'hotTopicsData'];
             }
-            
+
             try {
                 // 应用黑名单数据
                 if (selectedItems.includes('blacklist') && config.blacklist) {
@@ -451,7 +492,7 @@
                     if (!config.quickReplies.categoryOrder) {
                         config.quickReplies.categoryOrder = Object.keys(config.quickReplies).filter(key => key !== 'categoryOrder');
                     }
-                    
+
                     if (window.NodeSeekQuickReply && typeof window.NodeSeekQuickReply.setQuickReplies === 'function') {
                         window.NodeSeekQuickReply.setQuickReplies(config.quickReplies);
                     } else {
@@ -478,22 +519,22 @@
                         } else {
                             // 如果模块未加载，直接保存到localStorage的相应键中
                             let importedCount = 0;
-                            
+
                             if (config.chickenLegStats.lastFetch) {
                                 localStorage.setItem('nodeseek_chicken_leg_last_fetch', config.chickenLegStats.lastFetch);
                                 importedCount++;
                             }
-                            
+
                             if (config.chickenLegStats.nextAllow) {
                                 localStorage.setItem('nodeseek_chicken_leg_next_allow', config.chickenLegStats.nextAllow);
                                 importedCount++;
                             }
-                            
+
                             if (config.chickenLegStats.lastHtml) {
                                 localStorage.setItem('nodeseek_chicken_leg_last_html', config.chickenLegStats.lastHtml);
                                 importedCount++;
                             }
-                            
+
                             if (config.chickenLegStats.history && Array.isArray(config.chickenLegStats.history)) {
                                 localStorage.setItem('nodeseek_chicken_leg_history', JSON.stringify(config.chickenLegStats.history));
                                 applied.push(`鸡腿统计(${config.chickenLegStats.history.length}条记录)`);
@@ -512,37 +553,37 @@
                     try {
                         const hotData = config.hotTopicsData;
                         let hotImportCount = 0;
-                        
+
                         // 导入RSS历史数据
                         if (hotData.rssHistory && Array.isArray(hotData.rssHistory)) {
                             localStorage.setItem('nodeseek_rss_history', JSON.stringify(hotData.rssHistory));
                             hotImportCount++;
                         }
-                        
+
                         // 导入热词历史数据
                         if (hotData.hotWordsHistory && Array.isArray(hotData.hotWordsHistory)) {
                             localStorage.setItem('nodeseek_hot_words_history', JSON.stringify(hotData.hotWordsHistory));
                             hotImportCount++;
                         }
-                        
+
                         // 导入时间分布数据
                         if (hotData.timeDistributionHistory && Array.isArray(hotData.timeDistributionHistory)) {
                             localStorage.setItem('nodeseek_time_distribution_history', JSON.stringify(hotData.timeDistributionHistory));
                             hotImportCount++;
                         }
-                        
+
                         // 导入用户统计数据
                         if (hotData.userStatsHistory && Array.isArray(hotData.userStatsHistory)) {
                             localStorage.setItem('nodeseek_user_stats_history', JSON.stringify(hotData.userStatsHistory));
                             hotImportCount++;
                         }
-                        
+
                         // 导入全局状态数据
                         if (hotData.globalState && typeof hotData.globalState === 'object') {
                             localStorage.setItem('nodeseek_focus_global_state', JSON.stringify(hotData.globalState));
                             hotImportCount++;
                         }
-                        
+
                         if (hotImportCount > 0) {
                             applied.push(`热点统计(${hotImportCount}项)`);
                         }
@@ -556,40 +597,40 @@
                 if (selectedItems.includes('filterData') && config.filterData && typeof config.filterData === 'object') {
                     try {
                         let filterImportCount = 0;
-                        
+
                         // 导入屏蔽关键词
                         if (config.filterData.customKeywords && Array.isArray(config.filterData.customKeywords)) {
                             localStorage.setItem('ns-filter-custom-keywords', JSON.stringify(config.filterData.customKeywords));
                             filterImportCount += config.filterData.customKeywords.length;
                         }
-                        
+
                         // 导入显示关键词
                         if (config.filterData.displayKeywords && Array.isArray(config.filterData.displayKeywords)) {
                             localStorage.setItem('ns-filter-keywords', JSON.stringify(config.filterData.displayKeywords));
                         }
-                        
+
                         // 导入高亮关键词
                         let highlightImportCount = 0;
                         if (config.filterData.highlightKeywords && Array.isArray(config.filterData.highlightKeywords)) {
                             localStorage.setItem('ns-filter-highlight-keywords', JSON.stringify(config.filterData.highlightKeywords));
                             highlightImportCount = config.filterData.highlightKeywords.length;
                         }
-                        
+
                         // 导入高亮作者选项
                         if (config.filterData.highlightAuthorEnabled !== undefined) {
                             localStorage.setItem('ns-filter-highlight-author-enabled', JSON.stringify(config.filterData.highlightAuthorEnabled));
                         }
-                        
+
                         // 导入高亮颜色
                         if (config.filterData.highlightColor) {
                             localStorage.setItem('ns-filter-highlight-color', config.filterData.highlightColor);
                         }
-                        
+
                         // 导入弹窗位置
                         if (config.filterData.dialogPosition && typeof config.filterData.dialogPosition === 'object') {
                             localStorage.setItem('ns-filter-dialog-position', JSON.stringify(config.filterData.dialogPosition));
                         }
-                        
+
                         if (filterImportCount > 0 || highlightImportCount > 0) {
                             const parts = [];
                             if (filterImportCount > 0) parts.push(`${filterImportCount}个屏蔽词`);
@@ -601,6 +642,42 @@
                     } catch (error) {
                         console.error('应用关键词过滤数据失败:', error);
                         applied.push("关键词过滤(失败)");
+                    }
+                }
+
+                // 应用笔记数据
+                if (selectedItems.includes('notesData') && config.notesData && typeof config.notesData === 'object') {
+                    try {
+                        if (window.NodeSeekNotes && typeof window.NodeSeekNotes.importNotesData === 'function') {
+                            const success = window.NodeSeekNotes.importNotesData(config.notesData);
+                            if (success) {
+                                applied.push("笔记");
+                            } else {
+                                applied.push("笔记(失败)");
+                            }
+                        } else {
+                            // 如果模块未加载，直接操作localStorage
+                            const notesData = config.notesData;
+                            if (notesData.categories && Array.isArray(notesData.categories)) {
+                                localStorage.setItem('nodeseek_notes_categories', JSON.stringify(notesData.categories));
+                            }
+                            if (notesData.notes && typeof notesData.notes === 'object') {
+                                localStorage.setItem('nodeseek_notes_data', JSON.stringify(notesData.notes));
+                            }
+                            if (notesData.fontColors && Array.isArray(notesData.fontColors)) {
+                                localStorage.setItem('nodeseek_notes_font_colors', JSON.stringify(notesData.fontColors));
+                            }
+                            if (notesData.bgColors && Array.isArray(notesData.bgColors)) {
+                                localStorage.setItem('nodeseek_notes_bg_colors', JSON.stringify(notesData.bgColors));
+                            }
+                            if (notesData.lastSelectedNote) {
+                                localStorage.setItem('nodeseek_notes_last_selected', JSON.stringify(notesData.lastSelectedNote));
+                            }
+                            applied.push("笔记");
+                        }
+                    } catch (error) {
+                        console.error('应用笔记数据失败:', error);
+                        applied.push("笔记(失败)");
                     }
                 }
 
@@ -748,7 +825,7 @@
                     method: 'GET',
                     retries: 1 // 减少重试次数，因为token验证失败通常不是网络问题
                 });
-                
+
                 if (data.success) {
                     currentUser = data.user;
                     localStorage.setItem(CONFIG.USER_KEY, JSON.stringify(currentUser));
@@ -783,7 +860,7 @@
             const dialog = document.createElement('div');
             dialog.id = 'config-selection-dialog';
             const isMobile = window.innerWidth <= 768;
-            
+
             dialog.style.cssText = `
                 position: fixed;
                 top: 50%;
@@ -857,7 +934,8 @@
                 { key: 'emojiFavorites', label: '常用表情' },
                 { key: 'chickenLegStats', label: '鸡腿统计' },
                 { key: 'hotTopicsData', label: '热点统计' },
-                { key: 'filterData', label: '关键词过滤' }
+                { key: 'filterData', label: '关键词过滤' },
+                { key: 'notesData', label: '笔记' }
             ];
 
             // 全选/取消全选
@@ -912,7 +990,7 @@
                     cursor: pointer;
                     white-space: nowrap;
                 `;
-                
+
                 // 添加hover效果
                 item.onmouseover = () => {
                     item.style.backgroundColor = '#e9ecef';
@@ -951,10 +1029,10 @@
 
                 // 点击整个item区域切换checkbox状态
                 item.onclick = toggleCheckbox;
-                
+
                 // 点击label文本切换checkbox状态
                 label.onclick = toggleCheckbox;
-                
+
                 // 阻止checkbox的默认行为，使用我们的统一处理
                 checkbox.onclick = (e) => {
                     e.preventDefault();
@@ -1023,7 +1101,7 @@
                 box-shadow: 0 1px 2px rgba(24,144,255,0.3);
                 overflow: hidden;
             `;
-            
+
             // 添加闪烁效果
             const progressShine = document.createElement('div');
             progressShine.style.cssText = `
@@ -1035,7 +1113,7 @@
                 background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
                 animation: shine 2s infinite;
             `;
-            
+
             // 添加CSS动画
             const style = document.createElement('style');
             style.textContent = `
@@ -1045,12 +1123,12 @@
                     100% { left: 100%; }
                 }
             `;
-            
+
             if (!document.head.querySelector('style[data-progress-shine]')) {
                 style.setAttribute('data-progress-shine', 'true');
                 document.head.appendChild(style);
             }
-            
+
             progressFill.appendChild(progressShine);
 
             progressBar.appendChild(progressFill);
@@ -1110,43 +1188,52 @@
                 const originalText = confirmBtn.textContent;
                 confirmBtn.textContent = mode === 'upload' ? '上传中...' : '下载中...';
                 confirmBtn.style.background = '#ccc';
-                
+
                 // 显示进度条
                 progressContainer.style.display = 'block';
                 progressLabel.textContent = mode === 'upload' ? '准备上传配置...' : '准备下载配置...';
                 progressFill.style.width = '10%';
-                
+
                 let opSuccess = false;
                 try {
                     // 进度步骤1：数据准备
                     progressLabel.textContent = mode === 'upload' ? '正在收集配置数据...' : '正在获取服务器配置...';
                     progressFill.style.width = '30%';
                     await new Promise(resolve => setTimeout(resolve, 200));
-                    
+
                     // 进度步骤2：执行同步
-                    progressLabel.textContent = mode === 'upload' ? '正在上传配置...' : '正在应用配置...';
+                    if (mode === 'upload') {
+                        // 显示配置大小信息
+                        const tempConfig = Utils.getAllConfig(selectedItems);
+                        const tempConfigJson = JSON.stringify({ config: tempConfig });
+                        const tempConfigSize = new Blob([tempConfigJson]).size;
+                        const tempConfigSizeMB = (tempConfigSize / (1024 * 1024)).toFixed(2);
+                        progressLabel.textContent = `正在上传配置 (${tempConfigSizeMB}MB)...`;
+                    } else {
+                        progressLabel.textContent = '正在应用配置...';
+                    }
                     progressFill.style.width = '70%';
                     // 通知开始（只在用户真正点击确认后触发）
                     try { window.dispatchEvent(new CustomEvent('ns-sync-start', { detail: { mode } })); } catch (e) {}
-                    
+
                     // 执行同步操作
                     opSuccess = await callback(selectedItems);
-                    
+
                     // 进度步骤3：完成
                     progressLabel.textContent = mode === 'upload' ? '上传完成!' : '下载完成!';
                     progressFill.style.width = '100%';
                     progressShine.style.animation = 'none'; // 停止闪烁动画
-                    
+
                     // 等待一下让用户看到完成状态
                     await new Promise(resolve => setTimeout(resolve, 800));
-                    
+
                 } catch (error) {
                     console.error('同步操作失败:', error);
                     progressLabel.textContent = '同步失败';
                     progressFill.style.background = 'linear-gradient(90deg, #f44336, #e57373)';
                     progressFill.style.width = '100%';
                     progressShine.style.animation = 'none'; // 停止闪烁动画
-                    
+
                     // 等待一下让用户看到失败状态
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 } finally {
@@ -1155,7 +1242,7 @@
                     progressFill.style.width = '0%';
                     progressFill.style.background = 'linear-gradient(90deg, #1890ff, #40a9ff)';
                     progressShine.style.animation = 'shine 2s infinite'; // 恢复闪烁动画
-                    
+
                     // 恢复按钮状态并关闭对话框
                     confirmBtn.disabled = false;
                     cancelBtn.disabled = false;
@@ -1188,7 +1275,7 @@
             dialog.appendChild(buttonContainer);
 
             document.body.appendChild(dialog);
-            
+
             // 使对话框可拖动
             UI.makeDraggable(dialog);
         },
@@ -1207,11 +1294,26 @@
                     try {
                         // 收集配置数据
                         const config = Utils.getAllConfig(selectedItems);
-                        
+
+                        // 计算配置数据大小并动态调整超时时间
+                        const configJson = JSON.stringify({ config });
+                        const configSize = new Blob([configJson]).size; // 字节数
+                        const configSizeMB = configSize / (1024 * 1024);
+
+                        // 根据文件大小动态计算超时时间：基础60秒 + 每MB额外30秒
+                        let dynamicTimeout = 60000; // 基础60秒
+                        if (configSizeMB > 1) {
+                            dynamicTimeout += Math.ceil(configSizeMB - 1) * 30000; // 每MB额外30秒
+                        }
+
+                        // 最大超时时间限制为5分钟
+                        dynamicTimeout = Math.min(dynamicTimeout, 300000);
+
                         // 发送到服务器
                         const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`, {
                             method: 'POST',
-                            body: JSON.stringify({ config })
+                            body: configJson,
+                            timeout: dynamicTimeout
                         });
 
                         if (data.success) {
@@ -1226,12 +1328,13 @@
                                     'emojiFavorites': '常用表情',
                                     'chickenLegStats': '鸡腿统计',
                                     'hotTopicsData': '热点统计',
-                                    'filterData': '关键词过滤'
+                                    'filterData': '关键词过滤',
+                                    'notesData': '笔记'
                                 }[item];
                                 return option || item;
                             });
                             Utils.showMessage(`配置已同步到服务器 (${itemNames.join('、')})`, 'success');
-                            
+
                             // 延迟更新存储空间信息，确保对话框关闭后再更新
                             setTimeout(() => {
                                 // 查找当前页面上的存储空间信息元素并更新
@@ -1240,7 +1343,7 @@
                                     UI.loadStorageInfo(currentStorageInfo);
                                 }
                             }, 500);
-                            
+
                             resolve(true);
                         } else {
                             resolve(false);
@@ -1303,7 +1406,7 @@
             const dialog = document.createElement('div');
             dialog.id = 'delete-config-dialog';
             const isMobile = window.innerWidth <= 768;
-            
+
             dialog.style.cssText = `
                 position: fixed;
                 top: 50%;
@@ -1519,34 +1622,34 @@
                 const originalText = confirmBtn.textContent;
                 confirmBtn.textContent = '清除中...';
                 confirmBtn.style.background = '#ccc';
-                
+
                 // 显示进度条
                 progressContainer.style.display = 'block';
                 progressLabel.textContent = '正在清除服务器同步数据...';
                 progressFill.style.width = '30%';
-                
+
                 try {
                     // 进度步骤
                     progressLabel.textContent = '正在发送删除请求...';
                     progressFill.style.width = '70%';
                     await new Promise(resolve => setTimeout(resolve, 200));
-                    
+
                     // 执行删除操作
                     await Sync.deleteServerConfig();
-                    
+
                     // 完成
                     progressLabel.textContent = '清除完成!';
                     progressFill.style.width = '100%';
-                    
+
                     // 等待一下让用户看到完成状态
                     await new Promise(resolve => setTimeout(resolve, 800));
-                    
+
                 } catch (error) {
                     console.error('删除操作失败:', error);
                     progressLabel.textContent = '清除失败';
                     progressFill.style.background = 'linear-gradient(90deg, #f44336, #e57373)';
                     progressFill.style.width = '100%';
-                    
+
                     // 等待一下让用户看到失败状态
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 } finally {
@@ -1581,10 +1684,10 @@
             dialog.appendChild(buttonContainer);
 
             document.body.appendChild(dialog);
-            
+
             // 使对话框可拖动
             UI.makeDraggable(dialog);
-            
+
             // 聚焦输入框
             confirmInput.focus();
         },
@@ -1607,7 +1710,7 @@
                         if (data.success && data.config) {
                             // 应用配置
                             const applied = Utils.applyConfig(data.config, selectedItems);
-                            
+
                             if (applied.length > 0) {
                                 // 延迟显示确认对话框，让成功提示先显示
                                 setTimeout(() => {
@@ -1616,7 +1719,7 @@
                                         location.reload();
                                     } else {
                                         Utils.showMessage('配置已同步，建议刷新页面以完全应用更改', 'info');
-                                        
+
                                         // 更新存储空间信息
                                         const currentStorageInfo = document.querySelector('#login-auth-dialog .storage-info-container');
                                         if (currentStorageInfo) {
@@ -1664,7 +1767,7 @@
             dialog.id = 'login-auth-dialog';
             // 检测是否为移动端
             const isMobile = window.innerWidth <= 768;
-            
+
             dialog.style.cssText = `
                 position: fixed;
                 ${isMobile ? `
@@ -1737,7 +1840,7 @@
             }
 
             document.body.appendChild(dialog);
-            
+
             // 使对话框可拖动
             this.makeDraggable(dialog);
         },
@@ -1757,7 +1860,7 @@
                 transition: border-color 0.2s ease;
             `;
             input.style.cssText = styles;
-            
+
             // 移动端禁用自动缩放
             if (isMobile) {
                 input.setAttribute('autocapitalize', 'off');
@@ -1990,7 +2093,7 @@
                     // 登录成功后更新界面（包括注册后自动登录的场景）
                     if (Auth.isLoggedIn()) {
                         container.innerHTML = '';
-                        
+
                         // 添加左上角拖拽区域
                         const dragHandle = document.createElement('div');
                         dragHandle.className = 'dialog-title-draggable'; // 添加可拖拽标识
@@ -2005,7 +2108,7 @@
                             z-index: 1;
                             user-select: none;
                         `;
-                        
+
                         const title = document.createElement('div');
                         title.textContent = '配置同步';
                         title.style.cssText = `
@@ -2015,7 +2118,7 @@
                             text-align: center;
                             user-select: none;
                         `;
-                        
+
                         const closeBtn = document.createElement('span');
                         closeBtn.textContent = '×';
                         closeBtn.style.cssText = `
@@ -2031,7 +2134,7 @@
                         container.appendChild(title);
                         container.appendChild(closeBtn);
                         this.createUserPanel(container);
-                        
+
                         // 重要：重新绑定拖拽功能
                         this.makeDraggable(container);
                     }
@@ -2055,7 +2158,7 @@
                     handleAuth(!isRegisterMode);  // 登录模式=true，注册模式=false
                 }
             };
-            
+
             // 安全码输入框也支持回车提交
             securityCodeInput.onkeydown = (e) => {
                 if (e.key === 'Enter') {
@@ -2066,7 +2169,7 @@
             // 优化按钮移动端适配
             this.optimizeButtonForMobile(loginBtn, isMobile);
             this.optimizeButtonForMobile(registerBtn, isMobile);
-            
+
             buttonContainer.appendChild(loginBtn);
             buttonContainer.appendChild(registerBtn);
 
@@ -2074,7 +2177,7 @@
             this.optimizeButtonForMobile(switchToRegisterBtn, isMobile);
             this.optimizeButtonForMobile(switchToLoginBtn, isMobile);
             this.optimizeButtonForMobile(forgotPasswordBtn, isMobile);
-            
+
             // 添加安全码输入到切换容器中
             switchContainer.appendChild(switchToRegisterBtn);
             switchContainer.appendChild(switchToLoginBtn);
@@ -2301,10 +2404,10 @@
             dialog.appendChild(form);
 
             document.body.appendChild(dialog);
-            
+
             // 使对话框可拖动
             this.makeDraggable(dialog);
-            
+
             // 聚焦用户名输入框
             usernameInput.focus();
         },
@@ -2345,7 +2448,7 @@
             storageInfo.innerHTML = `
                 <div>存储空间: 加载中...</div>
             `;
-            
+
             // 异步加载存储空间信息
             UI.loadStorageInfo(storageInfo);
 
@@ -2514,7 +2617,7 @@
             this.optimizeButtonForMobile(changePasswordBtn, isMobile);
             this.optimizeButtonForMobile(deleteConfigBtn, isMobile);
             this.optimizeButtonForMobile(logoutBtn, isMobile);
-            
+
             syncContainer.appendChild(uploadBtn);
             syncContainer.appendChild(downloadBtn);
             syncContainer.appendChild(changePasswordBtn);
@@ -2737,10 +2840,10 @@
             dialog.appendChild(form);
 
             document.body.appendChild(dialog);
-            
+
             // 使对话框可拖动
             this.makeDraggable(dialog);
-            
+
             // 聚焦当前密码输入框
             currentPasswordInput.focus();
         },
@@ -2759,9 +2862,9 @@
 
                 if (data.success && data.user && data.user.storage) {
                     const storage = data.user.storage;
-                    const usageColor = storage.usage_percent >= 90 ? '#ff4d4f' : 
+                    const usageColor = storage.usage_percent >= 90 ? '#ff4d4f' :
                                      storage.usage_percent >= 70 ? '#faad14' : '#52c41a';
-                    
+
                     storageElement.innerHTML = `
                         <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
                         <div>已使用: ${storage.usage_mb}MB / ${storage.limit_mb}MB</div>
@@ -2783,7 +2886,7 @@
                 } else if (error.message.includes('401') || error.message.includes('403')) {
                     errorMessage = '认证失败';
                 }
-                
+
                 storageElement.innerHTML = `
                     <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
                     <div style="color: #999;">${errorMessage}</div>
@@ -2799,7 +2902,7 @@
             // 通用的开始拖拽函数
             const startDrag = function(clientX, clientY, target) {
                 // 只有点击标题区域才能拖动
-                if (target.className === 'dialog-title-draggable' || 
+                if (target.className === 'dialog-title-draggable' ||
                     target.closest('.dialog-title-draggable')) {
                     isDragging = true;
                     startX = clientX;
@@ -2877,7 +2980,7 @@
     const NodeSeekLogin = {
         init: function() {
             Auth.init();
-            
+
             // 验证token有效性
             if (Auth.isLoggedIn()) {
                 Auth.validateToken();
@@ -2916,4 +3019,4 @@
     // 初始化
     NodeSeekLogin.init();
 
-})(); 
+})();
