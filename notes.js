@@ -665,7 +665,15 @@
         });
         addBtn('视频', '插入视频', () => {
             const url = prompt('输入视频URL');
-            if (url) cmd('insertHTML', `<video src="${url}" controls style="max-width:100%"></video>`);
+            if (url && url.trim()) {
+                const videoHtml = `<div class="nsn-resizable-video-container" data-origin="toolbar" contenteditable="false" style="display: inline-block; position: relative; border: 1px dashed transparent;"><video src="${url.trim()}" controls style="max-width: 300px; height: auto; display: block;"></video><div class="nsn-resize-handle" style="position: absolute; bottom: -3px; right: -3px; width: 8px; height: 8px; background: #409eff; cursor: nw-resize; border-radius: 2px; display: none;"></div><div class="nsn-delete-handle" title="删除视频" style="position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; background: #ef4444; color: #fff; font-size: 12px; border-radius: 50%; display: none; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.3);">×</div></div><br>`;
+                cmd('insertHTML', videoHtml);
+                setTimeout(() => {
+                    if (typeof attachVideoResizeListeners === 'function') {
+                        attachVideoResizeListeners();
+                    }
+                }, 100);
+            }
         });
         addBtn('表格', '插入表格', () => {
             showTableConfigDialog();
@@ -1148,10 +1156,13 @@
                 
                 if (html.trim()) {
                     cmd('insertHTML', html + '<p></p>');
-                    // 为新插入的图片添加调整大小功能
+                    // 为新插入的图片/视频添加调整大小功能
                     setTimeout(() => {
                         attachResizeListeners();
                         attachTableOperations();
+                        if (typeof attachVideoResizeListeners === 'function') {
+                            attachVideoResizeListeners();
+                        }
                     }, 100);
                 }
                 
@@ -1742,10 +1753,13 @@
                     updateSaveState();
                     // 更新按钮文本
                     updateButtonTexts();
-                    // 为编辑器中的图片和表格重新绑定功能
+                    // 为编辑器中的图片/视频和表格重新绑定功能
                     setTimeout(() => {
                         attachResizeListeners();
                         attachTableOperations();
+                        if (typeof attachVideoResizeListeners === 'function') {
+                            attachVideoResizeListeners();
+                        }
                     }, 100);
                 });
                 noteList.appendChild(item);
@@ -2669,10 +2683,198 @@
             handle._resizeHandlerAttached = true;
         }
 
-        // 将图片调整相关函数暴露到全局，避免作用域导致的未定义错误
+        // 视频调整、删除功能：为视频添加与图片一致的容器、拖拽手柄与删除按钮
+        function attachVideoResizeListeners() {
+            // 1) 先给已有的容器绑定事件
+            const containers = editor.querySelectorAll('.nsn-resizable-video-container');
+            containers.forEach(container => {
+                attachVideoResizeListenersToContainer(container);
+            });
+
+            // 2) 兼容历史内容：将裸 <video> 包装为容器
+            const videos = editor.querySelectorAll('video');
+            videos.forEach(video => {
+                if (video.closest('.nsn-resizable-video-container')) return; // 已有容器
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'nsn-resizable-video-container';
+                wrapper.setAttribute('contenteditable', 'false');
+                wrapper.style.cssText = 'display: inline-block; position: relative; border: 1px dashed transparent;';
+
+                // 确保 video 基本样式
+                video.style.display = 'block';
+                if (!video.style.maxWidth) video.style.maxWidth = '300px';
+                if (!video.hasAttribute('controls')) video.setAttribute('controls', '');
+
+                const handle = document.createElement('div');
+                handle.className = 'nsn-resize-handle';
+                handle.style.cssText = 'position: absolute; bottom: -3px; right: -3px; width: 8px; height: 8px; background: #409eff; cursor: nw-resize; border-radius: 2px; display: none;';
+
+                const del = document.createElement('div');
+                del.className = 'nsn-delete-handle';
+                del.title = '删除视频';
+                del.textContent = '×';
+                del.style.cssText = 'position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; background: #ef4444; color: #fff; font-size: 12px; border-radius: 50%; display: none; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.3);';
+
+                // 插入容器并迁移 video
+                video.parentNode.insertBefore(wrapper, video);
+                wrapper.appendChild(video);
+                wrapper.appendChild(handle);
+                wrapper.appendChild(del);
+
+                attachVideoResizeListenersToContainer(wrapper);
+            });
+        }
+
+        function attachVideoResizeListenersToContainer(container) {
+            // 防重复绑定
+            if (container.hasAttribute('data-video-listeners-attached')) {
+                const handle = container.querySelector('.nsn-resize-handle');
+                if (handle && handle._videoResizeHandlerAttached) return;
+                container.removeAttribute('data-video-listeners-attached');
+            }
+            container.setAttribute('data-video-listeners-attached', 'true');
+
+            let video = container.querySelector('video');
+            let handle = container.querySelector('.nsn-resize-handle');
+            let del = container.querySelector('.nsn-delete-handle');
+
+            if (!video) return;
+            if (!handle) {
+                handle = document.createElement('div');
+                handle.className = 'nsn-resize-handle';
+                handle.style.cssText = 'position: absolute; bottom: -3px; right: -3px; width: 8px; height: 8px; background: #409eff; cursor: nw-resize; border-radius: 2px; display: none;';
+                container.appendChild(handle);
+            }
+            if (!del) {
+                del = document.createElement('div');
+                del.className = 'nsn-delete-handle';
+                del.title = '删除视频';
+                del.textContent = '×';
+                del.style.cssText = 'position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; background: #ef4444; color: #fff; font-size: 12px; border-radius: 50%; display: none; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.3);';
+                container.appendChild(del);
+            }
+
+            // 初始尺寸限制，避免过大
+            if (!container.getAttribute('data-video-size-clamped')) {
+                const clampToMax = () => {
+                    let curW = video.clientWidth || parseFloat(getComputedStyle(video).width) || 0;
+                    let curH = video.clientHeight || parseFloat(getComputedStyle(video).height) || 0;
+                    if ((!curW || !curH) && video.videoWidth && video.videoHeight) {
+                        curW = video.videoWidth; curH = video.videoHeight;
+                    }
+                    if (!curW || !curH) return;
+                    const aspect = curW / curH;
+                    const maxWidth = editor.offsetWidth - 40;
+                    const bottomBar = editor.parentElement && editor.parentElement.querySelector('.nsn-bottom');
+                    const bottomBarHeight = bottomBar ? bottomBar.offsetHeight + 20 : 60;
+                    const maxHeight = editor.offsetHeight - bottomBarHeight;
+
+                    let targetW = Math.min(curW, maxWidth);
+                    let targetH = targetW / aspect;
+                    if (targetH > maxHeight) {
+                        targetH = maxHeight;
+                        targetW = targetH * aspect;
+                        if (targetW > maxWidth) {
+                            targetW = maxWidth;
+                            targetH = targetW / aspect;
+                        }
+                    }
+                    video.style.width = Math.round(targetW) + 'px';
+                    video.style.height = Math.round(targetH) + 'px';
+                    video.style.maxWidth = 'none';
+                    container.setAttribute('data-video-size-clamped', '1');
+                };
+
+                if (!isFinite(video.videoWidth) || video.videoWidth === 0) {
+                    video.addEventListener('loadedmetadata', clampToMax, { once: true });
+                } else {
+                    clampToMax();
+                }
+            }
+
+            // 交互：显示/隐藏手柄与删除
+            const mouseEnterHandler = () => {
+                handle.style.display = 'block';
+                del.style.display = 'flex';
+                container.style.border = '1px dashed #409eff';
+            };
+            container.addEventListener('mouseenter', mouseEnterHandler);
+
+            const mouseLeaveHandler = () => {
+                if (!handle._isDragging) {
+                    handle.style.display = 'none';
+                    del.style.display = 'none';
+                    container.style.border = '1px dashed transparent';
+                }
+            };
+            container.addEventListener('mouseleave', mouseLeaveHandler);
+
+            // 删除
+            const onDelete = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (container && container.parentNode) container.parentNode.removeChild(container);
+            };
+            del.addEventListener('mousedown', (e) => e.preventDefault());
+            del.addEventListener('click', onDelete);
+
+            // 拖拽缩放，保持比例
+            const resizeHandler = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handle._isDragging = true;
+
+                const startX = e.clientX;
+                const startWidth = video.clientWidth;
+                const startHeight = video.clientHeight;
+                const naturalW = video.videoWidth || startWidth || 1;
+                const naturalH = video.videoHeight || startHeight || 1;
+                const aspectRatio = (startWidth && startHeight) ? (startWidth / startHeight) : (naturalW / naturalH);
+
+                const onMouseMove = (moveEvent) => {
+                    const deltaX = moveEvent.clientX - startX;
+                    let newWidth = Math.max(80, startWidth + deltaX);
+                    let newHeight = newWidth / aspectRatio;
+
+                    const maxWidth = editor.offsetWidth - 40;
+                    const bottomBar = editor.parentElement && editor.parentElement.querySelector('.nsn-bottom');
+                    const bottomBarHeight = bottomBar ? bottomBar.offsetHeight + 20 : 60;
+                    const maxHeight = editor.offsetHeight - bottomBarHeight;
+
+                    if (newWidth > maxWidth) { newWidth = maxWidth; newHeight = newWidth / aspectRatio; }
+                    if (newHeight > maxHeight) {
+                        newHeight = maxHeight; newWidth = newHeight * aspectRatio; if (newWidth > maxWidth) { newWidth = maxWidth; newHeight = newWidth / aspectRatio; }
+                    }
+
+                    video.style.width = newWidth + 'px';
+                    video.style.height = newHeight + 'px';
+                    video.style.maxWidth = 'none';
+                };
+                const onMouseUp = (upEvent) => {
+                    handle._isDragging = false;
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                    const rect = container.getBoundingClientRect();
+                    const x = upEvent.clientX, y = upEvent.clientY;
+                    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                        handle.style.display = 'none';
+                        container.style.border = '1px dashed transparent';
+                    }
+                };
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            };
+            handle.addEventListener('mousedown', resizeHandler);
+            handle._videoResizeHandlerAttached = true;
+        }
+
+        // 将图片/视频调整相关函数暴露到全局，避免作用域导致的未定义错误
         if (typeof window !== 'undefined') {
             window.attachResizeListeners = attachResizeListeners;
             window.attachResizeListenersToContainer = attachResizeListenersToContainer;
+            window.attachVideoResizeListeners = attachVideoResizeListeners;
+            window.attachVideoResizeListenersToContainer = attachVideoResizeListenersToContainer;
         }
 
         function execCommand(action, value){
@@ -2918,39 +3120,56 @@
         // 初始化保存状态
         updateSaveState();
         
-        // 为编辑器中已存在的图片添加调整大小功能
+        // 为编辑器中已存在的图片/视频添加调整大小功能
         setTimeout(() => {
             attachResizeListeners();
+            if (typeof attachVideoResizeListeners === 'function') {
+                attachVideoResizeListeners();
+            }
         }, 100);
         
-        // 监听编辑器内容变化，为新加载的图片添加调整大小功能，为表格添加操作功能
+        // 监听编辑器内容变化，为新加载的图片/视频添加调整大小功能，为表格添加操作功能
         const observer = new MutationObserver((mutations) => {
             let hasNewImageContainer = false;
             let hasNewTableContainer = false;
+            let hasNewVideoContainer = false;
             mutations.forEach((mutation) => {
                 mutation.addedNodes.forEach((node) => {
-                    // 检查新增节点是否为图片容器或包含图片容器
+                    // 检查新增节点是否为图片/视频容器或包含对应元素
                     if (node.nodeType === Node.ELEMENT_NODE) {
                         if (node.classList && node.classList.contains('nsn-resizable-img-container')) {
                             attachResizeListenersToContainer(node);
                             hasNewImageContainer = true;
+                        } else if (node.classList && node.classList.contains('nsn-resizable-video-container')) {
+                            attachVideoResizeListenersToContainer(node);
+                            hasNewVideoContainer = true;
                         } else if (node.classList && node.classList.contains('nsn-table-container')) {
                             attachTableOperationsToContainer(node);
                             hasNewTableContainer = true;
                         } else if (node.querySelectorAll) {
-                            const containers = node.querySelectorAll('.nsn-resizable-img-container');
-                            if (containers.length > 0) {
-                                containers.forEach(container => {
-                                    attachResizeListenersToContainer(container);
-                                });
+                            const imgContainers = node.querySelectorAll('.nsn-resizable-img-container');
+                            if (imgContainers.length > 0) {
+                                imgContainers.forEach(container => attachResizeListenersToContainer(container));
                                 hasNewImageContainer = true;
+                            }
+                            const videoContainers = node.querySelectorAll('.nsn-resizable-video-container');
+                            if (videoContainers.length > 0) {
+                                videoContainers.forEach(container => attachVideoResizeListenersToContainer(container));
+                                hasNewVideoContainer = true;
+                            }
+                            // 兼容裸 video
+                            const looseVideos = node.querySelectorAll('video');
+                            if (looseVideos.length > 0) {
+                                hasNewVideoContainer = true;
+                                // 交给批量函数处理包装
+                                if (typeof attachVideoResizeListeners === 'function') {
+                                    attachVideoResizeListeners();
+                                }
                             }
                             
                             const tableContainers = node.querySelectorAll('.nsn-table-container');
                             if (tableContainers.length > 0) {
-                                tableContainers.forEach(container => {
-                                    attachTableOperationsToContainer(container);
-                                });
+                                tableContainers.forEach(container => attachTableOperationsToContainer(container));
                                 hasNewTableContainer = true;
                             }
                         }
@@ -2961,6 +3180,11 @@
             // 如果没有新的容器，但可能有其他变化，也做一次检查
             if (!hasNewImageContainer) {
                 attachResizeListeners();
+            }
+            if (!hasNewVideoContainer) {
+                if (typeof attachVideoResizeListeners === 'function') {
+                    attachVideoResizeListeners();
+                }
             }
             if (!hasNewTableContainer) {
                 attachTableOperations();
