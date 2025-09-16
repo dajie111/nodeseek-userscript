@@ -1211,7 +1211,8 @@
         // 处理图片和链接（在转义之前）
         // 在图片容器后面补一个换行符，确保插入后换行
         html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<div class="nsn-resizable-img-container" contenteditable="false" style="display: inline-block; position: relative; border: 1px dashed transparent; margin: 4px;"><img src="$2" alt="$1" style="max-width: 300px; height: auto; display: block; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 1px solid #e5e7eb;"><div class="nsn-resize-handle" style="position: absolute; bottom: -3px; right: -3px; width: 8px; height: 8px; background: #409eff; cursor: nw-resize; border-radius: 2px; display: none;"></div></div><br>');
-        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color: #409eff; text-decoration: none;">$1</a>');
+        // 将 Markdown 链接生成为可编辑/可弹窗的链接元素，和“链接”按钮一致
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<span class="nsn-editable-link" data-href="$2">$1</span>');
         
         // 转义 HTML 特殊字符（但保留已处理的HTML标签）
         const htmlTags = [];
