@@ -901,10 +901,13 @@
 
     // 保存历史鸡腿数据
     function saveChickenLegHistory(newDataArr) {
+        const MAX_HISTORY_COUNT = 2000; // 最大保留2000条数据
+        
         let history = [];
         try {
             history = JSON.parse(localStorage.getItem(CHICKEN_LEG_HISTORY_KEY) || '[]');
         } catch (e) { history = []; }
+        
         const map = new Map();
         history.forEach(item => {
             if (item && item.length === 4) {
@@ -912,13 +915,35 @@
                 map.set(key, item);
             }
         });
+        
         newDataArr.forEach(item => {
             if (item && item.length === 4) {
                 const key = item[3] + '|' + item[2] + '|' + item[0];
                 map.set(key, item);
             }
         });
-        const merged = Array.from(map.values());
+        
+        let merged = Array.from(map.values());
+        
+        // 如果数据超过2000条，按时间排序并删除最老的数据
+        if (merged.length > MAX_HISTORY_COUNT) {
+            // 按时间排序（item[3]是时间字段），最新的在前
+            merged.sort((a, b) => {
+                const timeA = new Date(a[3]).getTime();
+                const timeB = new Date(b[3]).getTime();
+                return timeB - timeA; // 降序排列，最新的在前
+            });
+            
+            // 只保留最新的2000条数据
+            merged = merged.slice(0, MAX_HISTORY_COUNT);
+            
+            // 记录删除的数据条数
+            const deletedCount = map.size - MAX_HISTORY_COUNT;
+            if (deletedCount > 0) {
+                _addLog(`鸡腿统计数据已达到${MAX_HISTORY_COUNT}条上限，自动删除了${deletedCount}条最老的数据`);
+            }
+        }
+        
         localStorage.setItem(CHICKEN_LEG_HISTORY_KEY, JSON.stringify(merged));
     }
 
