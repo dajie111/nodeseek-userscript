@@ -1834,8 +1834,17 @@ function highlightTitleKeywords(titleEl, originalTitle, keywords) {
         sortedKeywords.forEach(keyword => {
             if (!keyword || keyword.trim() === '') return;
             
-            // 使用正则表达式进行全局替换，支持大小写不敏感
-            const regex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            // 同时匹配简体与繁体的变体
+            const variantsSet = new Set();
+            const kw = keyword.trim();
+            variantsSet.add(kw);
+            variantsSet.add(convertTraditionalToSimplified(kw));
+            variantsSet.add(convertSimplifiedToTraditional(kw));
+            const variants = Array.from(variantsSet).filter(v => v && v.trim());
+            // 优先长词，降低嵌套概率
+            variants.sort((a, b) => b.length - a.length);
+            const pattern = variants.map(v => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+            const regex = new RegExp(pattern, 'gi');
             
             processedHTML = processedHTML.replace(regex, (match) => {
                 // 使用自定义颜色的高亮样式
@@ -1871,8 +1880,17 @@ function highlightTitleKeywordsMulti(titleEl, originalTitle, groups) {
         entries.sort((a, b) => b.kw.length - a.kw.length);
 
         entries.forEach(({ kw, color }) => {
-            // 正则全局不区分大小写，并转义特殊字符
-            const regex = new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            // 为每个关键词生成简体与繁体的变体集合
+            const variantsSet = new Set();
+            variantsSet.add(kw);
+            variantsSet.add(convertTraditionalToSimplified(kw));
+            variantsSet.add(convertSimplifiedToTraditional(kw));
+            const variants = Array.from(variantsSet).filter(v => v && v.trim());
+            // 优先长词，降低嵌套概率
+            variants.sort((a, b) => b.length - a.length);
+            // 组合成交替匹配的正则表达式
+            const pattern = variants.map(v => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+            const regex = new RegExp(pattern, 'gi');
             processedHTML = processedHTML.replace(regex, (match) => {
                 return `<span class="ns-keyword-highlight" style="background-color: ${color}; color: #333; font-weight: inherit; display: inline; margin: 0; padding: 0; line-height: inherit; vertical-align: baseline;">${match}</span>`;
             });
