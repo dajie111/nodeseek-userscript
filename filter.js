@@ -455,6 +455,17 @@ function getHighlightColor() {
     return saved || '#ffeb3b'; // 默认黄色
 }
 
+// 保存显示关键词高亮颜色到 localStorage
+function saveDisplayHighlightColor(color) {
+    localStorage.setItem('ns-filter-display-highlight-color', color);
+}
+
+// 从 localStorage 获取显示关键词高亮颜色
+function getDisplayHighlightColor() {
+    const saved = localStorage.getItem('ns-filter-display-highlight-color');
+    return saved || '#b3e5fc'; // 默认浅蓝色，便于与高亮关键词区分
+}
+
 // 保存弹窗位置到 localStorage
 function saveDialogPosition(position) {
     localStorage.setItem('ns-filter-dialog-position', JSON.stringify(position));
@@ -508,6 +519,7 @@ function clearFilter() {
     localStorage.removeItem('ns-filter-highlight-keywords'); // 清除高亮关键词
     localStorage.removeItem('ns-filter-highlight-author-enabled'); // 清除作者高亮选项
     localStorage.removeItem('ns-filter-highlight-color'); // 清除高亮颜色设置
+    localStorage.removeItem('ns-filter-display-highlight-color'); // 清除显示关键词高亮颜色设置
 }
 
 // 清理损坏的位置数据
@@ -657,6 +669,10 @@ function createFilterUI(onFilter) {
             </div>
             <input id="ns-keyword-input" type="text" style="width:280px;padding:4px 8px;font-size:15px;border:1px solid #ccc;border-radius:4px;" placeholder="输入关键词，如VPS,測試,服务器" />
             <button id="ns-keyword-btn" style="margin-left:8px;padding:4px 12px;font-size:15px;background:#4CAF50;color:#fff;border:none;border-radius:4px;cursor:pointer;">显示</button>
+            <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+                <label style="font-size:13px;color:#666;">显示关键词高亮颜色：</label>
+                <input type="color" id="ns-display-highlight-color-picker" style="width:40px;height:25px;border:1px solid #ccc;border-radius:4px;cursor:pointer;" />
+            </div>
         </div>
 
 
@@ -889,6 +905,25 @@ function createFilterUI(onFilter) {
             }
         });
     }
+
+    // 初始化显示关键词高亮颜色选择器
+    const displayColorPicker = dialog.querySelector('#ns-display-highlight-color-picker');
+    if (displayColorPicker) {
+        const currentDisplayColor = getDisplayHighlightColor();
+        displayColorPicker.value = currentDisplayColor;
+        
+        displayColorPicker.addEventListener('change', function() {
+            const newColor = this.value;
+            saveDisplayHighlightColor(newColor);
+            
+            // 重新应用高亮（显示与高亮关键词均更新）
+            applyKeywordHighlight();
+            
+            if (typeof window.addLog === 'function') {
+                window.addLog(`显示关键词高亮颜色已更改为${newColor}`);
+            }
+        });
+    }
     
     // 确保在页面加载时应用已保存的屏蔽关键词过滤和高亮
     setTimeout(() => {
@@ -1104,6 +1139,8 @@ function createFilterUI(onFilter) {
         // 清除显示关键词的过滤效果，但保留屏蔽关键词的过滤效果
         const blacklistKeywords = getCustomKeywords();
         filterPosts(blacklistKeywords, []);
+        // 重新应用高亮：移除显示关键词的高亮，仅保留高亮关键词与作者高亮
+        applyKeywordHighlight();
         
         // 操作日志记录
         if (typeof window.addLog === 'function') {
@@ -1127,6 +1164,8 @@ function createFilterUI(onFilter) {
         
         filterPosts(blacklistKeywords, whitelistKeywords);
         saveKeywords(whitelistKeywords); // 保存显示关键词
+        // 过滤后立即应用关键词高亮（显示关键词也参与高亮）
+        applyKeywordHighlight();
         
         // 操作日志记录
         if (typeof window.addLog === 'function') {
@@ -1147,15 +1186,20 @@ function createFilterUI(onFilter) {
             doFilter();
         }
     });
-    
-    // 添加输入框内容变化监听，自动过滤
-    input.addEventListener('input', function(e) {
-        // 如果输入框为空，自动显示全部内容（只应用屏蔽关键词过滤）
-        if (!this.value.trim()) {
+
+    // 仅在输入框变为空时，恢复默认显示并移除“显示关键词”的高亮
+    // 非空编辑不触发过滤/高亮更新，需点击“显示”或按 Enter 才应用
+    input.addEventListener('input', function() {
+        const currentValue = this.value.trim();
+        if (!currentValue) {
             const blacklistKeywords = getCustomKeywords();
+            // 恢复到只应用屏蔽关键词的过滤（不再根据显示关键词过滤）
             filterPosts(blacklistKeywords, []);
-            saveKeywords([]); // 清空保存的显示关键词
-            
+            // 清空已保存的显示关键词，以防刷新后继续过滤
+            saveKeywords([]);
+            // 重新应用高亮：移除显示关键词高亮，保留高亮关键词与作者高亮
+            applyKeywordHighlight();
+
             // 操作日志记录
             if (typeof window.addLog === 'function') {
                 const blackCount = blacklistKeywords.length;
@@ -1556,11 +1600,13 @@ function applyKeywordHighlight() {
 }
 
 function applyKeywordHighlightImmediate() {
-    const highlightKeywords = getHighlightKeywords();
+    // 分离两类关键词：高亮关键词 与 显示关键词（用于过滤）
+    const highlightKeywords = (getHighlightKeywords() || []).map(k => k && k.trim()).filter(Boolean);
+    const displayKeywords = (getKeywords() || []).map(k => k && k.trim()).filter(Boolean);
     const highlightAuthorEnabled = getHighlightAuthorOption();
     
-    if (highlightKeywords.length === 0 && !highlightAuthorEnabled) {
-        // 如果没有高亮关键词且未开启作者高亮，清除所有高亮效果
+    // 当两类关键词均为空且未开启作者高亮时，清除所有高亮
+    if (highlightKeywords.length === 0 && displayKeywords.length === 0 && !highlightAuthorEnabled) {
         clearKeywordHighlight();
         return;
     }
@@ -1595,8 +1641,12 @@ function applyKeywordHighlightImmediate() {
         return;
     }
     
-    // 预计算关键词的标准化版本，避免重复计算
-    const normalizedKeywords = highlightKeywords.map(keyword => ({
+    // 预计算两类关键词的标准化版本，避免重复计算
+    const normalizedHighlightKeywords = highlightKeywords.map(keyword => ({
+        original: keyword,
+        normalized: normalizeText(keyword)
+    })).filter(item => item.normalized);
+    const normalizedDisplayKeywords = displayKeywords.map(keyword => ({
         original: keyword,
         normalized: normalizeText(keyword)
     })).filter(item => item.normalized);
@@ -1606,8 +1656,8 @@ function applyKeywordHighlightImmediate() {
         // 先清除该项目的现有高亮
         clearItemHighlight(item);
         
-        // 处理标题高亮
-        if (normalizedKeywords.length > 0) {
+        // 处理标题高亮（显示关键词使用显示颜色；高亮关键词使用高亮颜色）
+        if (normalizedHighlightKeywords.length > 0 || normalizedDisplayKeywords.length > 0) {
             // 尝试多种方式获取帖子标题
             let titleEl = item.querySelector('.post-title a');
             let title = titleEl ? titleEl.textContent.trim() : '';
@@ -1639,20 +1689,31 @@ function applyKeywordHighlightImmediate() {
             
             if (title && titleEl) {
                 const normalizedTitle = normalizeText(title);
-                // 检查标题是否包含任何高亮关键词
-                const matchedKeywords = normalizedKeywords.filter(item => 
+                // 匹配显示关键词
+                const matchedDisplay = normalizedDisplayKeywords.filter(item => 
                     normalizedTitle.includes(item.normalized)
                 ).map(item => item.original);
-                
-                if (matchedKeywords.length > 0) {
-                    // 高亮显示匹配的关键词
-                    highlightTitleKeywords(titleEl, title, matchedKeywords);
+                // 匹配高亮关键词
+                const matchedHighlight = normalizedHighlightKeywords.filter(item => 
+                    normalizedTitle.includes(item.normalized)
+                ).map(item => item.original);
+
+                if (matchedDisplay.length > 0 || matchedHighlight.length > 0) {
+                    const groups = [];
+                    if (matchedDisplay.length > 0) {
+                        groups.push({ keywords: matchedDisplay, color: getDisplayHighlightColor() });
+                    }
+                    if (matchedHighlight.length > 0) {
+                        groups.push({ keywords: matchedHighlight, color: getHighlightColor() });
+                    }
+                    // 统一一次性渲染，避免相互覆盖
+                    highlightTitleKeywordsMulti(titleEl, title, groups);
                 }
             }
         }
         
-        // 处理作者高亮
-        if (highlightAuthorEnabled && normalizedKeywords.length > 0) {
+        // 处理作者高亮（仅使用“高亮关键词”组，不使用显示关键词）
+        if (highlightAuthorEnabled && normalizedHighlightKeywords.length > 0) {
             // 尝试多种方式获取作者元素
             let authorEl = item.querySelector('.post-author a');
             let author = authorEl ? authorEl.textContent.trim() : '';
@@ -1681,14 +1742,13 @@ function applyKeywordHighlightImmediate() {
             
             if (author && authorEl) {
                 const normalizedAuthor = normalizeText(author);
-                // 检查作者是否包含任何高亮关键词
-                const matchedKeywords = normalizedKeywords.filter(item => 
+                const matchedHighlight = normalizedHighlightKeywords.filter(item => 
                     normalizedAuthor.includes(item.normalized)
                 ).map(item => item.original);
                 
-                if (matchedKeywords.length > 0) {
-                    // 高亮显示匹配的关键词
-                    highlightTitleKeywords(authorEl, author, matchedKeywords);
+                if (matchedHighlight.length > 0) {
+                    // 仅对作者应用高亮关键词颜色
+                    highlightTitleKeywordsMulti(authorEl, author, [{ keywords: matchedHighlight, color: getHighlightColor() }]);
                 }
             }
         }
@@ -1789,6 +1849,38 @@ function highlightTitleKeywords(titleEl, originalTitle, keywords) {
     } catch (error) {
         console.warn('高亮关键词时出错:', error);
         // 如果出错，恢复原始HTML
+        titleEl.innerHTML = originalHTML;
+    }
+}
+
+// 支持多组关键词分别使用不同颜色进行一次性高亮，避免覆盖
+function highlightTitleKeywordsMulti(titleEl, originalTitle, groups) {
+    const originalHTML = titleEl.innerHTML;
+    try {
+        let processedHTML = originalTitle;
+        // 将组展开为 {kw, color} 列表
+        const entries = [];
+        (groups || []).forEach(group => {
+            const color = (group && group.color) ? group.color : getHighlightColor();
+            (group && group.keywords ? group.keywords : []).forEach(kw => {
+                if (kw && kw.trim()) entries.push({ kw: kw.trim(), color });
+            });
+        });
+
+        // 按关键词长度降序，优先长词，降低嵌套概率
+        entries.sort((a, b) => b.kw.length - a.kw.length);
+
+        entries.forEach(({ kw, color }) => {
+            // 正则全局不区分大小写，并转义特殊字符
+            const regex = new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            processedHTML = processedHTML.replace(regex, (match) => {
+                return `<span class="ns-keyword-highlight" style="background-color: ${color}; color: #333; font-weight: inherit; display: inline; margin: 0; padding: 0; line-height: inherit; vertical-align: baseline;">${match}</span>`;
+            });
+        });
+
+        titleEl.innerHTML = processedHTML;
+    } catch (error) {
+        console.warn('多颜色高亮关键词时出错:', error);
         titleEl.innerHTML = originalHTML;
     }
 }
@@ -2021,6 +2113,8 @@ window.NodeSeekFilter = {
     // 高亮颜色功能
     saveHighlightColor,
     getHighlightColor,
+    saveDisplayHighlightColor,
+    getDisplayHighlightColor,
     // 位置管理功能
     saveDialogPosition,
     getDialogPosition,
