@@ -223,7 +223,8 @@
 
         const searchInput = document.createElement('input');
         searchInput.type = 'search';
-        searchInput.placeholder = '搜索帖子标题（支持繁简）...';
+        // 不显示提示占位文字
+        searchInput.placeholder = '';
         searchInput.style.width = '100%';
         searchInput.style.boxSizing = 'border-box';
         searchInput.style.padding = isMobile ? '10px 12px' : '6px 8px';
