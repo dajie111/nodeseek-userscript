@@ -158,11 +158,28 @@
         dialog.style.borderRadius = '8px';
         dialog.style.boxShadow = '0 2px 12px rgba(0,0,0,0.15)';
         dialog.style.padding = '18px 20px 12px 20px';
-        if (window.innerWidth > 767) {
+        const isMobile = (window.NodeSeekFilter && typeof window.NodeSeekFilter.isMobileDevice === 'function')
+            ? window.NodeSeekFilter.isMobileDevice()
+            : (window.innerWidth <= 767);
+        if (!isMobile) {
             dialog.style.width = '650px';
+            dialog.style.maxHeight = '80vh';
+            dialog.style.overflowY = 'auto';
+        } else {
+            dialog.style.width = '95%';
+            dialog.style.minWidth = 'unset';
+            dialog.style.maxWidth = '95%';
+            dialog.style.left = '50%';
+            dialog.style.top = '50%';
+            dialog.style.transform = 'translate(-50%, -50%)';
+            dialog.style.right = 'auto';
+            dialog.style.maxHeight = '85vh';
+            dialog.style.padding = '12px 8px 8px 8px';
+            dialog.style.overflowY = 'auto';
+            dialog.style.overflowX = 'hidden';
+            dialog.style.borderRadius = '12px';
+            dialog.style.boxShadow = '0 4px 24px rgba(0,0,0,0.25)';
         }
-        dialog.style.maxHeight = '80vh';
-        dialog.style.overflowY = 'auto';
 
         const header = document.createElement('div');
         header.style.display = 'flex';
@@ -194,37 +211,50 @@
         searchContainer.style.gap = '8px';
         searchContainer.style.alignItems = 'center';
 
+        // 简繁体与大小写标准化函数（优先使用 NodeSeekFilter.normalizeText）
+        const normalizeForSearch = function(text) {
+            const s = (text || '').toString();
+            if (window.NodeSeekFilter && typeof window.NodeSeekFilter.normalizeText === 'function') {
+                return window.NodeSeekFilter.normalizeText(s);
+            }
+            let t = s.replace(/\s+/g, '').toLowerCase();
+            if (window.NodeSeekFilter && typeof window.NodeSeekFilter.convertTraditionalToSimplified === 'function') {
+                t = window.NodeSeekFilter.convertTraditionalToSimplified(t);
+            }
+            return t;
+        };
+
         const searchInput = document.createElement('input');
         searchInput.type = 'text';
-        searchInput.placeholder = '搜索帖子标题...';
+        searchInput.placeholder = '搜索帖子标题（支持繁简）...';
         searchInput.style.flex = '1';
-        searchInput.style.padding = '6px 8px';
+        searchInput.style.padding = isMobile ? '10px 12px' : '6px 8px';
         searchInput.style.border = '1px solid #ddd';
         searchInput.style.borderRadius = '4px';
-        searchInput.style.fontSize = '13px';
+        searchInput.style.fontSize = isMobile ? '16px' : '13px';
         searchInput.style.outline = 'none';
         searchInput.style.boxSizing = 'border-box';
 
         const searchBtn = document.createElement('button');
         searchBtn.textContent = '搜索';
-        searchBtn.style.padding = '6px 12px';
+        searchBtn.style.padding = isMobile ? '8px 14px' : '6px 12px';
         searchBtn.style.background = '#1890ff';
         searchBtn.style.color = 'white';
         searchBtn.style.border = 'none';
         searchBtn.style.borderRadius = '4px';
         searchBtn.style.cursor = 'pointer';
-        searchBtn.style.fontSize = '13px';
+        searchBtn.style.fontSize = isMobile ? '15px' : '13px';
         searchBtn.style.whiteSpace = 'nowrap';
 
         const clearSearchBtn = document.createElement('button');
         clearSearchBtn.textContent = '清除';
-        clearSearchBtn.style.padding = '6px 12px';
+        clearSearchBtn.style.padding = isMobile ? '8px 14px' : '6px 12px';
         clearSearchBtn.style.background = '#666';
         clearSearchBtn.style.color = 'white';
         clearSearchBtn.style.border = 'none';
         clearSearchBtn.style.borderRadius = '4px';
         clearSearchBtn.style.cursor = 'pointer';
-        clearSearchBtn.style.fontSize = '13px';
+        clearSearchBtn.style.fontSize = isMobile ? '15px' : '13px';
         clearSearchBtn.style.whiteSpace = 'nowrap';
 
         searchContainer.appendChild(searchInput);
@@ -407,13 +437,13 @@
         }
 
         function performSearch() {
-            const searchTerm = searchInput.value.trim().toLowerCase();
+            const searchTerm = normalizeForSearch(searchInput.value.trim());
             if (!searchTerm) {
                 resetToInitialState();
                 return;
             }
             const source = getBrowseHistory();
-            const filteredHistory = source.filter(item => (item.title || '').toLowerCase().includes(searchTerm));
+            const filteredHistory = source.filter(item => normalizeForSearch(item.title || '').includes(searchTerm));
             renderTable(filteredHistory);
             title.textContent = `历史浏览记录 (${filteredHistory.length}条搜索结果)`;
         }
@@ -427,7 +457,7 @@
 
         dialog.appendChild(tableContainer);
         document.body.appendChild(dialog);
-        if (window.makeDraggable) {
+        if (!isMobile && window.makeDraggable) {
             try { window.makeDraggable(dialog, {width: 50, height: 50}); } catch (e) {}
         }
     }
