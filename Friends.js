@@ -185,6 +185,26 @@
         dialog.style.overflowY = 'auto';
         dialog.style.overflowX = 'auto';
 
+        // 设备检测与移动端适配
+        const isMobile = (window.NodeSeekFilter && typeof window.NodeSeekFilter.isMobileDevice === 'function')
+            ? window.NodeSeekFilter.isMobileDevice()
+            : (window.innerWidth <= 767);
+        if (isMobile) {
+            dialog.style.width = '95%';
+            dialog.style.minWidth = 'unset';
+            dialog.style.maxWidth = '95%';
+            dialog.style.left = '50%';
+            dialog.style.top = '50%';
+            dialog.style.transform = 'translate(-50%, -50%)';
+            dialog.style.right = 'auto';
+            dialog.style.maxHeight = '85vh';
+            dialog.style.padding = '12px 8px 8px 8px';
+            dialog.style.overflowY = 'auto';
+            dialog.style.overflowX = 'hidden';
+            dialog.style.borderRadius = '12px';
+            dialog.style.boxShadow = '0 4px 24px rgba(0,0,0,0.25)';
+        }
+
         // 标题和关闭按钮
         const title = document.createElement('div');
         title.textContent = '好友列表';
@@ -202,6 +222,34 @@
         closeBtn.className = 'close-btn'; // 添加类名便于CSS选择器选中
         closeBtn.onclick = function() { dialog.remove(); };
         dialog.appendChild(closeBtn);
+
+        // 搜索框容器与输入（总是显示，便于快速定位）
+        const searchWrap = document.createElement('div');
+        searchWrap.style.margin = '8px 0 10px 0';
+        const searchInput = document.createElement('input');
+        searchInput.type = 'search';
+        searchInput.placeholder = '搜索用户名或备注';
+        searchInput.style.width = '100%';
+        searchInput.style.boxSizing = 'border-box';
+        searchInput.style.padding = isMobile ? '10px 12px' : '6px 8px';
+        searchInput.style.border = '1px solid #ccc';
+        searchInput.style.borderRadius = '4px';
+        searchInput.style.fontSize = isMobile ? '16px' : '14px';
+        searchWrap.appendChild(searchInput);
+        dialog.appendChild(searchWrap);
+
+        // 简繁体与大小写标准化函数（优先使用 NodeSeekFilter.normalizeText）
+        const normalizeForSearch = function(text) {
+            const s = (text || '').toString();
+            if (window.NodeSeekFilter && typeof window.NodeSeekFilter.normalizeText === 'function') {
+                return window.NodeSeekFilter.normalizeText(s);
+            }
+            let t = s.replace(/\s+/g, '').toLowerCase();
+            if (window.NodeSeekFilter && typeof window.NodeSeekFilter.convertTraditionalToSimplified === 'function') {
+                t = window.NodeSeekFilter.convertTraditionalToSimplified(t);
+            }
+            return t;
+        };
 
         // 列表内容
         if (list.length === 0) {
@@ -230,6 +278,9 @@
             list.forEach(friend => {
                 const tr = document.createElement('tr');
                 tr.style.borderBottom = '1px solid #eee';
+                // 便于后续搜索过滤
+                tr.dataset.username = normalizeForSearch(String(friend.username));
+                tr.dataset.remark = normalizeForSearch(String(friend.remark || ''));
                 // 用户名
                 const tdUser = document.createElement('td');
                 const nameLink = document.createElement('a');
@@ -423,13 +474,35 @@
             });
             table.appendChild(tbody);
             dialog.appendChild(tableWrapper);
+
+            // 搜索空结果提示
+            const searchEmpty = document.createElement('div');
+            searchEmpty.id = 'friends-search-empty';
+            searchEmpty.textContent = '未找到匹配项';
+            searchEmpty.style.textAlign = 'center';
+            searchEmpty.style.color = '#888';
+            searchEmpty.style.margin = '10px 0 4px 0';
+            searchEmpty.style.display = 'none';
+            dialog.appendChild(searchEmpty);
+
+            // 绑定搜索输入事件（支持繁体）
+            searchInput.addEventListener('input', function() {
+                const kw = normalizeForSearch(searchInput.value.trim());
+                let visibleCount = 0;
+                tbody.querySelectorAll('tr').forEach(tr => {
+                    const match = !kw || tr.dataset.username.includes(kw) || tr.dataset.remark.includes(kw);
+                    tr.style.display = match ? '' : 'none';
+                    if (match) visibleCount++;
+                });
+                searchEmpty.style.display = visibleCount === 0 ? '' : 'none';
+            });
         }
 
         document.body.appendChild(dialog);
         
-        // 如果 makeDraggable 函数可用，使弹窗可拖动
-        if (typeof makeDraggable === 'function') {
-            makeDraggable(dialog, {width: 50, height: 50}); // Make friends dialog draggable, increased drag area for testing
+        // 移动端禁用拖拽；桌面端可拖拽
+        if (!isMobile && typeof makeDraggable === 'function') {
+            makeDraggable(dialog, {width: 50, height: 50});
         }
     }
 
