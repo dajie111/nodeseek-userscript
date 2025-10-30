@@ -207,9 +207,6 @@
 
         const searchContainer = document.createElement('div');
         searchContainer.style.marginBottom = '10px';
-        searchContainer.style.display = 'flex';
-        searchContainer.style.gap = '8px';
-        searchContainer.style.alignItems = 'center';
 
         // 简繁体与大小写标准化函数（优先使用 NodeSeekFilter.normalizeText）
         const normalizeForSearch = function(text) {
@@ -225,41 +222,17 @@
         };
 
         const searchInput = document.createElement('input');
-        searchInput.type = 'text';
+        searchInput.type = 'search';
         searchInput.placeholder = '搜索帖子标题（支持繁简）...';
-        searchInput.style.flex = '1';
+        searchInput.style.width = '100%';
+        searchInput.style.boxSizing = 'border-box';
         searchInput.style.padding = isMobile ? '10px 12px' : '6px 8px';
         searchInput.style.border = '1px solid #ddd';
         searchInput.style.borderRadius = '4px';
         searchInput.style.fontSize = isMobile ? '16px' : '13px';
         searchInput.style.outline = 'none';
-        searchInput.style.boxSizing = 'border-box';
-
-        const searchBtn = document.createElement('button');
-        searchBtn.textContent = '搜索';
-        searchBtn.style.padding = isMobile ? '8px 14px' : '6px 12px';
-        searchBtn.style.background = '#1890ff';
-        searchBtn.style.color = 'white';
-        searchBtn.style.border = 'none';
-        searchBtn.style.borderRadius = '4px';
-        searchBtn.style.cursor = 'pointer';
-        searchBtn.style.fontSize = isMobile ? '15px' : '13px';
-        searchBtn.style.whiteSpace = 'nowrap';
-
-        const clearSearchBtn = document.createElement('button');
-        clearSearchBtn.textContent = '清除';
-        clearSearchBtn.style.padding = isMobile ? '8px 14px' : '6px 12px';
-        clearSearchBtn.style.background = '#666';
-        clearSearchBtn.style.color = 'white';
-        clearSearchBtn.style.border = 'none';
-        clearSearchBtn.style.borderRadius = '4px';
-        clearSearchBtn.style.cursor = 'pointer';
-        clearSearchBtn.style.fontSize = isMobile ? '15px' : '13px';
-        clearSearchBtn.style.whiteSpace = 'nowrap';
 
         searchContainer.appendChild(searchInput);
-        searchContainer.appendChild(searchBtn);
-        searchContainer.appendChild(clearSearchBtn);
         dialog.appendChild(searchContainer);
 
         const clearBtn = document.createElement('button');
@@ -300,6 +273,8 @@
         tableWrapper.appendChild(table);
 
         function renderTable(data) {
+            // 每次渲染前清空容器，避免“暂无浏览记录”在后续有结果时仍显示
+            tableContainer.innerHTML = '';
             const tbody = document.createElement('tbody');
             if (data.length === 0) {
                 const empty = document.createElement('div');
@@ -307,7 +282,6 @@
                 empty.style.textAlign = 'center';
                 empty.style.color = '#888';
                 empty.style.margin = '18px 0 8px 0';
-                tableContainer.innerHTML = '';
                 tableContainer.appendChild(empty);
                 return;
             }
@@ -448,12 +422,8 @@
             title.textContent = `历史浏览记录 (${filteredHistory.length}条搜索结果)`;
         }
 
-        searchBtn.onclick = performSearch;
-        searchInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') performSearch();
-        });
-
-        clearSearchBtn.onclick = function() { resetToInitialState(); };
+        // 实时搜索功能
+        searchInput.addEventListener('input', performSearch);
 
         dialog.appendChild(tableContainer);
         document.body.appendChild(dialog);
