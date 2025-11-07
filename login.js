@@ -1878,6 +1878,74 @@
             `;
         },
 
+        // 创建带显示/隐藏功能的密码输入框
+        createPasswordInputWithToggle: function(input, isMobile) {
+            // 创建容器
+            const container = document.createElement('div');
+            container.style.cssText = `
+                position: relative;
+                width: 100%;
+                margin-bottom: 10px;
+            `;
+
+            // 调整输入框样式（为右侧按钮留空间）
+            const originalStyles = input.style.cssText;
+            input.style.cssText = originalStyles + `
+                padding-right: ${isMobile ? '50px' : '40px'};
+                margin-bottom: 0;
+            `;
+
+            // 创建显示/隐藏按钮
+            const toggleBtn = document.createElement('button');
+            toggleBtn.type = 'button';
+            toggleBtn.textContent = '👁️';
+            toggleBtn.title = '显示/隐藏密码';
+            toggleBtn.style.cssText = `
+                position: absolute;
+                right: ${isMobile ? '8px' : '4px'};
+                top: 50%;
+                transform: translateY(-50%);
+                background: transparent;
+                border: none;
+                cursor: pointer;
+                padding: ${isMobile ? '8px' : '4px 8px'};
+                font-size: ${isMobile ? '18px' : '16px'};
+                line-height: 1;
+                color: #666;
+                user-select: none;
+                outline: none;
+                transition: color 0.2s ease;
+            `;
+
+            // 切换显示/隐藏
+            toggleBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (input.type === 'password') {
+                    input.type = 'text';
+                    toggleBtn.textContent = '🙈';
+                    toggleBtn.title = '隐藏密码';
+                } else {
+                    input.type = 'password';
+                    toggleBtn.textContent = '👁️';
+                    toggleBtn.title = '显示密码';
+                }
+            };
+
+            // hover效果
+            toggleBtn.onmouseenter = () => {
+                toggleBtn.style.color = '#1890ff';
+            };
+            toggleBtn.onmouseleave = () => {
+                toggleBtn.style.color = '#666';
+            };
+
+            container.appendChild(input);
+            container.appendChild(toggleBtn);
+
+            return container;
+        },
+
         // 创建认证面板
         createAuthPanel: function(container) {
             const form = document.createElement('div');
@@ -1902,6 +1970,7 @@
             passwordInput.type = 'password';
             passwordInput.placeholder = '请输入密码';
             this.optimizeInputForMobile(passwordInput, isMobile);
+            const passwordContainer = this.createPasswordInputWithToggle(passwordInput, isMobile);
 
             // 安全码输入（仅注册时显示）
             const securityCodeLabel = document.createElement('div');
@@ -1913,7 +1982,8 @@
             securityCodeInput.type = 'password';
             securityCodeInput.placeholder = '请输入安全码（用于找回密码）';
             this.optimizeInputForMobile(securityCodeInput, isMobile);
-            securityCodeInput.style.display = 'none'; // 默认隐藏
+            const securityCodeContainer = this.createPasswordInputWithToggle(securityCodeInput, isMobile);
+            securityCodeContainer.style.display = 'none'; // 默认隐藏
 
             // 模式切换提示
             const modeHint = document.createElement('div');
@@ -2021,7 +2091,7 @@
                 if (isRegisterMode) {
                     // 切换到注册模式
                     securityCodeLabel.style.display = 'block';
-                    securityCodeInput.style.display = 'block';
+                    securityCodeContainer.style.display = 'block';
                     modeHint.textContent = '注册模式 - 请设置安全码用于找回密码';
                     switchToRegisterBtn.style.display = 'none';
                     switchToLoginBtn.style.display = 'block';
@@ -2031,7 +2101,7 @@
                 } else {
                     // 切换到登录模式
                     securityCodeLabel.style.display = 'none';
-                    securityCodeInput.style.display = 'none';
+                    securityCodeContainer.style.display = 'none';
                     modeHint.textContent = '登录模式';
                     switchToRegisterBtn.style.display = 'block';
                     switchToLoginBtn.style.display = 'none';
@@ -2186,9 +2256,9 @@
             form.appendChild(usernameLabel);
             form.appendChild(usernameInput);
             form.appendChild(passwordLabel);
-            form.appendChild(passwordInput);
+            form.appendChild(passwordContainer);
             form.appendChild(securityCodeLabel);
-            form.appendChild(securityCodeInput);
+            form.appendChild(securityCodeContainer);
             form.appendChild(buttonContainer);
             form.appendChild(switchContainer);
             form.appendChild(forgotPasswordBtn);
@@ -2295,6 +2365,9 @@
                 margin-bottom: 10px;
                 box-sizing: border-box;
             `;
+            const isMobileForgot = window.innerWidth <= 768;
+            const securityCodeContainer = this.createPasswordInputWithToggle(securityCodeInput, isMobileForgot);
+            securityCodeContainer.style.marginBottom = '10px';
 
             // 新密码输入
             const newPasswordLabel = document.createElement('div');
@@ -2312,6 +2385,8 @@
                 margin-bottom: 15px;
                 box-sizing: border-box;
             `;
+            const newPasswordContainer = this.createPasswordInputWithToggle(newPasswordInput, isMobileForgot);
+            newPasswordContainer.style.marginBottom = '15px';
 
             // 按钮容器
             const buttonContainer = document.createElement('div');
@@ -2393,9 +2468,9 @@
             form.appendChild(usernameLabel);
             form.appendChild(usernameInput);
             form.appendChild(securityCodeLabel);
-            form.appendChild(securityCodeInput);
+            form.appendChild(securityCodeContainer);
             form.appendChild(newPasswordLabel);
-            form.appendChild(newPasswordInput);
+            form.appendChild(newPasswordContainer);
             form.appendChild(buttonContainer);
 
             dialog.appendChild(dragHandle);
@@ -2709,6 +2784,9 @@
                 margin-bottom: 10px;
                 box-sizing: border-box;
             `;
+            const isMobileChange = window.innerWidth <= 768;
+            const currentPasswordContainer = this.createPasswordInputWithToggle(currentPasswordInput, isMobileChange);
+            currentPasswordContainer.style.marginBottom = '10px';
 
             // 新密码输入
             const newPasswordLabel = document.createElement('div');
@@ -2726,6 +2804,8 @@
                 margin-bottom: 10px;
                 box-sizing: border-box;
             `;
+            const newPasswordContainer = this.createPasswordInputWithToggle(newPasswordInput, isMobileChange);
+            newPasswordContainer.style.marginBottom = '10px';
 
             // 确认新密码输入
             const confirmPasswordLabel = document.createElement('div');
@@ -2743,6 +2823,8 @@
                 margin-bottom: 15px;
                 box-sizing: border-box;
             `;
+            const confirmPasswordContainer = this.createPasswordInputWithToggle(confirmPasswordInput, isMobileChange);
+            confirmPasswordContainer.style.marginBottom = '15px';
 
             // 按钮容器
             const buttonContainer = document.createElement('div');
@@ -2827,11 +2909,11 @@
             buttonContainer.appendChild(cancelBtn);
 
             form.appendChild(currentPasswordLabel);
-            form.appendChild(currentPasswordInput);
+            form.appendChild(currentPasswordContainer);
             form.appendChild(newPasswordLabel);
-            form.appendChild(newPasswordInput);
+            form.appendChild(newPasswordContainer);
             form.appendChild(confirmPasswordLabel);
-            form.appendChild(confirmPasswordInput);
+            form.appendChild(confirmPasswordContainer);
             form.appendChild(buttonContainer);
 
             dialog.appendChild(dragHandle);
