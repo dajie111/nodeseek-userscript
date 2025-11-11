@@ -228,7 +228,7 @@
 
             // 如果没有选择特定项目，默认获取所有配置
             if (!selectedItems || selectedItems.length === 0) {
-                selectedItems = ['blacklist', 'friends', 'favorites', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'hotTopicsData', 'filterData', 'notesData'];
+                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'hotTopicsData', 'filterData', 'notesData'];
             }
 
             // 获取黑名单数据
@@ -252,6 +252,11 @@
             // 获取收藏数据
             if (selectedItems.includes('favorites')) {
                 config.favorites = JSON.parse(localStorage.getItem('nodeseek_favorites') || '[]');
+            }
+
+            // 新增：获取收藏分类数据
+            if (selectedItems.includes('favoriteCategories')) {
+                config.favoriteCategories = JSON.parse(localStorage.getItem('nodeseek_favorites_categories') || '[]');
             }
 
             // 获取操作日志
@@ -448,7 +453,7 @@
 
             // 如果没有选择特定项目，默认应用所有配置
             if (!selectedItems || selectedItems.length === 0) {
-                selectedItems = ['blacklist', 'friends', 'favorites', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'hotTopicsData'];
+                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'hotTopicsData'];
             }
 
             try {
@@ -472,6 +477,12 @@
                 if (selectedItems.includes('favorites') && config.favorites && Array.isArray(config.favorites)) {
                     localStorage.setItem('nodeseek_favorites', JSON.stringify(config.favorites));
                     applied.push("收藏");
+                }
+
+                // 新增：应用收藏分类数据
+                if (selectedItems.includes('favoriteCategories') && config.favoriteCategories && Array.isArray(config.favoriteCategories)) {
+                    localStorage.setItem('nodeseek_favorites_categories', JSON.stringify(config.favoriteCategories));
+                    applied.push("收藏分类");
                 }
 
                 // 应用操作日志
@@ -928,6 +939,7 @@
                 { key: 'blacklist', label: '黑名单' },
                 { key: 'friends', label: '好友' },
                 { key: 'favorites', label: '收藏' },
+                { key: 'favoriteCategories', label: '收藏分类' },
                 { key: 'logs', label: '操作日志' },
                 { key: 'browseHistory', label: '浏览历史' },
                 { key: 'quickReplies', label: '快捷回复' },
@@ -1322,6 +1334,7 @@
                                     'blacklist': '黑名单',
                                     'friends': '好友',
                                     'favorites': '收藏',
+                                    'favoriteCategories': '收藏分类',
                                     'logs': '操作日志',
                                     'browseHistory': '浏览历史',
                                     'quickReplies': '快捷回复',
@@ -3092,6 +3105,15 @@
         // 从服务器同步配置
         syncFromServer: async function() {
             return await Sync.download();
+        },
+
+        // 新增：直接显示配置选择对话框（用于预览/调试）
+        showSelectionDialog: function(mode = 'upload') {
+            try {
+                Sync.showConfigSelectionDialog(mode, () => {});
+            } catch (e) {
+                console.error('显示选择对话框失败:', e);
+            }
         }
     };
 
