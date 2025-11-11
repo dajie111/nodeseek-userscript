@@ -2554,7 +2554,7 @@
                 text-align: center;
             `;
             policyTip.innerHTML = `
-                <div>数据保留365天（每日00:00清理过期）</div>
+                <div>账号保留365天（每日00:00清理过期）</div>
                 <div>登录或同步均视为活动，365天无活动账号自动删除</div>
             `;
 
