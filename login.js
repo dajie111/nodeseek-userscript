@@ -17,16 +17,18 @@
     // 工具函数
     const Utils = {
         // 显示消息
-        showMessage: function(message, type = 'info') {
-            // 记录日志
+        showMessage: function(message, type = 'info', showToast = true) {
+            // 记录日志（去除模块前缀）
             if (typeof window.addLog === 'function') {
-                window.addLog(`[配置同步] ${message}`);
+                window.addLog(message);
             } else {
-                console.log(`[配置同步] ${message}`);
+                console.log(message);
             }
 
             // 显示界面提示
-            this.showToast(message, type);
+            if (showToast) {
+                this.showToast(message, type);
+            }
         },
 
         // 显示临时提示框
@@ -206,7 +208,8 @@
                         if (isSyncOperation) {
                             if (typeof Utils.showMessage === 'function') {
                                 const errorType = error.name === 'AbortError' ? '请求超时' : '网络连接失败';
-                                Utils.showMessage(`${errorType}，正在重试... (${attempt + 1}/${maxRetries})`, 'warning');
+                                // 同步重试仅记录日志，不显示弹窗
+                                Utils.showMessage(`${errorType}，正在重试... (${attempt + 1}/${maxRetries})`, 'warning', false);
                             }
                         }
 
@@ -1432,7 +1435,8 @@
                             if (include('notesData') && config.notesData && typeof config.notesData === 'object') labels.push('笔记');
 
                             const syncDesc = `配置已同步到服务器 (${labels.join('、')})`;
-                            Utils.showMessage(syncDesc, 'success');
+                            // 仅输出到日志，不显示右上角弹窗
+                            Utils.showMessage(syncDesc, 'success', false);
 
                             // 延迟更新存储空间信息，确保对话框关闭后再更新
                             setTimeout(() => {
@@ -1448,7 +1452,8 @@
                             resolve(false);
                         }
                     } catch (error) {
-                        Utils.showMessage(`配置同步失败: ${error.message}`, 'error');
+                        // 仅输出到日志，不显示右上角弹窗
+                        Utils.showMessage(`配置同步失败: ${error.message}`, 'error', false);
                         reject(error); // 重新抛出错误，让进度条能够显示失败状态
                     }
                 }, () => {
@@ -1817,7 +1822,8 @@
                                     if (shouldReload) {
                                         location.reload();
                                     } else {
-                                        Utils.showMessage('配置已同步，建议刷新页面以完全应用更改', 'info');
+                                        // 仅记录日志，不显示弹窗
+                                        Utils.showMessage('配置已同步，建议刷新页面以完全应用更改', 'info', false);
 
                                         // 更新存储空间信息
                                         const currentStorageInfo = document.querySelector('#login-auth-dialog .storage-info-container');
@@ -1828,18 +1834,22 @@
                                 }, 500);
                                 resolve(true);
                             } else {
-                                Utils.showMessage('从服务器获取配置成功，但没有数据需要应用', 'info');
+                                // 仅记录日志，不显示弹窗
+                                Utils.showMessage('从服务器获取配置成功，但没有数据需要应用', 'info', false);
                                 resolve(false);
                             }
                         } else {
-                            Utils.showMessage('服务器返回的配置数据格式错误', 'error');
+                            // 仅记录日志，不显示弹窗
+                            Utils.showMessage('服务器返回的配置数据格式错误', 'error', false);
                             reject(new Error('配置数据格式错误'));
                         }
                     } catch (error) {
                         if (error.message.includes('404')) {
-                            Utils.showMessage('服务器上没有配置数据，请先上传配置', 'warning');
+                            // 仅记录日志，不显示弹窗
+                            Utils.showMessage('服务器上没有配置数据，请先上传配置', 'warning', false);
                         } else {
-                            Utils.showMessage(`配置下载失败: ${error.message}`, 'error');
+                            // 仅记录日志，不显示弹窗
+                            Utils.showMessage(`配置下载失败: ${error.message}`, 'error', false);
                         }
                         reject(error); // 重新抛出错误，让进度条能够显示失败状态
                     }
