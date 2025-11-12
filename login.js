@@ -1424,9 +1424,7 @@
                                 }[item];
                                 return option || item;
                             });
-                            // 提示中补充隐式同步的设置项
-                            if (selectedItems.includes('quickReplies')) itemNames.push('快捷回复设置');
-                            if (selectedItems.includes('logs')) itemNames.push('签到设置');
+                            // 按需求：日志输出不包含“快捷回复设置”“签到设置”
                             Utils.showMessage(`配置已同步到服务器 (${itemNames.join('、')})`, 'success');
 
                             // 延迟更新存储空间信息，确保对话框关闭后再更新
