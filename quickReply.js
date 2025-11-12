@@ -752,7 +752,7 @@
     }
 
     // 显示快捷回复弹窗
-    function showQuickReplyDialog() {
+function showQuickReplyDialog() {
         // 检查弹窗是否已存在
         const existingDialog = document.getElementById('quick-reply-dialog');
         if (existingDialog) {
@@ -790,9 +790,7 @@
         }
 
         // 记录日志
-        if (window.addQuickReplyLog) {
-            window.addQuickReplyLog('打开快捷回复面板');
-        }
+    
     }
 
     // 创建快捷回复弹窗内容
