@@ -228,7 +228,8 @@
 
             // 如果没有选择特定项目，默认获取所有配置
             if (!selectedItems || selectedItems.length === 0) {
-                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'hotTopicsData', 'filterData', 'notesData'];
+                // 移除热点统计数据，不参与服务器同步备份
+                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'filterData', 'notesData'];
             }
 
             // 获取黑名单数据
@@ -479,7 +480,8 @@
 
             // 如果没有选择特定项目，默认应用所有配置
             if (!selectedItems || selectedItems.length === 0) {
-                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'hotTopicsData'];
+                // 移除热点统计数据，不参与服务器同步应用
+                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats'];
             }
 
             try {
@@ -1023,7 +1025,6 @@
                 { key: 'quickReplies', label: '快捷回复' },
                 { key: 'emojiFavorites', label: '常用表情' },
                 { key: 'chickenLegStats', label: '鸡腿统计' },
-                { key: 'hotTopicsData', label: '热点统计' },
                 { key: 'filterData', label: '关键词过滤' },
                 { key: 'notesData', label: '笔记' }
             ];
@@ -1407,25 +1408,31 @@
                         });
 
                         if (data.success) {
-                            const itemNames = selectedItems.map(item => {
-                                const option = {
-                                    'blacklist': '黑名单',
-                                    'friends': '好友',
-                                    'favorites': '收藏',
-                                    'favoriteCategories': '收藏分类',
-                                    'logs': '操作日志',
-                                    'browseHistory': '浏览历史',
-                                    'quickReplies': '快捷回复',
-                                    'emojiFavorites': '常用表情',
-                                    'chickenLegStats': '鸡腿统计',
-                                    'hotTopicsData': '热点统计',
-                                    'filterData': '关键词过滤',
-                                    'notesData': '笔记'
-                                }[item];
-                                return option || item;
-                            });
-                            // 按需求：日志输出不包含“快捷回复设置”“签到设置”
-                            Utils.showMessage(`配置已同步到服务器 (${itemNames.join('、')})`, 'success');
+                            // 统一为不含括号细节的模块名称列表
+                            const labels = [];
+                            const include = (key) => Array.isArray(selectedItems) && selectedItems.includes(key);
+                            if (include('blacklist')) labels.push('黑名单');
+                            if (include('friends')) labels.push('好友');
+                            if (include('favorites')) labels.push('收藏');
+                            if (include('favoriteCategories')) labels.push('收藏分类');
+                            if (include('logs')) labels.push('操作日志');
+                            if (include('browseHistory')) labels.push('浏览历史');
+                            if (include('emojiFavorites') && config.emojiFavorites && Array.isArray(config.emojiFavorites) && config.emojiFavorites.length > 0) labels.push('常用表情');
+                            if (include('quickReplies') && config.quickReplies && typeof config.quickReplies === 'object' && Object.keys(config.quickReplies).length > 0) labels.push('快捷回复');
+                            // 快捷回复设置：仅在存在设置时展示模块名
+                            if (include('quickReplies') && config.quickReplies && config.quickReplies.__meta__ && typeof config.quickReplies.__meta__.autoSubmit === 'boolean') {
+                                labels.push('快捷回复设置');
+                            }
+                            // 签到设置：嵌入在操作日志配置中，存在则展示模块名
+                            if (include('logs') && config.logs && config.logs.settings && typeof config.logs.settings.enabled === 'boolean') {
+                                labels.push('签到设置');
+                            }
+                            if (include('chickenLegStats') && config.chickenLegStats && typeof config.chickenLegStats === 'object') labels.push('鸡腿统计');
+                            if (include('filterData') && config.filterData && typeof config.filterData === 'object') labels.push('关键词过滤');
+                            if (include('notesData') && config.notesData && typeof config.notesData === 'object') labels.push('笔记');
+
+                            const syncDesc = `配置已同步到服务器 (${labels.join('、')})`;
+                            Utils.showMessage(syncDesc, 'success');
 
                             // 延迟更新存储空间信息，确保对话框关闭后再更新
                             setTimeout(() => {
