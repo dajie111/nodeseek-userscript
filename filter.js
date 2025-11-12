@@ -214,17 +214,64 @@ function convertTraditionalToSimplified(text) {
     Object.keys(SIMPLIFIED_TO_TRADITIONAL).forEach(key => {
         traditionalToSimplified[SIMPLIFIED_TO_TRADITIONAL[key]] = key;
     });
+    // 额外补充缺失的常用繁→简映射
+    traditionalToSimplified['靈'] = '灵';
     return text.split('').map(char => traditionalToSimplified[char] || char).join('');
+}
+
+// 常见地区用语与同义词短语映射（统一到简体常用表达，用于搜索匹配）
+const PHRASE_EQUIVALENTS = [
+    // 网络/服务器相关
+    { from: ['網路', '网路'], to: '网络' },
+    { from: ['伺服器'], to: '服务器' },
+    // 软件/硬件
+    { from: ['軟體', '软体'], to: '软件' },
+    { from: ['硬體', '硬体'], to: '硬件' },
+    // 发布/部署
+    { from: ['佈署', '布署'], to: '部署' },
+    { from: ['發表', '發佈', '发布會', '發佈會'], to: '发布' },
+    // 存储/数据
+    { from: ['記憶體', '记忆体'], to: '内存' },
+    { from: ['資料'], to: '数据' },
+    // 账号/登录/注册
+    { from: ['帳號', '賬號'], to: '账号' },
+    { from: ['帳戶', '賬戶'], to: '账户' },
+    { from: ['登入'], to: '登录' },
+    { from: ['註冊', '注冊'], to: '注册' },
+    // 邮件/邮箱
+    { from: ['電郵'], to: '邮箱' },
+    // 浏览器/下载（字符级转换已大多覆盖，但保留短语保障）
+    { from: ['瀏覽器'], to: '浏览器' },
+    { from: ['下載'], to: '下载' }
+];
+
+function applyPhraseEquivalents(text) {
+    if (!text) return text;
+    let out = text;
+    // 按短语长度从长到短替换，避免子串抢先替换
+    const entries = PHRASE_EQUIVALENTS
+        .map(e => e.from.map(f => ({ from: f, to: e.to })))
+        .flat()
+        .sort((a, b) => b.from.length - a.from.length);
+    entries.forEach(({ from, to }) => {
+        const re = new RegExp(from, 'g');
+        out = out.replace(re, to);
+    });
+    return out;
 }
 
 // 文本标准化函数（去空格、转小写、简繁体统一）
 function normalizeText(text) {
     // 1. 去除空格
-    let normalized = text.replace(/\s+/g, '');
+    let normalized = (text || '').replace(/\s+/g, '');
     // 2. 转为小写
     normalized = normalized.toLowerCase();
-    // 3. 转换为简体（统一标准）
+    // 3. 先进行短语同义词归一化（覆盖地区用语差异）
+    normalized = applyPhraseEquivalents(normalized);
+    // 4. 再进行字符级繁体→简体转换（统一标准）
     normalized = convertTraditionalToSimplified(normalized);
+    // 5. 第二次短语归一（处理字符转换后仍存在的差异，如“网路”→“网络”）
+    normalized = applyPhraseEquivalents(normalized);
     return normalized;
 }
 
@@ -380,6 +427,7 @@ function removeCustomKeyword(keyword) {
     const keywords = getCustomKeywords();
     const filtered = keywords.filter(k => k !== keyword);
     saveCustomKeywords(filtered);
+    if (window.addLog) window.addLog(`删除关键词：${keyword}`);
     return filtered;
 }
 
@@ -426,6 +474,7 @@ function removeHighlightKeyword(keyword) {
     const keywords = getHighlightKeywords();
     const filtered = keywords.filter(k => k !== keyword);
     saveHighlightKeywords(filtered);
+    if (window.addLog) window.addLog(`删除高亮关键词：${keyword}`);
     return filtered;
 }
 
@@ -933,16 +982,11 @@ function createFilterUI(onFilter) {
         // 总是应用过滤逻辑（无论关键词是否为空）
         filterPosts(blacklistKeywords, whitelistKeywords);
         
-        // 如果显示关键词为空，记录日志
+        // 如果显示关键词为空，仅在存在屏蔽关键词时记录日志
         if (whitelistKeywords.length === 0 && typeof window.addLog === 'function') {
             const blackCount = blacklistKeywords.length;
-            let logMessage = '过滤：';
             if (blackCount > 0) {
-                logMessage += `屏蔽${blackCount}个关键词`;
-            } else {
-                logMessage += '显示全部内容';
             }
-            window.addLog(logMessage);
         }
         
         // 应用高亮
@@ -1142,16 +1186,11 @@ function createFilterUI(onFilter) {
         // 重新应用高亮：移除显示关键词的高亮，仅保留高亮关键词与作者高亮
         applyKeywordHighlight();
         
-        // 操作日志记录
+        // 操作日志记录：仅在存在屏蔽关键词时记录
         if (typeof window.addLog === 'function') {
             const blackCount = blacklistKeywords.length;
-            let logMessage = '过滤：';
             if (blackCount > 0) {
-                logMessage += `屏蔽${blackCount}个关键词`;
-            } else {
-                logMessage += '显示全部内容';
             }
-            window.addLog(logMessage);
         }
         
         dialog.remove();
@@ -1200,16 +1239,11 @@ function createFilterUI(onFilter) {
             // 重新应用高亮：移除显示关键词高亮，保留高亮关键词与作者高亮
             applyKeywordHighlight();
 
-            // 操作日志记录
+            // 操作日志记录：仅在存在屏蔽关键词时记录
             if (typeof window.addLog === 'function') {
                 const blackCount = blacklistKeywords.length;
-                let logMessage = '过滤：';
                 if (blackCount > 0) {
-                    logMessage += `屏蔽${blackCount}个关键词`;
-                } else {
-                    logMessage += '显示全部内容';
                 }
-                window.addLog(logMessage);
             }
         }
     });
