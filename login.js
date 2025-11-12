@@ -261,7 +261,21 @@
 
             // 获取操作日志
             if (selectedItems.includes('logs')) {
-                config.logs = JSON.parse(localStorage.getItem('nodeseek_sign_logs') || '[]');
+                try {
+                    const logsArray = JSON.parse(localStorage.getItem('nodeseek_sign_logs') || '[]');
+                    const payload = { entries: Array.isArray(logsArray) ? logsArray : [] };
+                    // 将签到设置嵌入到允许的键内，避免顶级不允许的键
+                    const signEnabledRaw = localStorage.getItem('nodeseek_sign_enabled');
+                    if (signEnabledRaw !== null) {
+                        try {
+                            const enabled = JSON.parse(signEnabledRaw);
+                            payload.settings = { enabled: !!enabled };
+                        } catch (e) { /* ignore */ }
+                    }
+                    config.logs = payload;
+                } catch (e) {
+                    config.logs = { entries: [] };
+                }
             }
 
             // 获取浏览历史
@@ -284,6 +298,18 @@
                     }
                 } catch (error) {
                     config.quickReplies = {};
+                }
+                // 将快捷回复设置作为元信息嵌入，避免顶级不允许的键
+                try {
+                    const autoSubmitRaw = localStorage.getItem('nodeseek_quick_reply_auto_submit');
+                    const autoSubmit = autoSubmitRaw ? JSON.parse(autoSubmitRaw) : false;
+                    if (!config.quickReplies || typeof config.quickReplies !== 'object') {
+                        config.quickReplies = {};
+                    }
+                    // 使用特殊字段，应用时会清理，避免污染分类
+                    config.quickReplies.__meta__ = { autoSubmit: !!autoSubmit };
+                } catch (e) {
+                    /* ignore parse errors */
                 }
             }
 
@@ -486,9 +512,36 @@
                 }
 
                 // 应用操作日志
-                if (selectedItems.includes('logs') && config.logs && Array.isArray(config.logs)) {
-                    localStorage.setItem('nodeseek_sign_logs', JSON.stringify(config.logs));
-                    applied.push("操作日志");
+                if (selectedItems.includes('logs') && config.logs) {
+                    try {
+                        if (Array.isArray(config.logs)) {
+                            localStorage.setItem('nodeseek_sign_logs', JSON.stringify(config.logs));
+                            applied.push("操作日志");
+                            // 兼容顶级签到设置（历史数据）
+                            let enabled;
+                            if (config.signSettings && typeof config.signSettings === 'object') {
+                                enabled = config.signSettings.enabled;
+                            } else if (typeof config.signEnabled !== 'undefined') {
+                                enabled = config.signEnabled;
+                            }
+                            if (typeof enabled !== 'undefined') {
+                                localStorage.setItem('nodeseek_sign_enabled', JSON.stringify(!!enabled));
+                                applied.push(`签到设置(${enabled ? '开启' : '关闭'})`);
+                            }
+                        } else if (typeof config.logs === 'object') {
+                            const entries = Array.isArray(config.logs.entries) ? config.logs.entries : [];
+                            localStorage.setItem('nodeseek_sign_logs', JSON.stringify(entries));
+                            applied.push(`操作日志(${entries.length}条)`);
+                            const enabled = config.logs.settings ? config.logs.settings.enabled : undefined;
+                            if (typeof enabled !== 'undefined') {
+                                localStorage.setItem('nodeseek_sign_enabled', JSON.stringify(!!enabled));
+                                applied.push(`签到设置(${enabled ? '开启' : '关闭'})`);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('应用操作日志失败:', e);
+                        applied.push("操作日志(失败)");
+                    }
                 }
 
                 // 应用浏览历史
@@ -499,18 +552,43 @@
 
                 // 应用快捷回复数据
                 if (selectedItems.includes('quickReplies') && config.quickReplies && typeof config.quickReplies === 'object') {
+                    // 先提取并清理元信息，避免污染分类结构
+                    let metaAutoSubmit;
+                    try {
+                        if (config.quickReplies.__meta__ && typeof config.quickReplies.__meta__ === 'object') {
+                            metaAutoSubmit = config.quickReplies.__meta__.autoSubmit;
+                            delete config.quickReplies.__meta__;
+                        }
+                    } catch (e) { /* ignore */ }
+
                     // 确保数据包含categoryOrder
                     if (!config.quickReplies.categoryOrder) {
                         config.quickReplies.categoryOrder = Object.keys(config.quickReplies).filter(key => key !== 'categoryOrder');
                     }
 
+                    const cleanedQuickReplies = config.quickReplies;
                     if (window.NodeSeekQuickReply && typeof window.NodeSeekQuickReply.setQuickReplies === 'function') {
-                        window.NodeSeekQuickReply.setQuickReplies(config.quickReplies);
+                        window.NodeSeekQuickReply.setQuickReplies(cleanedQuickReplies);
                     } else {
-                        localStorage.setItem('nodeseek_quick_reply', JSON.stringify(config.quickReplies));
+                        localStorage.setItem('nodeseek_quick_reply', JSON.stringify(cleanedQuickReplies));
                     }
-                    const categoriesCount = config.quickReplies.categoryOrder ? config.quickReplies.categoryOrder.length : Object.keys(config.quickReplies).filter(key => key !== 'categoryOrder').length;
+                    const categoriesCount = cleanedQuickReplies.categoryOrder ? cleanedQuickReplies.categoryOrder.length : Object.keys(cleanedQuickReplies).filter(key => key !== 'categoryOrder').length;
                     applied.push(`快捷回复(${categoriesCount}个分类)`);
+                    // 应用快捷回复设置（优先使用元信息，其次兼容旧字段）
+                    try {
+                        let autoSubmit = typeof metaAutoSubmit !== 'undefined' ? metaAutoSubmit : undefined;
+                        if (typeof autoSubmit === 'undefined') {
+                            if (config.quickReplySettings && typeof config.quickReplySettings === 'object') {
+                                autoSubmit = config.quickReplySettings.autoSubmit;
+                            } else if (typeof config.quickReplyAutoSubmit !== 'undefined') {
+                                autoSubmit = config.quickReplyAutoSubmit;
+                            }
+                        }
+                        if (typeof autoSubmit !== 'undefined') {
+                            localStorage.setItem('nodeseek_quick_reply_auto_submit', JSON.stringify(!!autoSubmit));
+                            applied.push(`快捷回复设置(自动发布:${autoSubmit ? '开启' : '关闭'})`);
+                        }
+                    } catch (e) { /* ignore */ }
                 }
 
                 // 应用常用表情数据
@@ -1346,6 +1424,9 @@
                                 }[item];
                                 return option || item;
                             });
+                            // 提示中补充隐式同步的设置项
+                            if (selectedItems.includes('quickReplies')) itemNames.push('快捷回复设置');
+                            if (selectedItems.includes('logs')) itemNames.push('签到设置');
                             Utils.showMessage(`配置已同步到服务器 (${itemNames.join('、')})`, 'success');
 
                             // 延迟更新存储空间信息，确保对话框关闭后再更新
