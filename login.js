@@ -1818,7 +1818,8 @@
                             if (applied.length > 0) {
                                 // 延迟显示确认对话框，让成功提示先显示
                                 setTimeout(() => {
-                                    const shouldReload = confirm(`配置同步成功！\n\n已同步: ${applied.join('、')}\n\n是否刷新页面以应用更改？`);
+                                    const simplifiedApplied = applied.map(s => s.replace(/\s*\([^)]*\)\s*/g, '').replace(/\s*（[^）]*）\s*/g, ''));
+                                    const shouldReload = confirm(`配置同步成功！\n\n已同步: ${simplifiedApplied.join('、')}\n\n是否刷新页面以应用更改？`);
                                     if (shouldReload) {
                                         location.reload();
                                     } else {
