@@ -253,13 +253,11 @@
                 }
             }
 
-            // 获取收藏数据
             if (selectedItems.includes('favorites')) {
                 config.favorites = JSON.parse(localStorage.getItem('nodeseek_favorites') || '[]');
-            }
-
-            // 新增：获取收藏分类数据
-            if (selectedItems.includes('favoriteCategories')) {
+                config.favoriteCategories = JSON.parse(localStorage.getItem('nodeseek_favorites_categories') || '[]');
+            } else if (selectedItems.includes('favoriteCategories')) {
+                config.favorites = JSON.parse(localStorage.getItem('nodeseek_favorites') || '[]');
                 config.favoriteCategories = JSON.parse(localStorage.getItem('nodeseek_favorites_categories') || '[]');
             }
 
@@ -473,6 +471,22 @@
                 }
             }
 
+            try {
+                const enabledRaw = localStorage.getItem('nodeseek_auto_sync_enabled');
+                const itemsRaw = localStorage.getItem('nodeseek_auto_sync_items');
+                const lastRaw = localStorage.getItem('nodeseek_auto_sync_last_time');
+            const enabled = enabledRaw ? JSON.parse(enabledRaw) : false;
+            const items = itemsRaw ? JSON.parse(itemsRaw) : [];
+            const last = lastRaw ? parseInt(lastRaw) : 0;
+            config.autoSync = {
+                enabled: !!enabled,
+                items: Array.isArray(items) ? items : [],
+                intervalMs: 24 * 60 * 60 * 1000,
+                lastTime: isNaN(last) ? 0 : last
+            };
+            } catch (e) {
+            config.autoSync = { enabled: false, items: [], intervalMs: 24 * 60 * 60 * 1000, lastTime: 0 };
+            }
             config.timestamp = new Date().toISOString();
             return config;
         },
@@ -504,16 +518,31 @@
                     applied.push("好友");
                 }
 
-                // 应用收藏数据
-                if (selectedItems.includes('favorites') && config.favorites && Array.isArray(config.favorites)) {
-                    localStorage.setItem('nodeseek_favorites', JSON.stringify(config.favorites));
-                    applied.push("收藏");
+                if (config.autoSync && typeof config.autoSync === 'object') {
+                    try {
+                        const enabled = !!config.autoSync.enabled;
+                        localStorage.setItem('nodeseek_auto_sync_enabled', JSON.stringify(enabled));
+                        if (Array.isArray(config.autoSync.items)) {
+                            localStorage.setItem('nodeseek_auto_sync_items', JSON.stringify(config.autoSync.items));
+                        }
+                        const last = typeof config.autoSync.lastTime === 'number' ? config.autoSync.lastTime : 0;
+                        localStorage.setItem('nodeseek_auto_sync_last_time', ((last && !isNaN(last)) ? last : Date.now()).toString());
+                        if (!enabled) {
+                            localStorage.removeItem('nodeseek_auto_sync_lock_until');
+                        }
+                        applied.push(`自动同步设置(${enabled ? '开启' : '关闭'})`);
+                        try { Sync.initAutoSync(); } catch (e) {}
+                    } catch (e) {}
                 }
 
-                // 新增：应用收藏分类数据
-                if (selectedItems.includes('favoriteCategories') && config.favoriteCategories && Array.isArray(config.favoriteCategories)) {
-                    localStorage.setItem('nodeseek_favorites_categories', JSON.stringify(config.favoriteCategories));
-                    applied.push("收藏分类");
+                if ((selectedItems.includes('favorites') || selectedItems.includes('favoriteCategories'))) {
+                    if (config.favorites && Array.isArray(config.favorites)) {
+                        localStorage.setItem('nodeseek_favorites', JSON.stringify(config.favorites));
+                        if (!applied.includes("收藏")) applied.push("收藏");
+                    }
+                    if (config.favoriteCategories && Array.isArray(config.favoriteCategories)) {
+                        localStorage.setItem('nodeseek_favorites_categories', JSON.stringify(config.favoriteCategories));
+                    }
                 }
 
                 // 应用操作日志
@@ -942,6 +971,7 @@
 
     // 配置同步
     const Sync = {
+        _autoSyncTimerId: null,
         // 显示配置选择对话框
         // onCancel: 可选，当用户关闭/取消对话框且未执行同步时触发
         showConfigSelectionDialog: function(mode, callback, onCancel) {
@@ -1022,7 +1052,6 @@
                 { key: 'blacklist', label: '黑名单' },
                 { key: 'friends', label: '好友' },
                 { key: 'favorites', label: '收藏' },
-                { key: 'favoriteCategories', label: '收藏分类' },
                 { key: 'logs', label: '操作日志' },
                 { key: 'browseHistory', label: '浏览历史' },
                 { key: 'quickReplies', label: '快捷回复' },
@@ -1038,13 +1067,18 @@
                 margin-bottom: 15px;
                 padding-bottom: 10px;
                 border-bottom: 1px solid #eee;
+                display: grid;
+                grid-template-columns: ${isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)'};
+                gap: ${isMobile ? '6px' : '8px'};
+                align-items: center;
             `;
 
             const selectAllCheckbox = document.createElement('input');
             selectAllCheckbox.type = 'checkbox';
             selectAllCheckbox.id = 'select-all-config';
             selectAllCheckbox.checked = true;
-            selectAllCheckbox.style.marginRight = '8px';
+            selectAllCheckbox.style.marginRight = '0px';
+            selectAllCheckbox.onclick = (e) => { e.stopPropagation(); };
 
             const selectAllLabel = document.createElement('label');
             selectAllLabel.htmlFor = 'select-all-config';
@@ -1054,9 +1088,106 @@
                 font-weight: bold;
                 color: #1890ff;
             `;
+            selectAllLabel.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                selectAllGroup.onclick();
+            };
 
-            selectAllContainer.appendChild(selectAllCheckbox);
-            selectAllContainer.appendChild(selectAllLabel);
+            const selectAllGroup = document.createElement('div');
+            selectAllGroup.style.cssText = `
+                min-width: 0;
+                padding: ${isMobile ? '6px 8px' : '8px 12px'};
+                background: #f8f9fa;
+                border-radius: 4px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                cursor: pointer;
+                white-space: nowrap;
+            `;
+            selectAllGroup.appendChild(selectAllCheckbox);
+            selectAllGroup.appendChild(selectAllLabel);
+            selectAllContainer.appendChild(selectAllGroup);
+            selectAllGroup.onclick = () => {
+                selectAllCheckbox.checked = !selectAllCheckbox.checked;
+                selectAllCheckbox.dispatchEvent(new Event('change'));
+            };
+
+            let autoSyncContainer;
+            let autoSyncCheckbox;
+            if (mode === 'upload') {
+                autoSyncContainer = document.createElement('div');
+                autoSyncContainer.style.cssText = `
+                    min-width: 0;
+                    padding: ${isMobile ? '6px 8px' : '8px 12px'};
+                    background: #f8f9fa;
+                    border-radius: 4px;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    color: #333;
+                    cursor: pointer;
+                    white-space: nowrap;
+                    grid-column: ${isMobile ? 'span 1' : 'span 3'};
+                `;
+                autoSyncCheckbox = document.createElement('input');
+                autoSyncCheckbox.type = 'checkbox';
+                autoSyncCheckbox.id = 'auto-sync-config';
+                try {
+                    autoSyncCheckbox.checked = JSON.parse(localStorage.getItem('nodeseek_auto_sync_enabled') || 'false');
+                } catch (e) {
+                    autoSyncCheckbox.checked = false;
+                }
+                autoSyncCheckbox.onclick = (e) => { e.stopPropagation(); };
+                const autoSyncLabel = document.createElement('label');
+                autoSyncLabel.htmlFor = 'auto-sync-config';
+                autoSyncLabel.textContent = '自动同步（每24小时一次）';
+                autoSyncLabel.style.cssText = `
+                    cursor: pointer;
+                    font-weight: bold;
+                    color: #1890ff;
+                `;
+                autoSyncLabel.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    autoSyncContainer.onclick();
+                };
+                const autoSyncCountdown = document.createElement('span');
+                autoSyncCountdown.style.cssText = `
+                    margin-left: 8px;
+                    font-size: 12px;
+                    color: #888;
+                `;
+                autoSyncCountdown.onclick = (e) => { e.stopPropagation(); };
+                autoSyncContainer.appendChild(autoSyncCheckbox);
+                autoSyncContainer.appendChild(autoSyncLabel);
+                autoSyncContainer.appendChild(autoSyncCountdown);
+                selectAllContainer.appendChild(autoSyncContainer);
+                autoSyncContainer.onclick = () => {
+                    autoSyncCheckbox.checked = !autoSyncCheckbox.checked;
+                    autoSyncCheckbox.dispatchEvent(new Event('change'));
+                };
+
+                autoSyncCheckbox.addEventListener('change', () => {
+                    try {
+                        const enabled = !!autoSyncCheckbox.checked;
+                        localStorage.setItem('nodeseek_auto_sync_enabled', JSON.stringify(enabled));
+                        if (enabled) {
+                            const items = checkboxes.length ? checkboxes.filter(cb => cb.checked).map(cb => cb.value) : [];
+                            localStorage.setItem('nodeseek_auto_sync_items', JSON.stringify(items));
+                            localStorage.setItem('nodeseek_auto_sync_last_time', Date.now().toString());
+                            try { Sync.initAutoSync(); } catch (e) {}
+                            Utils.showMessage('自动同步已开启', 'info', false);
+                        } else {
+                            localStorage.removeItem('nodeseek_auto_sync_items');
+                            localStorage.removeItem('nodeseek_auto_sync_lock_until');
+                            Utils.showMessage('自动同步已关闭', 'info', false);
+                        }
+                    } catch (e) {}
+                });
+
+            }
 
             // 配置项列表
             const configList = document.createElement('div');
@@ -1141,18 +1272,41 @@
                 checkboxes.push(checkbox);
             });
 
-            // 全选逻辑
-            selectAllCheckbox.onchange = function() {
-                checkboxes.forEach(cb => cb.checked = this.checked);
+            try {
+                const savedItemsRaw = localStorage.getItem('nodeseek_auto_sync_items');
+                const savedItems = savedItemsRaw ? JSON.parse(savedItemsRaw) : null;
+                if (Array.isArray(savedItems) && savedItems.length > 0) {
+                    checkboxes.forEach(cb => {
+                        cb.checked = savedItems.includes(cb.value);
+                    });
+                    const allChecked = checkboxes.every(c => c.checked);
+                    const anyChecked = checkboxes.some(c => c.checked);
+                    selectAllCheckbox.checked = allChecked;
+                    selectAllCheckbox.indeterminate = !allChecked && anyChecked;
+                }
+            } catch (e) { }
+
+            const getSelectedItems = () => checkboxes.filter(cb => cb.checked).map(cb => cb.value);
+            const persistAutoSyncItems = () => {
+                try {
+                    if (autoSyncCheckbox && autoSyncCheckbox.checked) {
+                        localStorage.setItem('nodeseek_auto_sync_items', JSON.stringify(getSelectedItems()));
+                    }
+                } catch (e) {}
             };
 
-            // 单个选择逻辑
+            selectAllCheckbox.onchange = function() {
+                checkboxes.forEach(cb => cb.checked = this.checked);
+                persistAutoSyncItems();
+            };
+
             checkboxes.forEach(cb => {
                 cb.onchange = function() {
                     const allChecked = checkboxes.every(c => c.checked);
                     const anyChecked = checkboxes.some(c => c.checked);
                     selectAllCheckbox.checked = allChecked;
                     selectAllCheckbox.indeterminate = !allChecked && anyChecked;
+                    persistAutoSyncItems();
                 };
             });
 
@@ -1331,6 +1485,20 @@
                     // 等待一下让用户看到失败状态
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 } finally {
+                    try {
+                        if (mode === 'upload') {
+                            const enabled = autoSyncCheckbox && !!autoSyncCheckbox.checked;
+                            localStorage.setItem('nodeseek_auto_sync_enabled', JSON.stringify(enabled));
+                            if (enabled) {
+                                localStorage.setItem('nodeseek_auto_sync_items', JSON.stringify(selectedItems));
+                                if (opSuccess) {
+                                    localStorage.setItem('nodeseek_auto_sync_last_time', Date.now().toString());
+                                }
+                            } else {
+                                localStorage.removeItem('nodeseek_auto_sync_items');
+                            }
+                        }
+                    } catch (e) {}
                     // 隐藏进度条
                     progressContainer.style.display = 'none';
                     progressFill.style.width = '0%';
@@ -1372,6 +1540,38 @@
 
             // 使对话框可拖动
             UI.makeDraggable(dialog);
+
+            if (mode === 'upload') {
+                const pad = (n) => (n < 10 ? '0' + n : '' + n);
+                const fmt = (ms) => {
+                    const s = Math.floor(ms / 1000);
+                    const h = Math.floor(s / 3600);
+                    const m = Math.floor((s % 3600) / 60);
+                    const sec = s % 60;
+                    return `${pad(h)}:${pad(m)}:${pad(sec)}`;
+                };
+                const updateCountdown = () => {
+                    const enabled = !!document.getElementById('auto-sync-config')?.checked;
+                    const el = autoSyncContainer && autoSyncContainer.querySelector('span');
+                    if (!el) return;
+                    if (!enabled) { el.textContent = '已关闭'; return; }
+                    const last = parseInt(localStorage.getItem('nodeseek_auto_sync_last_time') || '0');
+                    const now = Date.now();
+                    const intervalMs = 24 * 60 * 60 * 1000;
+                    if (!last) { el.textContent = '未开始'; return; }
+                    const elapsed = Math.max(0, now - last);
+                    const remainLoop = (intervalMs - (elapsed % intervalMs)) % intervalMs;
+                    el.textContent = `下次剩余 ${fmt(remainLoop)}`;
+                };
+                const countdownTimer = setInterval(updateCountdown, 1000);
+                updateCountdown();
+
+                const originalCancel = cancelBtn.onclick;
+                cancelBtn.onclick = () => { try { clearInterval(countdownTimer); } catch (e) {} originalCancel(); };
+                const originalClose = closeBtn.onclick;
+                closeBtn.onclick = () => { try { clearInterval(countdownTimer); } catch (e) {} originalClose(); };
+                try { window.addEventListener('ns-sync-end', () => { try { clearInterval(countdownTimer); } catch (e) {} }, { once: true }); } catch (e) {}
+            }
         },
 
         // 上传配置到服务器
@@ -1390,7 +1590,7 @@
                         const config = Utils.getAllConfig(selectedItems);
 
                         // 计算配置数据大小并动态调整超时时间
-                        const configJson = JSON.stringify({ config });
+                        const configJson = JSON.stringify({ config, syncMode: 'manual' });
                         const configSize = new Blob([configJson]).size; // 字节数
                         const configSizeMB = configSize / (1024 * 1024);
 
@@ -1416,20 +1616,11 @@
                             const include = (key) => Array.isArray(selectedItems) && selectedItems.includes(key);
                             if (include('blacklist')) labels.push('黑名单');
                             if (include('friends')) labels.push('好友');
-                            if (include('favorites')) labels.push('收藏');
-                            if (include('favoriteCategories')) labels.push('收藏分类');
+                            if (include('favorites') || include('favoriteCategories')) labels.push('收藏');
                             if (include('logs')) labels.push('操作日志');
                             if (include('browseHistory')) labels.push('浏览历史');
-                            if (include('emojiFavorites') && config.emojiFavorites && Array.isArray(config.emojiFavorites) && config.emojiFavorites.length > 0) labels.push('常用表情');
                             if (include('quickReplies') && config.quickReplies && typeof config.quickReplies === 'object' && Object.keys(config.quickReplies).length > 0) labels.push('快捷回复');
-                            // 快捷回复设置：仅在存在设置时展示模块名
-                            if (include('quickReplies') && config.quickReplies && config.quickReplies.__meta__ && typeof config.quickReplies.__meta__.autoSubmit === 'boolean') {
-                                labels.push('快捷回复设置');
-                            }
-                            // 签到设置：嵌入在操作日志配置中，存在则展示模块名
-                            if (include('logs') && config.logs && config.logs.settings && typeof config.logs.settings.enabled === 'boolean') {
-                                labels.push('签到设置');
-                            }
+                            if (include('emojiFavorites') && config.emojiFavorites && Array.isArray(config.emojiFavorites) && config.emojiFavorites.length > 0) labels.push('常用表情');
                             if (include('chickenLegStats') && config.chickenLegStats && typeof config.chickenLegStats === 'object') labels.push('鸡腿统计');
                             if (include('filterData') && config.filterData && typeof config.filterData === 'object') labels.push('关键词过滤');
                             if (include('notesData') && config.notesData && typeof config.notesData === 'object') labels.push('笔记');
@@ -1461,6 +1652,82 @@
                     try { resolve(false); } catch (e) { /* no-op */ }
                 });
             });
+        },
+
+        uploadSelected: async function(selectedItems) {
+            if (!Auth.isLoggedIn()) return false;
+            try {
+                const config = Utils.getAllConfig(selectedItems);
+                const configJson = JSON.stringify({ config, syncMode: 'auto' });
+                const size = new Blob([configJson]).size;
+                const mb = size / (1024 * 1024);
+                let dynamicTimeout = 60000;
+                if (mb > 1) dynamicTimeout += Math.ceil(mb - 1) * 30000;
+                dynamicTimeout = Math.min(dynamicTimeout, 300000);
+                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`, {
+                    method: 'POST',
+                    body: configJson,
+                    timeout: dynamicTimeout
+                });
+                if (data && data.success) {
+                    localStorage.setItem('nodeseek_auto_sync_last_time', Date.now().toString());
+                    setTimeout(() => {
+                        const el = document.querySelector('#login-auth-dialog .storage-info-container');
+                        if (el) UI.loadStorageInfo(el);
+                    }, 500);
+
+                    const labels = [];
+                    const include = (key) => Array.isArray(selectedItems) && selectedItems.includes(key);
+                    if (include('blacklist')) labels.push('黑名单');
+                    if (include('friends')) labels.push('好友');
+                    if (include('favorites') || include('favoriteCategories')) labels.push('收藏');
+                    if (include('logs')) labels.push('操作日志');
+                    if (include('browseHistory')) labels.push('浏览历史');
+                    if (include('quickReplies') && config.quickReplies && typeof config.quickReplies === 'object' && Object.keys(config.quickReplies).length > 0) labels.push('快捷回复');
+                    if (include('emojiFavorites') && config.emojiFavorites && Array.isArray(config.emojiFavorites) && config.emojiFavorites.length > 0) labels.push('常用表情');
+                    if (include('chickenLegStats') && config.chickenLegStats && typeof config.chickenLegStats === 'object') labels.push('鸡腿统计');
+                    if (include('filterData') && config.filterData && typeof config.filterData === 'object') labels.push('关键词过滤');
+                    if (include('notesData') && config.notesData && typeof config.notesData === 'object') labels.push('笔记');
+
+                    const syncDesc = `配置已同步到服务器 (${labels.join('、')})`;
+                    Utils.showMessage(syncDesc, 'success', false);
+                    return true;
+                }
+                return false;
+            } catch (e) {
+                Utils.showMessage(`配置同步失败: ${e.message}`, 'error', false);
+                return false;
+            }
+        },
+
+        initAutoSync: function() {
+            try {
+                if (this._autoSyncTimerId) return;
+                const tick = () => {
+                    try {
+                        const enabled = JSON.parse(localStorage.getItem('nodeseek_auto_sync_enabled') || 'false');
+                        if (!enabled) return;
+                        if (!Auth.isLoggedIn()) return;
+                        const itemsRaw = localStorage.getItem('nodeseek_auto_sync_items');
+                        const items = itemsRaw ? JSON.parse(itemsRaw) : null;
+                        if (!Array.isArray(items) || items.length === 0) return;
+                        const now = Date.now();
+                        const lockUntil = parseInt(localStorage.getItem('nodeseek_auto_sync_lock_until') || '0');
+                        if (lockUntil && lockUntil > now) return;
+                        const last = parseInt(localStorage.getItem('nodeseek_auto_sync_last_time') || '0');
+                        const intervalMs = 24 * 60 * 60 * 1000;
+                        if (!last) return;
+                        if (now - last >= intervalMs) {
+                            localStorage.setItem('nodeseek_auto_sync_lock_until', (now + Math.min(intervalMs - 5000, 55000)).toString());
+                            this.uploadSelected(items).finally(() => {
+                                localStorage.removeItem('nodeseek_auto_sync_lock_until');
+                            });
+                        }
+                    } catch (e) {}
+                };
+                this._autoSyncTimerId = setInterval(tick, 1000);
+                tick();
+            } catch (e) {}
         },
 
         // 删除同步数据
@@ -3176,6 +3443,7 @@
             // 验证token有效性
             if (Auth.isLoggedIn()) {
                 Auth.validateToken();
+                Sync.initAutoSync();
             }
         },
 
