@@ -170,7 +170,7 @@
                         }
 
                         // 对于某些状态码，不需要重试
-                        if (response.status === 401 || response.status === 403 || response.status === 404) {
+                        if (response.status === 401 || response.status === 403 || response.status === 404 || response.status === 429) {
                             throw new Error(errorMessage);
                         }
 
@@ -1550,19 +1550,22 @@
                     const sec = s % 60;
                     return `${pad(h)}:${pad(m)}:${pad(sec)}`;
                 };
-                const updateCountdown = () => {
-                    const enabled = !!document.getElementById('auto-sync-config')?.checked;
-                    const el = autoSyncContainer && autoSyncContainer.querySelector('span');
-                    if (!el) return;
-                    if (!enabled) { el.textContent = '已关闭'; return; }
-                    const last = parseInt(localStorage.getItem('nodeseek_auto_sync_last_time') || '0');
-                    const now = Date.now();
-                    const intervalMs = 24 * 60 * 60 * 1000;
-                    if (!last) { el.textContent = '未开始'; return; }
-                    const elapsed = Math.max(0, now - last);
-                    const remainLoop = (intervalMs - (elapsed % intervalMs)) % intervalMs;
-                    el.textContent = `下次剩余 ${fmt(remainLoop)}`;
-                };
+            const updateCountdown = () => {
+                const enabled = !!document.getElementById('auto-sync-config')?.checked;
+                const el = autoSyncContainer && autoSyncContainer.querySelector('span');
+                if (!el) return;
+                if (!enabled) { el.textContent = '已关闭'; return; }
+                const last = parseInt(localStorage.getItem('nodeseek_auto_sync_last_time') || '0');
+                const now = Date.now();
+                const intervalMs = 24 * 60 * 60 * 1000;
+                const lockUntil = parseInt(localStorage.getItem('nodeseek_auto_sync_lock_until') || '0');
+                if (!last && (!lockUntil || lockUntil <= now)) { el.textContent = '未开始'; return; }
+                const elapsed = last ? Math.max(0, now - last) : 0;
+                const remainClient = last ? ((intervalMs - (elapsed % intervalMs)) % intervalMs) : 0;
+                const remainServer = (lockUntil && lockUntil > now) ? (lockUntil - now) : 0;
+                const remain = Math.max(remainClient, remainServer);
+                el.textContent = `下次剩余 ${fmt(remain)}`;
+            };
                 const countdownTimer = setInterval(updateCountdown, 1000);
                 updateCountdown();
 
@@ -1696,6 +1699,21 @@
                 return false;
             } catch (e) {
                 Utils.showMessage(`配置同步失败: ${e.message}`, 'error', false);
+                try {
+                    const now = Date.now();
+                    const m = /剩余\s*(\d+)\s*小时\s*(\d+)\s*分钟/.exec(e.message || '');
+                    if (m) {
+                        const h = parseInt(m[1] || '0', 10);
+                        const mm = parseInt(m[2] || '0', 10);
+                        const remainMs = ((h * 60) + mm) * 60 * 1000;
+                        const intervalMs = 24 * 60 * 60 * 1000;
+                        localStorage.setItem('nodeseek_auto_sync_lock_until', (now + remainMs).toString());
+                        const serverLast = now - (intervalMs - remainMs);
+                        if (serverLast > 0) {
+                            localStorage.setItem('nodeseek_auto_sync_last_time', serverLast.toString());
+                        }
+                    }
+                } catch(err) {}
                 return false;
             }
         },
@@ -1703,6 +1721,22 @@
         initAutoSync: function() {
             try {
                 if (this._autoSyncTimerId) return;
+                this._autoSyncInFlight = false;
+                try {
+                    if (!this._autoSyncBC && typeof BroadcastChannel !== 'undefined') {
+                        this._autoSyncBC = new BroadcastChannel('ns-auto-sync');
+                        this._externalLockUntil = 0;
+                        this._autoSyncBC.onmessage = (ev) => {
+                            const data = ev && ev.data;
+                            if (!data || !data.type) return;
+                            if (data.type === 'start' && typeof data.lockUntil === 'number') {
+                                this._externalLockUntil = data.lockUntil;
+                            } else if (data.type === 'end') {
+                                this._externalLockUntil = 0;
+                            }
+                        };
+                    }
+                } catch (e) {}
                 const tick = () => {
                     try {
                         const enabled = JSON.parse(localStorage.getItem('nodeseek_auto_sync_enabled') || 'false');
@@ -1714,13 +1748,21 @@
                         const now = Date.now();
                         const lockUntil = parseInt(localStorage.getItem('nodeseek_auto_sync_lock_until') || '0');
                         if (lockUntil && lockUntil > now) return;
+                        if (this._externalLockUntil && this._externalLockUntil > now) return;
+                        if (this._autoSyncInFlight) return;
                         const last = parseInt(localStorage.getItem('nodeseek_auto_sync_last_time') || '0');
                         const intervalMs = 24 * 60 * 60 * 1000;
                         if (!last) return;
                         if (now - last >= intervalMs) {
-                            localStorage.setItem('nodeseek_auto_sync_lock_until', (now + Math.min(intervalMs - 5000, 55000)).toString());
+                            const shortLockMs = 60000;
+                            const shortLockUntil = now + shortLockMs;
+                            try { localStorage.setItem('nodeseek_auto_sync_lock_until', shortLockUntil.toString()); } catch (e) {}
+                            try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'start', lockUntil: shortLockUntil }); } catch (e) {}
+                            this._autoSyncInFlight = true;
                             this.uploadSelected(items).finally(() => {
-                                localStorage.removeItem('nodeseek_auto_sync_lock_until');
+                                this._autoSyncInFlight = false;
+                                try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'end' }); } catch (e) {}
+                                try { localStorage.removeItem('nodeseek_auto_sync_lock_until'); } catch (e) {}
                             });
                         }
                     } catch (e) {}
