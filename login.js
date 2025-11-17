@@ -526,7 +526,9 @@
                             localStorage.setItem('nodeseek_auto_sync_items', JSON.stringify(config.autoSync.items));
                         }
                         const last = typeof config.autoSync.lastTime === 'number' ? config.autoSync.lastTime : 0;
-                        localStorage.setItem('nodeseek_auto_sync_last_time', ((last && !isNaN(last)) ? last : Date.now()).toString());
+                        const nowTs = ((last && !isNaN(last)) ? last : Date.now()).toString();
+                        localStorage.setItem('nodeseek_auto_sync_last_time', nowTs);
+                        localStorage.setItem('nodeseek_auto_sync_last_attempt_time', nowTs);
                         if (!enabled) {
                             localStorage.removeItem('nodeseek_auto_sync_lock_until');
                         }
@@ -1176,7 +1178,9 @@
                         if (enabled) {
                             const items = checkboxes.length ? checkboxes.filter(cb => cb.checked).map(cb => cb.value) : [];
                             localStorage.setItem('nodeseek_auto_sync_items', JSON.stringify(items));
-                            localStorage.setItem('nodeseek_auto_sync_last_time', Date.now().toString());
+                            const nowTs = Date.now().toString();
+                            localStorage.setItem('nodeseek_auto_sync_last_time', nowTs);
+                            localStorage.setItem('nodeseek_auto_sync_last_attempt_time', nowTs);
                             try { Sync.initAutoSync(); } catch (e) {}
                             Utils.showMessage('自动同步已开启', 'info', false);
                         } else {
@@ -1699,21 +1703,6 @@
                 return false;
             } catch (e) {
                 Utils.showMessage(`配置同步失败: ${e.message}`, 'error', false);
-                try {
-                    const now = Date.now();
-                    const m = /剩余\s*(\d+)\s*小时\s*(\d+)\s*分钟/.exec(e.message || '');
-                    if (m) {
-                        const h = parseInt(m[1] || '0', 10);
-                        const mm = parseInt(m[2] || '0', 10);
-                        const remainMs = ((h * 60) + mm) * 60 * 1000;
-                        const intervalMs = 24 * 60 * 60 * 1000;
-                        localStorage.setItem('nodeseek_auto_sync_lock_until', (now + remainMs).toString());
-                        const serverLast = now - (intervalMs - remainMs);
-                        if (serverLast > 0) {
-                            localStorage.setItem('nodeseek_auto_sync_last_time', serverLast.toString());
-                        }
-                    }
-                } catch(err) {}
                 return false;
             }
         },
@@ -1750,21 +1739,20 @@
                         if (lockUntil && lockUntil > now) return;
                         if (this._externalLockUntil && this._externalLockUntil > now) return;
                         if (this._autoSyncInFlight) return;
-                        const last = parseInt(localStorage.getItem('nodeseek_auto_sync_last_time') || '0');
+                        const lastAttempt = parseInt(localStorage.getItem('nodeseek_auto_sync_last_attempt_time') || '0');
                         const intervalMs = 24 * 60 * 60 * 1000;
-                        if (!last) return;
-                        if (now - last >= intervalMs) {
-                            const shortLockMs = 60000;
-                            const shortLockUntil = now + shortLockMs;
-                            try { localStorage.setItem('nodeseek_auto_sync_lock_until', shortLockUntil.toString()); } catch (e) {}
-                            try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'start', lockUntil: shortLockUntil }); } catch (e) {}
-                            this._autoSyncInFlight = true;
-                            this.uploadSelected(items).finally(() => {
-                                this._autoSyncInFlight = false;
-                                try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'end' }); } catch (e) {}
-                                try { localStorage.removeItem('nodeseek_auto_sync_lock_until'); } catch (e) {}
-                            });
-                        }
+                        const startAfterMs = intervalMs + 60000;
+                        if (lastAttempt && now - lastAttempt < startAfterMs) return;
+                        const shortLockMs = 60000;
+                        const shortLockUntil = now + shortLockMs;
+                        try { localStorage.setItem('nodeseek_auto_sync_lock_until', shortLockUntil.toString()); } catch (e) {}
+                        try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'start', lockUntil: shortLockUntil }); } catch (e) {}
+                        this._autoSyncInFlight = true;
+                        try { localStorage.setItem('nodeseek_auto_sync_last_attempt_time', now.toString()); } catch (e) {}
+                        this.uploadSelected(items).finally(() => {
+                            this._autoSyncInFlight = false;
+                            try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'end' }); } catch (e) {}
+                        });
                     } catch (e) {}
                 };
                 this._autoSyncTimerId = setInterval(tick, 1000);
