@@ -12,124 +12,6 @@
         log(...args) {
             // 已禁用所有日志输出
         },
-
-        // 弹窗层级管理器
-        dialogManager: {
-            dialogs: new Map(), // 存储所有弹窗的信息
-            baseZIndex: 10000,   // 基础z-index值
-            currentMaxZIndex: 10000, // 当前最大z-index值
-            
-            // 注册弹窗
-            register(dialog, id) {
-                if (!dialog || !id) return;
-                
-                const zIndex = this.currentMaxZIndex++;
-                dialog.style.zIndex = zIndex;
-                
-                this.dialogs.set(id, {
-                    element: dialog,
-                    zIndex: zIndex,
-                    id: id
-                });
-                
-                // 添加点击事件监听
-                this.addClickListener(dialog, id);
-                
-                // 添加关闭监听
-                this.addCloseListener(dialog, id);
-                
-                console.log(`弹窗 ${id} 已注册，z-index: ${zIndex}`);
-            },
-            
-            // 添加点击事件监听
-            addClickListener(dialog, id) {
-                const clickHandler = (e) => {
-                    // 防止事件冒泡
-                    e.stopPropagation();
-                    this.bringToFront(id);
-                };
-                
-                dialog.addEventListener('mousedown', clickHandler);
-                dialog.addEventListener('click', clickHandler);
-            },
-            
-            // 添加关闭监听
-            addCloseListener(dialog, id) {
-                // 监听DOM移除
-                const observer = new MutationObserver((mutations) => {
-                    mutations.forEach((mutation) => {
-                        mutation.removedNodes.forEach((node) => {
-                            if (node === dialog) {
-                                this.unregister(id);
-                                observer.disconnect();
-                            }
-                        });
-                    });
-                });
-                
-                if (dialog.parentNode) {
-                    observer.observe(dialog.parentNode, { childList: true });
-                }
-            },
-            
-            // 将弹窗置顶
-            bringToFront(id) {
-                const dialogInfo = this.dialogs.get(id);
-                if (!dialogInfo) return;
-                
-                // 如果已经是最顶层，不需要处理
-                if (dialogInfo.zIndex === this.currentMaxZIndex - 1) return;
-                
-                // 更新z-index
-                const newZIndex = this.currentMaxZIndex++;
-                dialogInfo.element.style.zIndex = newZIndex;
-                dialogInfo.zIndex = newZIndex;
-                
-                console.log(`弹窗 ${id} 已置顶，新z-index: ${newZIndex}`);
-                
-                // 添加置顶动画效果
-                this.addBringToFrontEffect(dialogInfo.element);
-            },
-            
-            // 添加置顶动画效果
-            addBringToFrontEffect(dialog) {
-                // 添加轻微的缩放动画效果
-                dialog.style.transform = 'scale(1.02)';
-                dialog.style.transition = 'transform 0.1s ease-out';
-                
-                setTimeout(() => {
-                    dialog.style.transform = 'scale(1)';
-                    setTimeout(() => {
-                        dialog.style.transition = '';
-                    }, 100);
-                }, 100);
-            },
-            
-            // 注销弹窗
-            unregister(id) {
-                if (this.dialogs.has(id)) {
-                    console.log(`弹窗 ${id} 已注销`);
-                    this.dialogs.delete(id);
-                }
-            },
-            
-            // 获取所有活跃弹窗
-            getActiveDialogs() {
-                return Array.from(this.dialogs.values());
-            },
-            
-            // 清理所有弹窗
-            clearAll() {
-                this.dialogs.forEach((dialogInfo) => {
-                    if (dialogInfo.element && dialogInfo.element.parentNode) {
-                        dialogInfo.element.remove();
-                    }
-                });
-                this.dialogs.clear();
-                this.currentMaxZIndex = this.baseZIndex;
-            }
-        },
-
         // RSS数据缓存
         rssCache: null,
         rssCacheTime: 0,
@@ -718,10 +600,7 @@
                     const currentTime = Date.now();
                     this.rssCache = null; // 清除缓存
 
-                    // 先尝试拉取数据，成功后再清理本地数据，防止拉取失败导致数据丢失
-                    const articles = await this.fetchRSSData();
-
-                    // 拉取成功后，清空本地历史数据
+                    // 清空本地历史数据，直接使用服务器数据
                     this.historyData = [];
 
                     // 更新采集时间记录
@@ -733,6 +612,8 @@
 
                     // 保存全局状态（同步到其他窗口）
                     this.saveGlobalState();
+
+                    const articles = await this.fetchRSSData();
 
                     // 直接使用服务器返回的7天数据，不进行去重处理
                     // 保存到历史数据
@@ -1657,9 +1538,6 @@
             // 创建加载提示
             const loadingDialog = this.createLoadingDialog();
             document.body.appendChild(loadingDialog);
-            
-            // 注册加载弹窗到管理器
-            this.dialogManager.register(loadingDialog, 'hot-topics-loading');
 
             try {
                 let wordFrequency = [];
@@ -1755,9 +1633,6 @@
             `;
 
             document.body.appendChild(dialog);
-
-            // 注册到弹窗管理器
-            this.dialogManager.register(dialog, 'hot-topics-error');
 
             // 5秒后自动关闭
             setTimeout(() => {
@@ -2165,9 +2040,6 @@
 
             document.body.appendChild(dialog);
 
-            // 注册到弹窗管理器
-            this.dialogManager.register(dialog, 'hot-topics-dialog');
-
             // 添加拖拽功能
             if (window.makeDraggable) {
                 window.makeDraggable(dialog, {width: 50, height: 50});
@@ -2524,9 +2396,6 @@
             updateContentMulti();
 
             document.body.appendChild(dialog);
-
-            // 注册到弹窗管理器
-            this.dialogManager.register(dialog, 'hot-words-history-dialog');
 
             // 添加拖拽功能
             if (window.makeDraggable) {
@@ -3399,9 +3268,6 @@
 
             document.body.appendChild(dialog);
 
-            // 注册到弹窗管理器
-            this.dialogManager.register(dialog, 'time-distribution-dialog');
-
             // 添加拖拽功能
             if (window.makeDraggable) {
                 window.makeDraggable(dialog, {width: 50, height: 50});
@@ -3671,9 +3537,6 @@
 
             document.body.appendChild(dialog);
 
-            // 注册到弹窗管理器
-            this.dialogManager.register(dialog, 'user-stats-dialog');
-
             // 添加拖拽功能
             if (window.makeDraggable) {
                 window.makeDraggable(dialog, {width: 50, height: 50});
@@ -3688,3 +3551,4 @@
     NodeSeekFocus.init();
 
 })();
+
