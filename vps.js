@@ -1,6 +1,6 @@
 // ========== VPS剩余价值计算器==========
 
-(function() {
+(function () {
     'use strict';
 
     // VPS计算器模块
@@ -143,12 +143,12 @@
                 beijingTomorrow.setDate(beijingNow.getDate() + 1);
 
                 // 格式化为 YYYY-MM-DD 格式
-                const todayStr = beijingNow.getFullYear() + '-' + 
-                               String(beijingNow.getMonth() + 1).padStart(2, '0') + '-' + 
-                               String(beijingNow.getDate()).padStart(2, '0');
-                const tomorrowStr = beijingTomorrow.getFullYear() + '-' + 
-                                  String(beijingTomorrow.getMonth() + 1).padStart(2, '0') + '-' + 
-                                  String(beijingTomorrow.getDate()).padStart(2, '0');
+                const todayStr = beijingNow.getFullYear() + '-' +
+                    String(beijingNow.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(beijingNow.getDate()).padStart(2, '0');
+                const tomorrowStr = beijingTomorrow.getFullYear() + '-' +
+                    String(beijingTomorrow.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(beijingTomorrow.getDate()).padStart(2, '0');
 
                 const tradeDateInput = document.getElementById('vps-trade-date');
                 const expiryDateInput = document.getElementById('vps-expiry-date');
@@ -159,14 +159,14 @@
                 if (expiryDateInput) {
                     expiryDateInput.value = tomorrowStr;
                 }
-                
+
                 // 调试日志
-                console.log('北京时间:', beijingNow.toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'}));
+                console.log('北京时间:', beijingNow.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }));
                 console.log('设置的交易日期:', todayStr);
                 console.log('设置的到期日期:', tomorrowStr);
             },
 
-                        // 更新汇率显示
+            // 更新汇率显示
             updateExchangeRate: (currencyCode, rates) => {
                 const referenceRateInput = document.getElementById('vps-reference-rate');
                 const exchangeRateInput = document.getElementById('vps-exchange-rate');
@@ -234,11 +234,11 @@
                     if (data && data.rates) {
                         const rates = api.parser(data);
 
-                                            // 格式化当前北京时间
-                    const beijingNow = NodeSeekVPS.utils.getBeijingDate();
-                    const lastUpdateDate = beijingNow.getFullYear() + '/' +
-                                         String(beijingNow.getMonth() + 1).padStart(2, '0') + '/' +
-                                         String(beijingNow.getDate()).padStart(2, '0');
+                        // 格式化当前北京时间
+                        const beijingNow = NodeSeekVPS.utils.getBeijingDate();
+                        const lastUpdateDate = beijingNow.getFullYear() + '/' +
+                            String(beijingNow.getMonth() + 1).padStart(2, '0') + '/' +
+                            String(beijingNow.getDate()).padStart(2, '0');
 
                         // 更新汇率显示
                         document.getElementById('vps-updated-date').textContent = lastUpdateDate + ` (${api.name})`;
@@ -282,8 +282,8 @@
 
             const beijingNow = NodeSeekVPS.utils.getBeijingDate();
             const lastUpdateDate = beijingNow.getFullYear() + '/' +
-                                 String(beijingNow.getMonth() + 1).padStart(2, '0') + '/' +
-                                 String(beijingNow.getDate()).padStart(2, '0');
+                String(beijingNow.getMonth() + 1).padStart(2, '0') + '/' +
+                String(beijingNow.getDate()).padStart(2, '0');
 
             document.getElementById('vps-updated-date').textContent = lastUpdateDate + ' (备用)';
             NodeSeekVPS.rates = fallbackRates;
@@ -472,8 +472,8 @@
             // 格式化日期
             const formatDate = (date) => {
                 return date.getFullYear() + '-' +
-                       String(date.getMonth() + 1).padStart(2, '0') + '-' +
-                       String(date.getDate()).padStart(2, '0');
+                    String(date.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(date.getDate()).padStart(2, '0');
             };
             // 格式化货币
             const formatCurrency = (amount) => {
@@ -809,7 +809,7 @@
             ['vps-exchange-rate', 'vps-renew-money', 'vps-payment-cycle', 'vps-expiry-date', 'vps-trade-date', 'vps-trade-money'].forEach(id => {
                 const element = document.getElementById(id);
                 if (element) {
-                    element.addEventListener('change', function() {
+                    element.addEventListener('change', function () {
                         document.getElementById('vps-is-calculated').value = '0';
                     });
                 }
@@ -818,7 +818,7 @@
             // 交易金额货币单位变化监听 - 特殊处理
             const tradeCurrencySelect = document.getElementById('vps-trade-currency-code');
             if (tradeCurrencySelect) {
-                tradeCurrencySelect.addEventListener('change', function() {
+                tradeCurrencySelect.addEventListener('change', function () {
                     // 仅当已计算且“交易金额”有值时才自动重新计算
                     const isCalculated = document.getElementById('vps-is-calculated').value;
                     const tradeMoneyInput = document.getElementById('vps-trade-money');
@@ -836,7 +836,7 @@
             // 币种变化监听 - 特殊处理
             const currencySelect = document.getElementById('vps-currency-code');
             if (currencySelect) {
-                currencySelect.addEventListener('change', function() {
+                currencySelect.addEventListener('change', function () {
                     NodeSeekVPS.utils.updateExchangeRate(this.value, NodeSeekVPS.rates);
 
                     // 交易货币选择框保持独立，不自动同步
@@ -909,17 +909,684 @@
                 }
             });
 
+            // 货币转换器按钮
+            const converterBtn = document.getElementById('vps-converter-btn');
+            if (converterBtn) {
+                converterBtn.addEventListener('click', NodeSeekVPS.openCurrencyConverter);
+            }
+
+            // 计算器按钮
+            const calculatorToolBtn = document.getElementById('vps-calculator-tool-btn');
+            if (calculatorToolBtn) {
+                calculatorToolBtn.addEventListener('click', NodeSeekVPS.openCalculatorTool);
+            }
+
             // 输入框焦点事件
             ['vps-exchange-rate', 'vps-renew-money', 'vps-trade-date', 'vps-expiry-date', 'vps-trade-money', 'vps-trade-currency-code'].forEach(id => {
                 const element = document.getElementById(id);
                 if (element) {
-                    element.addEventListener('focus', function() {
+                    element.addEventListener('focus', function () {
                         this.classList.remove('error');
                         NodeSeekVPS.utils.hideError();
                     });
                 }
             });
         },
+
+        // 打开货币转换器
+        openCurrencyConverter: () => {
+            const dialogId = 'vps-converter-dialog';
+            const existingDialog = document.getElementById(dialogId);
+            if (existingDialog) {
+                // 如果已存在，则关闭
+                existingDialog.remove();
+                return;
+            }
+
+            const dialog = document.createElement('div');
+            dialog.id = dialogId;
+            const isMobile = window.innerWidth <= 768;
+            const dialogWidth = isMobile ? Math.min(400, window.innerWidth * 0.95) : 400;
+            const dialogHeight = 420;
+            const left = Math.max(0, (window.innerWidth - dialogWidth) / 2);
+            const top = Math.max(0, (window.innerHeight - dialogHeight) / 2);
+
+            dialog.style.cssText = `
+                position: fixed;
+                left: ${left}px;
+                top: ${top}px;
+                width: ${dialogWidth}px;
+                background: white;
+                border-radius: 8px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                z-index: 10003;
+                padding: 20px;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                max-height: 90vh;
+                overflow-y: auto;
+            `;
+
+            // 拖动句柄
+            const dragHandle = document.createElement('div');
+            dragHandle.style.cssText = `
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 40px;
+                z-index: 0;
+                cursor: move;
+            `;
+
+            const currencies = [
+                { code: 'CNY', name: '人民币 (CNY)' },
+                { code: 'USD', name: '美元 (USD)' },
+                { code: 'EUR', name: '欧元 (EUR)' },
+                { code: 'GBP', name: '英镑 (GBP)' },
+                { code: 'JPY', name: '日元 (JPY)' },
+                { code: 'KRW', name: '韩元 (KRW)' },
+                { code: 'HKD', name: '港元 (HKD)' },
+                { code: 'TWD', name: '新台币 (TWD)' },
+                { code: 'CAD', name: '加拿大元 (CAD)' },
+                { code: 'SGD', name: '新加坡元 (SGD)' },
+                { code: 'AUD', name: '澳大利亚元 (AUD)' }
+            ];
+
+            const optionsHtml = currencies.map(c => `<option value="${c.code}">${c.name}</option>`).join('');
+
+            dialog.innerHTML = `
+                <div style="position: relative; z-index: 1;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 style="margin: 0; color: #333;">货币转换器</h3>
+                        <span style="cursor: pointer; font-size: 24px; color: #666;" onclick="this.closest('#${dialogId}').remove()">×</span>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">金额</label>
+                        <input type="number" id="vps-conv-amount" value="1" style="width: 100%; height: 36px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; line-height: 1.2;">
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <div style="flex: 1;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">从</label>
+                            <select id="vps-conv-from" style="width: 100%; height: 36px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                                ${optionsHtml}
+                            </select>
+                        </div>
+                        <div style="display: flex; align-items: flex-end; padding-bottom: 10px;">
+                            <span style="font-size: 20px;">➜</span>
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">到</label>
+                            <select id="vps-conv-to" style="width: 100%; height: 36px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                                ${optionsHtml}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                         <button id="vps-conv-btn" style="width: 100%; background: #2196F3; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold; height: 40px;">转换</button>
+                    </div>
+
+                    <div style="background: #f5f5f5; padding: 15px; border-radius: 4px; text-align: center;">
+                        <div style="font-size: 14px; color: #666; margin-bottom: 5px;">结果</div>
+                        <div id="vps-conv-result" style="font-size: 24px; font-weight: bold; color: #333;">-</div>
+                        <div id="vps-conv-rate" style="font-size: 12px; color: #999; margin-top: 5px;"></div>
+                    </div>
+                </div>
+            `;
+
+            // 插入拖动句柄到最前
+            dialog.insertBefore(dragHandle, dialog.firstChild);
+
+            document.body.appendChild(dialog);
+            const style = document.createElement('style');
+            style.textContent = `
+                @media (max-width: 768px) {
+                    #${dialogId} {
+                        width: 95% !important;
+                        left: 2.5% !important;
+                        top: 5% !important;
+                        max-height: 90vh !important;
+                        overflow-y: auto !important;
+                    }
+                    #${dialogId} input,
+                    #${dialogId} select,
+                    #${dialogId} button {
+                        font-size: 16px !important;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+
+            // 设置默认值
+            document.getElementById('vps-conv-from').value = 'CNY';
+            document.getElementById('vps-conv-to').value = 'USD';
+
+            // 绑定事件
+            const calculate = () => {
+                const amount = parseFloat(document.getElementById('vps-conv-amount').value);
+                const from = document.getElementById('vps-conv-from').value;
+                const to = document.getElementById('vps-conv-to').value;
+
+                if (isNaN(amount)) {
+                    document.getElementById('vps-conv-result').textContent = '请输入金额';
+                    return;
+                }
+
+                const rateFrom = NodeSeekVPS.rates[from] || 1;
+                const rateTo = NodeSeekVPS.rates[to] || 1;
+
+                const rate = rateTo / rateFrom;
+                const result = amount * rate;
+
+                document.getElementById('vps-conv-result').textContent = NodeSeekVPS.utils.formatNumber(result, 2) + ' ' + to;
+                document.getElementById('vps-conv-rate').textContent = `1 ${from} ≈ ${NodeSeekVPS.utils.formatNumber(rate, 4)} ${to}`;
+            };
+
+            document.getElementById('vps-conv-btn').onclick = calculate;
+
+            // 拖动逻辑
+            let isDragging = false;
+            let startX, startY, initialLeft, initialTop;
+
+            const handleMouseMove = (e) => {
+                if (!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                dialog.style.left = `${initialLeft + dx}px`;
+                dialog.style.top = `${initialTop + dy}px`;
+            };
+
+            const handleMouseUp = () => {
+                isDragging = false;
+                dialog.style.cursor = 'default';
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+            };
+
+            if (window.innerWidth > 768) {
+                dragHandle.onmousedown = (e) => {
+                    isDragging = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    initialLeft = dialog.offsetLeft;
+                    initialTop = dialog.offsetTop;
+                    dialog.style.cursor = 'grabbing';
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', handleMouseUp);
+                };
+            }
+        },
+
+        // 打开计算器工具
+        openCalculatorTool: () => {
+            // 使用时间戳生成唯一ID，允许多个计算器实例
+            const dialogId = 'vps-calculator-tool-dialog-' + Date.now();
+
+            // 计算已存在的计算器数量，用于位置偏移
+            const existingCalculators = document.querySelectorAll('[id^="vps-calculator-tool-dialog-"]');
+            const offset = existingCalculators.length * 30; // 每个新实例偏移30px
+
+            const dialog = document.createElement('div');
+            dialog.id = dialogId;
+            const isMobile = window.innerWidth <= 768;
+            const dialogWidth = isMobile ? Math.min(400, window.innerWidth * 0.95) : 400;
+            const dialogHeight = 580;
+            // 仅在PC端（宽度大于768px）偏移500px，移动端保持居中
+            const left = Math.max(0, (window.innerWidth - dialogWidth) / 2 + offset + (!isMobile ? 500 : 0));
+            const top = Math.max(0, (window.innerHeight - dialogHeight) / 2 + offset);
+
+            dialog.style.cssText = `
+                position: fixed;
+                left: ${left}px;
+                top: ${top}px;
+                width: ${dialogWidth}px;
+                background: white;
+                border-radius: 12px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+                z-index: 10003;
+                padding: 20px;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                max-height: 90vh;
+                overflow-y: auto;
+            `;
+
+            // 拖动句柄
+            const dragHandle = document.createElement('div');
+            dragHandle.style.cssText = `
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 40px;
+                z-index: 0;
+                cursor: move;
+            `;
+
+            // Make dialog focusable to receive keyboard events
+            dialog.tabIndex = -1;
+            dialog.style.outline = 'none'; // Remove focus outline
+
+            // Focus dialog when clicked
+            dialog.addEventListener('mousedown', () => {
+                dialog.focus();
+                // Bring to front
+                const maxZ = Math.max(...Array.from(document.querySelectorAll('[id^="vps-calculator-tool-dialog-"]')).map(el => parseInt(el.style.zIndex || 10003)));
+                dialog.style.zIndex = maxZ + 1;
+            });
+
+            dialog.innerHTML = `
+                <div style="position: relative; z-index: 1;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="margin: 0; color: #333;">计算器</h3>
+                        <span style="cursor: pointer; font-size: 24px; color: #666;" onclick="this.closest('#${dialogId}').remove()">×</span>
+                    </div>
+                    
+                    <!-- 计算步骤显示区域 -->
+                    <div class="calc-steps" style="height: 100px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; color: #666; line-height: 1.6;">
+                        <div style="color: #999; font-style: italic;">计算步骤将显示在这里...</div>
+                    </div>
+                    
+                    <!-- 显示屏 -->
+                    <div class="calc-display" style="background: #2c3e50; color: #ecf0f1; padding: 20px; border-radius: 8px; margin-bottom: 15px; text-align: right; font-size: 32px; font-weight: bold; min-height: 60px; word-wrap: break-word; overflow-x: auto;">0</div>
+                    
+                    <!-- 按钮区域 -->
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+                        <!-- 第一行 -->
+                        <button class="calc-btn calc-clear" style="background: #e74c3c; color: white;">C</button>
+                        <button class="calc-btn calc-delete" style="background: #95a5a6; color: white;">⌫</button>
+                        <button class="calc-btn calc-operator" data-op="/">÷</button>
+                        <button class="calc-btn calc-operator" data-op="*">×</button>
+                        
+                        <!-- 第二行 -->
+                        <button class="calc-btn calc-number" data-num="7">7</button>
+                        <button class="calc-btn calc-number" data-num="8">8</button>
+                        <button class="calc-btn calc-number" data-num="9">9</button>
+                        <button class="calc-btn calc-operator" data-op="-">−</button>
+                        
+                        <!-- 第三行 -->
+                        <button class="calc-btn calc-number" data-num="4">4</button>
+                        <button class="calc-btn calc-number" data-num="5">5</button>
+                        <button class="calc-btn calc-number" data-num="6">6</button>
+                        <button class="calc-btn calc-operator" data-op="+">+</button>
+                        
+                        <!-- 第四行 -->
+                        <button class="calc-btn calc-number" data-num="1">1</button>
+                        <button class="calc-btn calc-number" data-num="2">2</button>
+                        <button class="calc-btn calc-number" data-num="3">3</button>
+                        <button class="calc-btn calc-equals" style="background: #27ae60; color: white; grid-row: span 2;">=</button>
+                        
+                        <!-- 第五行 -->
+                        <button class="calc-btn calc-number" data-num="0" style="grid-column: span 2;">0</button>
+                        <button class="calc-btn calc-number" data-num=".">.</button>
+                    </div>
+                </div>
+                
+                <style>
+                    .calc-btn {
+                        padding: 18px;
+                        font-size: 20px;
+                        font-weight: bold;
+                        border: none;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        transition: all 0.2s;
+                        background: #ecf0f1;
+                        color: #2c3e50;
+                    }
+                    .calc-btn:hover {
+                        transform: translateY(-2px);
+                        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+                    }
+                    .calc-btn:active {
+                        transform: translateY(0);
+                    }
+                    .calc-operator {
+                        background: #3498db !important;
+                        color: white !important;
+                    }
+                    .calc-steps::-webkit-scrollbar {
+                        width: 6px;
+                    }
+                    .calc-steps::-webkit-scrollbar-thumb {
+                        background: #bbb;
+                        border-radius: 3px;
+                    }
+                </style>
+            `;
+
+            // 插入拖动句柄到最前
+            dialog.insertBefore(dragHandle, dialog.firstChild);
+            document.body.appendChild(dialog);
+
+            // Auto-focus the new dialog
+            dialog.focus();
+
+            // 计算器逻辑
+            let currentValue = '0';
+            let previousValue = '';
+            let operator = '';
+            let steps = [];
+            let hasInput = false; // 标记是否有新输入
+            let resultDisplayed = false; // 标记是否刚显示结果
+
+            const display = dialog.querySelector('.calc-display');
+            const stepsDiv = dialog.querySelector('.calc-steps');
+
+            const updateDisplay = () => {
+                display.textContent = currentValue;
+            };
+
+            // 捕获当前状态
+            const captureState = () => ({
+                currentValue,
+                previousValue,
+                operator,
+                hasInput,
+                resultDisplayed
+            });
+
+            // 恢复状态
+            const restoreState = (index) => {
+                const step = steps[index];
+                const state = step.state;
+
+                currentValue = state.currentValue;
+                previousValue = state.previousValue;
+                operator = state.operator;
+                hasInput = state.hasInput;
+                resultDisplayed = state.resultDisplayed;
+
+                // 截断历史记录到当前步
+                steps = steps.slice(0, index + 1);
+                renderSteps();
+                updateDisplay();
+            };
+
+            const addStep = (text, state) => {
+                steps.push({ text, state: state || captureState() });
+                renderSteps();
+            };
+
+            const updateLastStep = (text, state) => {
+                if (steps.length > 0) {
+                    steps[steps.length - 1] = { text, state: state || captureState() };
+                    renderSteps();
+                } else {
+                    addStep(text, state);
+                }
+            };
+
+            const renderSteps = () => {
+                stepsDiv.innerHTML = '';
+                steps.forEach((step, index) => {
+                    const div = document.createElement('div');
+                    div.textContent = step.text;
+                    div.style.cursor = 'pointer';
+                    div.style.padding = '4px 8px';
+                    div.style.borderRadius = '4px';
+                    div.style.marginBottom = '2px';
+                    div.style.transition = 'background 0.2s';
+                    div.title = '点击恢复到此步';
+
+                    div.onmouseover = () => div.style.background = '#e9ecef';
+                    div.onmouseout = () => div.style.background = 'transparent';
+                    div.onclick = () => restoreState(index);
+
+                    stepsDiv.appendChild(div);
+                });
+                stepsDiv.scrollTop = stepsDiv.scrollHeight;
+            };
+
+            const clearSteps = () => {
+                steps = [];
+                stepsDiv.innerHTML = '<div style="color: #999; font-style: italic; padding: 4px 8px;">计算步骤将显示在这里...</div>';
+            };
+
+            // 计算函数
+            const calculate = () => {
+                if (!operator || !previousValue) return;
+
+                const prev = parseFloat(previousValue);
+                const current = parseFloat(currentValue);
+                let result;
+
+                const opSymbol = { '+': '+', '-': '−', '*': '×', '/': '÷' }[operator];
+
+                // 准备结果状态
+                let resultState = {
+                    previousValue: '',
+                    operator: '',
+                    hasInput: true,
+                    resultDisplayed: true
+                };
+
+                switch (operator) {
+                    case '+':
+                        result = prev + current;
+                        break;
+                    case '-':
+                        result = prev - current;
+                        break;
+                    case '*':
+                        result = prev * current;
+                        break;
+                    case '/':
+                        if (current === 0) {
+                            result = 'Error';
+                            resultState.currentValue = 'Error';
+                            updateLastStep(`${previousValue} ${opSymbol} ${currentValue} = Error`, resultState);
+                        } else {
+                            result = prev / current;
+                        }
+                        break;
+                }
+
+                if (result !== 'Error') {
+                    // 格式化结果，避免精度问题
+                    result = parseFloat(result.toPrecision(12));
+                    // 移除末尾多余的0
+                    if (result.toString().includes('.')) {
+                        result = parseFloat(result);
+                    }
+
+                    resultState.currentValue = result.toString();
+                    updateLastStep(`${previousValue} ${opSymbol} ${currentValue} = ${result}`, resultState);
+                }
+
+                // 应用状态
+                currentValue = resultState.currentValue;
+                operator = resultState.operator;
+                previousValue = resultState.previousValue;
+                hasInput = resultState.hasInput;
+                resultDisplayed = resultState.resultDisplayed;
+
+                updateDisplay();
+            };
+
+            // 数字按钮
+            dialog.querySelectorAll('.calc-number').forEach(btn => {
+                btn.onclick = () => {
+                    const num = btn.dataset.num;
+
+                    // 如果刚显示结果，重新开始输入
+                    if (resultDisplayed) {
+                        currentValue = '0';
+                        resultDisplayed = false;
+                        // 开始新的一步
+                    }
+
+                    if (currentValue === '0' || currentValue === 'Error') {
+                        currentValue = num === '.' ? '0.' : num;
+                    } else {
+                        if (num === '.' && currentValue.includes('.')) return;
+                        currentValue += num;
+                    }
+                    hasInput = true;
+                    updateDisplay();
+
+                    // 如果正在进行运算（有运算符），更新步骤显示当前输入的第二个数
+                    if (operator && previousValue) {
+                        const opSymbol = { '+': '+', '-': '−', '*': '×', '/': '÷' }[operator];
+                        updateLastStep(`${previousValue} ${opSymbol} ${currentValue}`, captureState());
+                    }
+                };
+            });
+
+            // 运算符按钮
+            dialog.querySelectorAll('.calc-operator').forEach(btn => {
+                btn.onclick = () => {
+                    // 如果已经有前一个值和运算符，且当前有新输入，则进行连续计算
+                    if (previousValue && operator && hasInput) {
+                        calculate();
+                    }
+
+                    // 如果是连续点击运算符（没有新输入），只更新运算符
+                    if (previousValue && !hasInput) {
+                        operator = btn.dataset.op;
+                        const opSymbol = { '+': '+', '-': '−', '*': '×', '/': '÷' }[operator];
+                        // 更新最后一步的运算符
+                        updateLastStep(`${previousValue} ${opSymbol}`, captureState());
+                        return;
+                    }
+
+                    operator = btn.dataset.op;
+                    previousValue = currentValue;
+
+                    const opSymbol = { '+': '+', '-': '−', '*': '×', '/': '÷' }[operator];
+
+                    // 先更新状态变量，以便 captureState 捕获正确的状态
+                    currentValue = '0';
+                    hasInput = false;
+                    resultDisplayed = false;
+
+                    // 添加新步骤，使用当前状态（此时 previousValue 已设置，operator 已设置）
+                    addStep(`${previousValue} ${opSymbol}`, captureState());
+                };
+            });
+
+            // 等号按钮
+            dialog.querySelector('.calc-equals').onclick = () => {
+                calculate();
+            };
+
+            // 清除按钮
+            dialog.querySelector('.calc-clear').onclick = () => {
+                currentValue = '0';
+                previousValue = '';
+                operator = '';
+                hasInput = false;
+                resultDisplayed = false;
+                clearSteps();
+                updateDisplay();
+            };
+
+            // 删除按钮
+            dialog.querySelector('.calc-delete').onclick = () => {
+                if (resultDisplayed) {
+                    currentValue = '0';
+                    resultDisplayed = false;
+                } else if (currentValue.length > 1) {
+                    currentValue = currentValue.slice(0, -1);
+                } else {
+                    currentValue = '0';
+                }
+                updateDisplay();
+
+                // 如果正在输入第二个数，也更新步骤显示
+                if (operator && previousValue) {
+                    const opSymbol = { '+': '+', '-': '−', '*': '×', '/': '÷' }[operator];
+                    updateLastStep(`${previousValue} ${opSymbol} ${currentValue}`, captureState());
+                }
+            };
+
+            // 拖动逻辑
+            let isDragging = false;
+            let startX, startY, initialLeft, initialTop;
+
+            const handleMouseMove = (e) => {
+                if (!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                dialog.style.left = `${initialLeft + dx}px`;
+                dialog.style.top = `${initialTop + dy}px`;
+            };
+
+            const handleMouseUp = () => {
+                isDragging = false;
+                dialog.style.cursor = 'default';
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+            };
+
+            if (window.innerWidth > 768) {
+                dragHandle.onmousedown = (e) => {
+                    isDragging = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    initialLeft = dialog.offsetLeft;
+                    initialTop = dialog.offsetTop;
+                    dialog.style.cursor = 'grabbing';
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', handleMouseUp);
+                    // Also focus on drag start
+                    dialog.focus();
+                    const maxZ = Math.max(...Array.from(document.querySelectorAll('[id^="vps-calculator-tool-dialog-"]')).map(el => parseInt(el.style.zIndex || 10003)));
+                    dialog.style.zIndex = maxZ + 1;
+                };
+            }
+
+            // 键盘事件监听
+            const handleKeyboard = (e) => {
+                // Stop propagation to prevent other listeners from firing if we handled it
+                // But we only want to handle it if THIS dialog is focused
+                if (document.activeElement !== dialog && !dialog.contains(document.activeElement)) {
+                    return;
+                }
+
+                const key = e.key;
+
+                // 数字键 0-9
+                if (/^[0-9]$/.test(key)) {
+                    e.preventDefault();
+                    const btn = dialog.querySelector(`.calc-number[data-num="${key}"]`);
+                    if (btn) btn.click();
+                }
+                // 小数点
+                else if (key === '.') {
+                    e.preventDefault();
+                    const btn = dialog.querySelector(`.calc-number[data-num="."]`);
+                    if (btn) btn.click();
+                }
+                // 运算符
+                else if (['+', '-', '*', '/'].includes(key)) {
+                    e.preventDefault();
+                    const btn = dialog.querySelector(`.calc-operator[data-op="${key}"]`);
+                    if (btn) btn.click();
+                }
+                // 等号 (Enter 或 =)
+                else if (key === 'Enter' || key === '=') {
+                    e.preventDefault();
+                    dialog.querySelector('.calc-equals').click();
+                }
+                // 清除 (Escape 或 c/C)
+                else if (key === 'Escape' || key.toLowerCase() === 'c') {
+                    e.preventDefault();
+                    dialog.querySelector('.calc-clear').click();
+                }
+                // 删除 (Backspace 或 Delete)
+                else if (key === 'Backspace' || key === 'Delete') {
+                    e.preventDefault();
+                    dialog.querySelector('.calc-delete').click();
+                }
+            };
+
+            // 添加键盘事件监听
+            // Attach to dialog instead of document
+            dialog.addEventListener('keydown', handleKeyboard);
+        },
+
 
         // 创建计算器弹窗
         createCalculatorDialog: () => {
@@ -929,7 +1596,7 @@
             const dialogWidth = 800;
             const dialogHeight = 600;
             const left = Math.max(0, (window.innerWidth - dialogWidth) / 2);
-            const top = Math.max(0, (window.innerHeight - dialogHeight) / 2);
+            const top = Math.max(0, (window.innerHeight - dialogHeight) / 2 - 50);
             dialog.style.cssText = `
                 position: fixed;
                 left: ${left}px;
@@ -962,17 +1629,19 @@
 
             dialog.innerHTML = `
                 <div style="padding: 20px;">
-                    <div class="header-container" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div class="header-container" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: #ffffff; border-radius: 12px; padding: 12px 16px; box-shadow: 0 4px 14px rgba(0,0,0,0.06);">
                         <div class="title-error-container" style="display: flex; align-items: center; gap: 15px;">
                             <h2 style="margin: 0; color: #333;">VPS 剩余价值计算器</h2>
+                            <button id="vps-converter-btn" type="button" style="margin-left: 10px; padding: 4px 8px; cursor: pointer; background: #673AB7; color: white; border: none; border-radius: 4px; font-size: 13px;">货币转换</button>
+                            <button id="vps-calculator-tool-btn" type="button" style="margin-left: 10px; padding: 4px 8px; cursor: pointer; background: #FF9800; color: white; border: none; border-radius: 4px; font-size: 13px;">计算器</button>
                             <span id="vps-error-message" style="color: #dc3545; font-size: 15px; font-weight: bold; display: none; margin-left: 150px;"></span>
                         </div>
                         <span class="close-btn" style="cursor: pointer; font-size: 24px; color: #666;" onclick="this.closest('#vps-calculator-dialog').remove()">×</span>
                     </div>
 
-                    <div style="display: flex; gap: 20px; min-height: 500px;">
+                        <div style="display: flex; gap: 20px; min-height: 500px;">
                         <!-- 左侧输入面板 -->
-                        <div style="flex: 1; background: #ededed; padding: 20px; border-radius: 12px; color: #333;">
+                        <div style="flex: 1; background: #ffffff; border: 1px solid #eee; box-shadow: 0 8px 24px rgba(0,0,0,0.04); padding: 20px; border-radius: 12px; color: #333;">
 
                             <form id="vps-form">
                                 <div style="margin-bottom: 15px;">
@@ -1053,7 +1722,7 @@
                                     </div>
                                 </div>
 
-                                <button type="submit" id="vps-calculate-btn" style="width: 100%; background: #e0e0e0; color: #333; border: 2px solid #e0e0e0; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; transition: all 0.3s; display: flex; align-items: center; justify-content: center;">
+                                <button type="submit" id="vps-calculate-btn" style="width: 100%; background: linear-gradient(90deg, #4f46e5, #7c3aed); color: #fff; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-size: 16px; font-weight: bold; transition: all 0.3s; display: flex; align-items: center; justify-content: center;">
                                     <div id="vps-calculate-text" style="display: flex; align-items: center; justify-content: center;">
                                         <svg width="18" height="18" viewBox="0 0 24 24" style="margin-right: 8px; vertical-align: middle;">
                                             <path fill="currentColor" d="M9,7V9A1,1 0 0,1 8,10A1,1 0 0,1 7,9V7A1,1 0 0,1 8,6A1,1 0 0,1 9,7M13,15A1,1 0 0,0 12,16A1,1 0 0,0 13,17A1,1 0 0,0 14,16A1,1 0 0,0 13,15M8,2C4.5,2 2,4.5 2,8V16C2,19.5 4.5,22 8,22H16C19.5,22 22,19.5 22,16V8C22,4.5 19.5,2 16,2H8M8,4H16C18.5,4 20,5.5 20,8V16C20,18.5 18.5,20 16,20H8C5.5,20 4,18.5 4,16V8C4,5.5 5.5,4 8,4M12,10A1,1 0 0,0 11,11A1,1 0 0,0 12,12A1,1 0 0,0 13,11A1,1 0 0,0 12,10M12,14A1,1 0 0,0 11,15A1,1 0 0,0 12,16A1,1 0 0,0 13,15A1,1 0 0,0 12,14Z"/>
@@ -1071,10 +1740,10 @@
                         </div>
 
                         <!-- 右侧结果面板 -->
-                        <div style="flex: 1; background: #f0f0f0; padding: 20px; border-radius: 12px; color: #333;">
-                            <h3 style="margin: 0 0 20px 0; text-align: center;">计算结果</h3>
+                        <div style="flex: 1; background: #ffffff; border: 1px solid #eee; box-shadow: 0 8px 24px rgba(0,0,0,0.04); padding: 20px; border-radius: 12px; color: #333;">
+                            <h3 style="margin: 0 0 20px 0; text-align: center; font-size: 20px;">计算结果</h3>
 
-                            <div id="vps-result" style="background: #fafafa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                            <div id="vps-result" style="background: #f8fafc; padding: 16px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #eef2f7;">
                                 <div style="margin-bottom: 10px;">
                                     <span style="font-weight: bold;">剩余天数:</span>
                                     <span class="vps-output-remain-days" style="margin-left: 10px; color:rgb(255, 0, 0);"></span>
@@ -1096,7 +1765,7 @@
                             </div>
 
                             <!-- 分享功能 -->
-                            <div id="vps-share" style="background: #f0f0f0; padding: 15px; border-radius: 8px;">
+                            <div id="vps-share" style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #eef2f7;">
                                 <h4 style="margin: 0 0 15px 0; text-align: center;">分享功能</h4>
                                 <input id="vps-is-calculated" type="hidden" value="">
 
@@ -1121,6 +1790,8 @@
                 </div>
 
                 <style>
+                    .header-container h2 { font-weight: 700; }
+                    #vps-calculate-btn { box-shadow: 0 6px 16px rgba(79,70,229,0.25); }
                     @keyframes spin {
                         0% { transform: rotate(0deg); }
                         100% { transform: rotate(360deg); }
@@ -1170,11 +1841,7 @@
                         transform: translateY(-1px);
                     }
 
-                    #vps-calculate-btn:hover {
-                        background: rgba(255,255,255,0.3) !important;
-                        transform: translateY(-2px);
-                        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-                    }
+                    #vps-calculate-btn:hover { transform: translateY(-2px); opacity: 0.95; }
 
                     #vps-view-btn:hover,
                     #vps-copy-btn:hover,
@@ -1229,6 +1896,7 @@
                         #vps-calculate-btn {
                             padding: 15px 12px !important;
                             font-size: 16px !important;
+                            border-radius: 12px !important;
                         }
 
                         /* 移动端分享按钮优化 */
@@ -1247,7 +1915,7 @@
             `;
 
             // 鼠标移动到左上角30x30像素时变为move
-            dialog.addEventListener('mousemove', function(e) {
+            dialog.addEventListener('mousemove', function (e) {
                 const rect = dialog.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
@@ -1257,7 +1925,7 @@
                     dialog.style.cursor = 'default';
                 }
             });
-            dialog.addEventListener('mouseleave', function() {
+            dialog.addEventListener('mouseleave', function () {
                 dialog.style.cursor = 'default';
             });
 
@@ -1286,7 +1954,7 @@
 
             // 调用全局拖动函数，限制为左上角30x30
             if (window.makeDraggable) {
-                window.makeDraggable(dialog, {width: 30, height: 30});
+                window.makeDraggable(dialog, { width: 30, height: 30 });
             }
 
             return dialog;
