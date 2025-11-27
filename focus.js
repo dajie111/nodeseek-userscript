@@ -599,9 +599,17 @@
                     // 强制重新获取数据（绕过缓存）
                     const currentTime = Date.now();
                     this.rssCache = null; // 清除缓存
+                    this.rssCacheTime = 0;
 
-                    // 清空本地历史数据，直接使用服务器数据
+                    // 清空本地历史与统计数据
                     this.historyData = [];
+                    this.saveHistoryData();
+                    this.hotWordsHistory = [];
+                    this.saveHotWordsHistory();
+                    this.timeDistributionHistory = [];
+                    this.saveTimeDistributionHistory();
+                    this.userStatsHistory = [];
+                    this.saveUserStatsHistory();
 
                     // 更新采集时间记录
                     this.lastCollectTime = currentTime;
@@ -3551,4 +3559,3 @@
     NodeSeekFocus.init();
 
 })();
-
