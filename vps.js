@@ -159,11 +159,7 @@
                 if (expiryDateInput) {
                     expiryDateInput.value = tomorrowStr;
                 }
-
-                // 调试日志
-                console.log('北京时间:', beijingNow.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }));
-                console.log('设置的交易日期:', todayStr);
-                console.log('设置的到期日期:', tomorrowStr);
+                
             },
 
             // 更新汇率显示
