@@ -28,7 +28,7 @@ const SIMPLIFIED_TO_TRADITIONAL = {
     '比': '比', '阶': '階', '易': '易', '早': '早', '论': '論', '换': '換', '医': '醫', '校': '校', '典': '典', '破': '破',
     '老': '老', '线': '線', '农': '農', '克': '克', '达': '達', '光': '光', '放': '放', '具': '具', '住': '住',
     '价': '價', '买': '買', '南': '南', '录': '錄', '太': '太', '紧': '緊', '领': '領', '职': '職',
-    
+
     // 扩展基础汉字
     '万': '萬', '与': '與', '丢': '丟', '乐': '樂', '乱': '亂', '乔': '喬', '习': '習', '乡': '鄉', '书': '書', '买': '買',
     '乱': '亂', '争': '爭', '事': '事', '二': '二', '亍': '亍', '于': '於', '亏': '虧', '云': '雲', '互': '互', '亚': '亞',
@@ -40,7 +40,7 @@ const SIMPLIFIED_TO_TRADITIONAL = {
     '伲': '伲', '伴': '伴', '伶': '伶', '伸': '伸', '伺': '伺', '似': '似', '伽': '伽', '佃': '佃', '但': '但', '佇': '佇',
     '佈': '佈', '位': '位', '低': '低', '住': '住', '佐': '佐', '佑': '佑', '体': '體', '佔': '佔', '何': '何', '佗': '佗',
     '佛': '佛', '作': '作', '佝': '佝', '佞': '佞', '佟': '佟', '你': '你', '佢': '佢', '佣': '佣', '佤': '佤', '佥': '僉',
-    
+
     // 商业经济常用字
     '币': '幣', '财': '財', '贫': '貧', '货': '貨', '销': '銷', '银': '銀', '费': '費', '贷': '貸', '贸': '貿', '资': '資',
     '贤': '賢', '购': '購', '贮': '貯', '贯': '貫', '贰': '貳', '贱': '賤', '贲': '賁', '贳': '貰', '贴': '貼', '贵': '貴',
@@ -49,14 +49,14 @@ const SIMPLIFIED_TO_TRADITIONAL = {
     '赊': '賒', '赋': '賦', '赌': '賭', '赍': '齎', '赎': '贖', '赏': '賞', '赐': '賜', '赑': '贔', '赒': '賒', '赓': '賡',
     '赔': '賠', '赕': '賕', '赖': '賴', '赗': '賵', '赘': '贅', '赙': '賻', '赚': '賺', '赛': '賽', '赜': '賾', '赝': '贗',
     '赞': '讚', '赟': '贇', '赠': '贈', '赡': '贍', '赢': '贏', '赣': '贛', '赤': '赤', '赥': '赥', '赦': '赦', '赧': '赧',
-    
+
     // 地理位置常用字
     '县': '縣', '区': '區', '岛': '島', '岩': '岩', '岭': '嶺', '岳': '嶽', '峡': '峽', '峰': '峰', '崇': '崇', '崎': '崎',
     '崭': '嶄', '嶂': '嶂', '巅': '巔', '巩': '鞏', '巯': '巰', '币': '幣', '市': '市', '布': '佈', '师': '師', '帅': '帥',
     '师': '師', '席': '席', '帮': '幫', '带': '帶', '帧': '幀', '帮': '幫', '帱': '幬', '帲': '幃', '帷': '帷', '常': '常',
     '帻': '幘', '帼': '幗', '帽': '帽', '幀': '幀', '幁': '幃', '幂': '冪', '幃': '幃', '幄': '幄', '幅': '幅', '幆': '幆',
     '带': '帶', '幈': '幈', '幉': '幉', '幊': '幊', '幋': '幋', '幌': '幌', '幍': '幍', '幎': '冪', '幏': '幓', '幐': '幐',
-    
+
     // 日常生活用词 
     '门': '門', '间': '間', '闪': '閃', '闫': '閆', '闬': '閈', '闭': '閉', '问': '問', '闯': '闖', '闰': '閏', '闱': '闈',
     '闲': '閒', '闳': '閎', '闵': '閔', '闶': '閌', '闷': '悶', '闸': '閘', '闹': '鬧', '闺': '閨', '闻': '聞', '闼': '闥',
@@ -64,7 +64,7 @@ const SIMPLIFIED_TO_TRADITIONAL = {
     '阇': '闍', '阈': '閾', '阉': '閹', '阊': '閶', '阋': '鬩', '阌': '閿', '阍': '閽', '阎': '閻', '阏': '閼', '阐': '闡',
     '阑': '闌', '阒': '闃', '阓': '闠', '阔': '闊', '阕': '闋', '阖': '闔', '阗': '闐', '阘': '闒', '阙': '闕', '阚': '闞',
     '阛': '闤', '阜': '阜', '队': '隊', '阡': '阡', '阢': '阢', '阣': '阣', '阤': '阤', '阥': '阥', '阦': '阦', '阧': '阧',
-    
+
     // 技术/网络论坛常用词汇
     '网': '網', '络': '絡', '计': '計', '算': '算', '机': '機', '服': '服', '务': '務', '器': '器',
     '测': '測', '试': '試', '软': '軟', '件': '件', '硬': '硬', '盘': '盤', '内': '內', '存': '存',
@@ -86,7 +86,7 @@ const SIMPLIFIED_TO_TRADITIONAL = {
     '录': '錄', '报': '報', '告': '告', '统': '統', '计': '計', '分': '分', '析': '析', '图': '圖',
     '表': '表', '图': '圖', '像': '像', '视': '視', '频': '頻', '音': '音', '频': '頻', '格': '格',
     '式': '式', '编': '編', '码': '碼', '解': '解', '码': '碼', '转': '轉', '换': '換', '格': '格',
-    
+
     // VPS/服务器/云服务相关词汇
     '云': '雲', '虚': '虛', '拟': '擬', '私': '私', '专': '專', '共': '共', '享': '享', '独': '獨',
     '立': '立', '主': '主', '客': '客', '户': '戶', '端': '端', '远': '遠', '程': '程', '连': '連',
@@ -112,7 +112,7 @@ const SIMPLIFIED_TO_TRADITIONAL = {
     '监': '監', '控': '控', '日': '日', '志': '誌', '记': '記', '报': '報', '告': '告', '统': '統',
     '计': '計', '分': '分', '析': '析', '图': '圖', '表': '表', '像': '像', '视': '視', '频': '頻',
     '音': '音', '格': '格', '式': '式',
-    
+
     // 数字/量词/时间
     '个': '個', '只': '隻', '条': '條', '件': '件', '次': '次', '遍': '遍', '趟': '趟', '回': '回', '场': '場', '轮': '輪',
     '层': '層', '级': '級', '段': '段', '节': '節', '章': '章', '页': '頁', '行': '行', '字': '字', '句': '句', '篇': '篇',
@@ -121,7 +121,7 @@ const SIMPLIFIED_TO_TRADITIONAL = {
     '家': '家', '间': '間', '座': '座', '栋': '棟', '幢': '幢', '层': '層', '楼': '樓', '室': '室', '厅': '廳', '库': '庫',
     '年': '年', '月': '月', '日': '日', '时': '時', '分': '分', '秒': '秒', '刻': '刻', '点': '點', '钟': '鐘', '周': '周',
     '季': '季', '度': '度', '期': '期', '代': '代', '世': '世', '纪': '紀', '代': '代', '辈': '輩', '代': '代', '世': '世',
-    
+
     // 动词/形容词扩展
     '买': '買', '卖': '賣', '读': '讀', '写': '寫', '听': '聽', '说': '說', '看': '看', '想': '想', '知': '知', '道': '道',
     '走': '走', '跑': '跑', '飞': '飛', '游': '遊', '爬': '爬', '跳': '跳', '站': '站', '坐': '坐', '躺': '躺', '睡': '睡',
@@ -131,17 +131,17 @@ const SIMPLIFIED_TO_TRADITIONAL = {
     '凉': '涼', '快': '快', '慢': '慢', '早': '早', '晚': '晚', '新': '新', '旧': '舊', '老': '老', '少': '少', '多': '多',
     '大': '大', '小': '小', '长': '長', '短': '短', '高': '高', '低': '低', '胖': '胖', '瘦': '瘦', '厚': '厚', '薄': '薄',
     '宽': '寬', '窄': '窄', '深': '深', '浅': '淺', '远': '遠', '近': '近', '左': '左', '右': '右', '前': '前', '后': '後',
-    
+
     // 颜色
     '红': '紅', '橙': '橙', '黄': '黃', '绿': '綠', '青': '青', '蓝': '藍', '紫': '紫', '黑': '黑', '白': '白', '灰': '灰',
     '粉': '粉', '棕': '棕', '金': '金', '银': '銀', '彩': '彩', '色': '色', '彩': '彩', '虹': '虹', '光': '光', '亮': '亮',
-    
+
     // 家庭/人际关系
     '爸': '爸', '妈': '媽', '爷': '爺', '奶': '奶', '哥': '哥', '姐': '姐', '弟': '弟', '妹': '妹', '儿': '兒', '女': '女',
     '孙': '孫', '外': '外', '内': '內', '亲': '親', '戚': '戚', '友': '友', '朋': '朋', '同': '同', '事': '事', '老': '老',
     '师': '師', '学': '學', '生': '生', '同': '同', '学': '學', '同': '同', '桌': '桌', '室': '室', '友': '友', '邻': '鄰',
     '居': '居', '客': '客', '人': '人', '主': '主', '人': '人', '家': '家', '长': '長', '孩': '孩', '子': '子', '大': '大',
-    
+
     // 职业/工作
     '工': '工', '作': '作', '职': '職', '业': '業', '员': '員', '工': '工', '人': '人', '农': '農', '民': '民', '商': '商',
     '人': '人', '学': '學', '者': '者', '专': '專', '家': '家', '教': '教', '授': '授', '老': '老', '师': '師', '学': '學',
@@ -149,14 +149,14 @@ const SIMPLIFIED_TO_TRADITIONAL = {
     '务': '務', '员': '員', '销': '銷', '售': '售', '员': '員', '会': '會', '计': '計', '律': '律', '师': '師', '警': '警',
     '察': '察', '军': '軍', '人': '人', '记': '記', '者': '者', '演': '演', '员': '員', '歌': '歌', '手': '手', '画': '畫',
     '家': '家', '作': '作', '家': '家', '诗': '詩', '人': '人', '导': '導', '演': '演', '制': '制', '片': '片', '人': '人',
-    
+
     // 动物相关
     '鸡': '雞', '鸭': '鴨', '鹅': '鵝', '猪': '豬', '牛': '牛', '羊': '羊', '马': '馬', '狗': '狗', '猫': '貓', '鱼': '魚',
     '鸟': '鳥', '虫': '蟲', '蛇': '蛇', '龙': '龍', '凤': '鳳', '鹤': '鶴', '鹰': '鷹', '燕': '燕', '鸽': '鴿', '鸦': '鴉',
     '鹊': '鵲', '莺': '鶯', '鸳': '鴛', '鸯': '鴦', '鸵': '鴕', '鸟': '鳥', '鸢': '鳶', '鸣': '鳴', '啼': '啼', '叫': '叫',
     '蝶': '蝶', '蜂': '蜂', '蚂': '螞', '蚁': '蟻', '蛙': '蛙', '蝉': '蟬', '蜘': '蜘', '蛛': '蛛', '蝇': '蠅', '蚊': '蚊',
     '虾': '蝦', '蟹': '蟹', '龟': '龜', '鳄': '鱷', '鲸': '鯨', '鲨': '鯊', '鲤': '鯉', '鲫': '鯽', '鳗': '鰻', '鳅': '鰍',
-    
+
     // 食物饮料
     '饭': '飯', '面': '麵', '粉': '粉', '粥': '粥', '汤': '湯', '菜': '菜', '肉': '肉', '蛋': '蛋', '奶': '奶', '糖': '糖',
     '盐': '鹽', '醋': '醋', '油': '油', '酱': '醬', '茶': '茶', '酒': '酒', '水': '水', '汽': '汽', '可': '可', '乐': '樂',
@@ -164,38 +164,38 @@ const SIMPLIFIED_TO_TRADITIONAL = {
     '饼': '餅', '包': '包', '馒': '饅', '头': '頭', '饺': '餃', '子': '子', '馄': '餛', '饨': '飩', '面': '麵', '条': '條',
     '米': '米', '饭': '飯', '粮': '糧', '食': '食', '料': '料', '烧': '燒', '烤': '烤', '炸': '炸', '煮': '煮', '蒸': '蒸',
     '炒': '炒', '炖': '燉', '焖': '燜', '煎': '煎', '卤': '滷', '腌': '醃', '泡': '泡', '凉': '涼', '热': '熱', '温': '溫',
-    
+
     // 身体部位
     '头': '頭', '脸': '臉', '眼': '眼', '耳': '耳', '鼻': '鼻', '嘴': '嘴', '齿': '齒', '牙': '牙', '舌': '舌', '喉': '喉',
     '颈': '頸', '肩': '肩', '臂': '臂', '手': '手', '指': '指', '胸': '胸', '背': '背', '腰': '腰', '腹': '腹', '腿': '腿',
     '脚': '腳', '趾': '趾', '发': '髮', '须': '鬚', '脑': '腦', '心': '心', '肝': '肝', '肺': '肺', '肾': '腎', '胃': '胃',
     '肠': '腸', '血': '血', '骨': '骨', '肌': '肌', '肉': '肉', '皮': '皮', '肤': '膚', '毛': '毛', '汗': '汗', '泪': '淚',
-    
+
     // 服装鞋帽
     '衣': '衣', '服': '服', '装': '裝', '衫': '衫', '裤': '褲', '裙': '裙', '袜': '襪', '鞋': '鞋', '帽': '帽', '巾': '巾',
     '带': '帶', '扣': '扣', '袋': '袋', '兜': '兜', '领': '領', '袖': '袖', '襟': '襟', '摆': '擺', '纽': '紐', '扣': '扣',
     '丝': '絲', '绸': '綢', '缎': '緞', '布': '布', '棉': '棉', '麻': '麻', '毛': '毛', '皮': '皮', '革': '革', '纤': '纖',
     '维': '維', '尼': '尼', '龙': '龍', '涤': '滌', '纶': '綸', '织': '織', '缝': '縫', '纫': '紉', '绣': '繡', '染': '染',
-    
+
     // 交通工具
     '车': '車', '汽': '汽', '货': '貨', '客': '客', '轿': '轎', '卡': '卡', '拖': '拖', '挂': '掛', '摩': '摩', '托': '托',
     '自': '自', '行': '行', '电': '電', '动': '動', '三': '三', '轮': '輪', '四': '四', '轮': '輪', '火': '火', '高': '高',
     '铁': '鐵', '地': '地', '轻': '輕', '轨': '軌', '缆': '纜', '船': '船', '艇': '艇', '舟': '舟', '帆': '帆', '桨': '槳',
     '飞': '飛', '机': '機', '直': '直', '升': '升', '战': '戰', '斗': '鬥', '客': '客', '货': '貨', '运': '運', '输': '輸',
-    
+
     // 建筑房屋
     '房': '房', '屋': '屋', '楼': '樓', '层': '層', '顶': '頂', '墙': '牆', '窗': '窗', '门': '門', '梯': '梯', '廊': '廊',
     '厅': '廳', '室': '室', '厨': '廚', '卫': '衛', '浴': '浴', '厕': '廁', '所': '所', '阳': '陽', '台': '臺', '花': '花',
     '园': '園', '院': '院', '坝': '壩', '坪': '坪', '场': '場', '馆': '館', '店': '店', '铺': '鋪', '摊': '攤', '档': '檔',
     '桥': '橋', '路': '路', '街': '街', '巷': '巷', '弄': '弄', '胡': '胡', '同': '衕', '广': '廣', '场': '場', '站': '站',
-    
+
     // 自然环境
     '天': '天', '地': '地', '山': '山', '水': '水', '河': '河', '江': '江', '海': '海', '湖': '湖', '池': '池', '塘': '塘',
     '溪': '溪', '泉': '泉', '井': '井', '沟': '溝', '渠': '渠', '堤': '堤', '岸': '岸', '滩': '灘', '洲': '洲', '岛': '島',
     '林': '林', '森': '森', '树': '樹', '木': '木', '花': '花', '草': '草', '叶': '葉', '枝': '枝', '根': '根', '茎': '莖',
     '果': '果', '实': '實', '种': '種', '苗': '苗', '芽': '芽', '蕾': '蕾', '蒂': '蒂', '藤': '藤', '竹': '竹', '松': '松',
     '柏': '柏', '梅': '梅', '兰': '蘭', '菊': '菊', '荷': '荷', '莲': '蓮', '桃': '桃', '李': '李', '杏': '杏', '枣': '棗',
-    
+
     // 天气气候
     '晴': '晴', '阴': '陰', '雨': '雨', '雪': '雪', '风': '風', '雷': '雷', '电': '電', '云': '雲', '雾': '霧', '霜': '霜',
     '露': '露', '冰': '冰', '雹': '雹', '虹': '虹', '霞': '霞', '雾': '霧', '霾': '霾', '烟': '煙', '尘': '塵', '沙': '沙',
@@ -276,10 +276,10 @@ function normalizeText(text) {
 }
 
 function filterPosts(blacklistKeywords = [], whitelistKeywords = []) {
-    
+
     // 尝试多种可能的CSS选择器
     let postItems = document.querySelectorAll('ul.post-list > li.post-list-item');
-    
+
     // 如果第一个选择器没找到，尝试其他可能的选择器
     if (postItems.length === 0) {
         const selectors = [
@@ -294,7 +294,7 @@ function filterPosts(blacklistKeywords = [], whitelistKeywords = []) {
             '.topic-list tr',
             '.topic-list > tr'
         ];
-        
+
         for (const selector of selectors) {
             postItems = document.querySelectorAll(selector);
             if (postItems.length > 0) {
@@ -302,24 +302,24 @@ function filterPosts(blacklistKeywords = [], whitelistKeywords = []) {
             }
         }
     }
-    
+
     // 如果还是没找到，直接返回
     if (postItems.length === 0) {
         return;
     }
-    
+
     let showCount = 0;
-    
+
     postItems.forEach((item, index) => {
         // 尝试多种方式获取帖子标题
         let titleEl = item.querySelector('.post-title a');
         let title = titleEl ? titleEl.textContent.trim() : '';
-        
+
         // 如果没找到标题，尝试其他选择器
         if (!title) {
             const titleSelectors = [
                 'a[href*="/topic/"]',
-                'a[href*="/post"]', 
+                'a[href*="/post"]',
                 '.post-title',
                 '.topic-title',
                 '.title',
@@ -331,7 +331,7 @@ function filterPosts(blacklistKeywords = [], whitelistKeywords = []) {
                 'a[class*="subject"]',
                 'a'  // 最后尝试任何链接
             ];
-            
+
             for (const selector of titleSelectors) {
                 titleEl = item.querySelector(selector);
                 if (titleEl && titleEl.textContent.trim()) {
@@ -340,27 +340,60 @@ function filterPosts(blacklistKeywords = [], whitelistKeywords = []) {
                 }
             }
         }
-        
 
-        
+
+
+        // 尝试获取作者
+        let authorEl = item.querySelector('.post-author a');
+        let author = authorEl ? authorEl.textContent.trim() : '';
+
+        if (!author) {
+            const authorSelectors = [
+                '.post-author',
+                '.author',
+                '.post-meta a',
+                '.meta a',
+                'a[href*="/user/"]',
+                'a[href*="/member/"]',
+                'td:nth-child(2) a', // 表格布局中的作者列
+                '.post-info a',
+            ];
+
+            for (const selector of authorSelectors) {
+                authorEl = item.querySelector(selector);
+                if (authorEl && authorEl.textContent.trim()) {
+                    author = authorEl.textContent.trim();
+                    break;
+                }
+            }
+        }
+
         let shouldShow = true;
-        
+
         // 检查当前网址是否包含 'post'，如果包含则不进行过滤
         if (!window.location.href.includes('post')) {
+            // 检查是否为不屏蔽用户
+            const whitelistUsers = getWhitelistUsers();
+            let isWhitelistedUser = false;
+            if (author && whitelistUsers.length > 0) {
+                isWhitelistedUser = whitelistUsers.some(u => u.toLowerCase() === author.toLowerCase());
+            }
+
             // 如果有白名单关键词，则只显示同时匹配所有白名单关键词的帖子
             if (whitelistKeywords.length > 0) {
                 shouldShow = whitelistKeywords.every(kw => kw && normalizeText(title).includes(normalizeText(kw)));
             }
-            
+
             // 在白名单过滤基础上，再隐藏黑名单帖子
-            if (shouldShow && blacklistKeywords.length > 0) {
+            // 如果是白名单用户，则跳过黑名单检查
+            if (shouldShow && blacklistKeywords.length > 0 && !isWhitelistedUser) {
                 const containsBlacklist = blacklistKeywords.some(kw => kw && normalizeText(title).includes(normalizeText(kw)));
                 if (containsBlacklist) {
                     shouldShow = false;
                 }
             }
         }
-        
+
         if (shouldShow) {
             item.style.display = '';
             showCount++;
@@ -368,7 +401,7 @@ function filterPosts(blacklistKeywords = [], whitelistKeywords = []) {
             item.style.display = 'none';
         }
     });
-    
+
 
 }
 
@@ -403,22 +436,22 @@ function getCustomKeywords() {
 // 添加单个关键词到自定义列表
 function addCustomKeyword(keyword) {
     if (!keyword || !keyword.trim()) return false;
-    
+
     const keywords = getCustomKeywords();
     const normalizedKeyword = keyword.trim();
-    
+
     // 检查长度限制（15个字符）
     if (normalizedKeyword.length > 15) {
         return 'too_long';
     }
-    
+
     // 检查是否已存在（不区分大小写和简繁体）
-    const exists = keywords.some(existing => 
+    const exists = keywords.some(existing =>
         normalizeText(existing) === normalizeText(normalizedKeyword)
     );
-    
+
     if (!exists) {
-        keywords.push(normalizedKeyword);
+        keywords.unshift(normalizedKeyword);
         saveCustomKeywords(keywords);
         return true;
     }
@@ -431,6 +464,51 @@ function removeCustomKeyword(keyword) {
     const filtered = keywords.filter(k => k !== keyword);
     saveCustomKeywords(filtered);
     if (window.addLog) window.addLog(`删除关键词：${keyword}`);
+    return filtered;
+}
+
+// ========== 不屏蔽用户功能管理 ==========
+
+// 保存不屏蔽用户列表到 localStorage
+function saveWhitelistUsers(users) {
+    localStorage.setItem('ns-filter-whitelist-users', JSON.stringify(users));
+}
+
+// 从 localStorage 获取不屏蔽用户列表
+function getWhitelistUsers() {
+    const saved = localStorage.getItem('ns-filter-whitelist-users');
+    return saved ? JSON.parse(saved) : [];
+}
+
+// 添加单个用户到不屏蔽列表
+function addWhitelistUser(username) {
+    if (!username || !username.trim()) return false;
+
+    const users = getWhitelistUsers();
+    const normalizedUsername = username.trim();
+    if (normalizedUsername.length > 20) {
+        return 'too_long';
+    }
+
+    // 检查是否已存在（不区分大小写）
+    const exists = users.some(existing =>
+        existing.toLowerCase() === normalizedUsername.toLowerCase()
+    );
+
+    if (!exists) {
+        users.unshift(normalizedUsername);
+        saveWhitelistUsers(users);
+        return true;
+    }
+    return false;
+}
+
+// 从不屏蔽列表删除用户
+function removeWhitelistUser(username) {
+    const users = getWhitelistUsers();
+    const filtered = users.filter(u => u !== username);
+    saveWhitelistUsers(filtered);
+    if (window.addLog) window.addLog(`删除不屏蔽用户：${username}`);
     return filtered;
 }
 
@@ -450,22 +528,22 @@ function getHighlightKeywords() {
 // 添加单个关键词到高亮列表
 function addHighlightKeyword(keyword) {
     if (!keyword || !keyword.trim()) return false;
-    
+
     const keywords = getHighlightKeywords();
     const normalizedKeyword = keyword.trim();
-    
+
     // 检查长度限制（15个字符）
     if (normalizedKeyword.length > 15) {
         return 'too_long';
     }
-    
+
     // 检查是否已存在（不区分大小写和简繁体）
-    const exists = keywords.some(existing => 
+    const exists = keywords.some(existing =>
         normalizeText(existing) === normalizeText(normalizedKeyword)
     );
-    
+
     if (!exists) {
-        keywords.push(normalizedKeyword);
+        keywords.unshift(normalizedKeyword);
         saveHighlightKeywords(keywords);
         return true;
     }
@@ -528,11 +606,11 @@ function getDialogPosition() {
     try {
         const saved = localStorage.getItem('ns-filter-dialog-position');
         if (!saved) return null;
-        
+
         const position = JSON.parse(saved);
-        
+
         // 验证位置数据有效性（宽松验证，恢复时会自动调整边界）
-        if (position && 
+        if (position &&
             typeof position.left === 'number' && typeof position.top === 'number' &&
             !isNaN(position.left) && !isNaN(position.top) &&
             position.left >= -1000 && position.top >= -1000) { // 只检查明显异常的值
@@ -581,7 +659,7 @@ function cleanupDialogPosition() {
         if (saved) {
             const position = JSON.parse(saved);
             // 只清除格式完全错误的数据，不清除超出边界的数据（恢复时会自动调整）
-            if (!position || 
+            if (!position ||
                 typeof position.left !== 'number' || typeof position.top !== 'number' ||
                 isNaN(position.left) || isNaN(position.top) ||
                 position.left < -1000 || position.top < -1000) { // 只清除明显异常的值
@@ -617,7 +695,7 @@ function createFilterUI(onFilter) {
 
     // 检查是否为移动设备
     const isMobile = isMobileDevice();
-    
+
     if (isMobile) {
         // 移动端样式：始终居中，不支持拖拽
         dialog.style.width = '95%';
@@ -644,22 +722,44 @@ function createFilterUI(onFilter) {
         dialog.style.overflowY = 'auto';
         dialog.style.overflowX = 'hidden';
         dialog.style.transform = 'none';
-        
+
         // 总是使用默认位置（右上角）
-        dialog.style.top = '60px';
-        dialog.style.right = '16px';
+        dialog.style.top = '10px';
+        dialog.style.right = '126px';
         dialog.style.left = 'auto';
     }
 
     dialog.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <span style="font-weight:bold;font-size:17px;">关键词过滤</span>
+            <span style="font-weight:900;font-size:16px;line-height:1;">关键词过滤</span>
             <span id="ns-keyword-filter-close" style="cursor:pointer;font-size:22px;line-height:1;">×</span>
         </div>
+
+        <div id="ns-whitelist-panel" style="display:none;">
+            <div style="margin-bottom:12px;">
+                <label style="font-weight:bold;color:#2196F3;">不屏蔽用户：</label><br>
+                <div style="margin-bottom:6px;font-size:13px;color:#666;line-height:1.4;">
+                    这些用户的帖子即使包含屏蔽词也会显示
+                </div>
+                <div style="display:flex;gap:4px;margin-top:4px;">
+                    <input id="ns-add-whitelist-user-input" type="text" maxlength="20" style="flex:1;padding:4px 8px;font-size:14px;border:1px solid #ccc;border-radius:4px;" placeholder="输入用户名(≤20字符)" />
+                    <button id="ns-add-whitelist-user-btn" style="padding:4px 12px;font-size:14px;background:#2196F3;color:#fff;border:none;border-radius:4px;cursor:pointer;">添加</button>
+                </div>
+                <div id="ns-whitelist-user-hint" style="margin-top:2px;font-size:12px;color:#999;height:16px;line-height:16px;overflow:hidden;"></div>
+            </div>
+            <div id="ns-whitelist-users-section" style="margin-bottom:12px;margin-top:-5px;">
+                <label style="font-weight:bold;">已设置不屏蔽的用户：</label>
+                <div id="ns-whitelist-users-list" style="margin-top:6px;height:160px;min-height:160px;max-height:160px;overflow-y:auto;overflow-x:hidden;border:1px solid #eee;border-radius:4px;padding:6px;background:#fafafa;box-sizing:border-box;width:100%;"></div>
+            </div>
+            <div style="text-align:right;">
+                <button id="ns-close-whitelist-panel" style="padding:4px 12px;font-size:14px;background:#9e9e9e;color:#fff;border:none;border-radius:4px;cursor:pointer;">返回</button>
+            </div>
+        </div>
+
+        <div id="ns-filter-main-content">
         
-        <!-- 屏蔽关键词管理 -->
         <div style="margin-bottom:12px;">
-            <label style="font-weight:bold;color:#f44336;">🚫 屏蔽关键词：</label><br>
+            <label style="font-weight:bold;color:#f44336;">🚫屏蔽关键词：</label><br>
             <div style="margin-bottom:6px;font-size:13px;color:#666;line-height:1.4;">
                 添加后永久隐藏包含这些关键词的帖子 • 限制15个字符以内
             </div>
@@ -674,15 +774,16 @@ function createFilterUI(onFilter) {
             <div id="ns-keyword-length-hint" style="margin-top:2px;font-size:12px;color:#999;min-height:16px;"></div>
         </div>
 
-        <!-- 已屏蔽的关键词列表 -->
         <div id="ns-custom-keywords-section" style="margin-bottom:12px;margin-top:-5px;">
-            <label style="font-weight:bold;">已屏蔽的关键词：</label>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                <label style="font-weight:bold;">已屏蔽的关键词：</label>
+                <button id="ns-open-whitelist-panel" style="padding:4px 10px;font-size:14px;background:#2196F3;color:#fff;border:none;border-radius:6px;cursor:pointer;">不屏蔽指定用户关键词</button>
+            </div>
             <div id="ns-custom-keywords-list" style="margin-top:6px;height:110px;min-height:110px;max-height:110px;overflow-y:auto;overflow-x:hidden;border:1px solid #eee;border-radius:4px;padding:6px;background:#fafafa;box-sizing:border-box;width:100%;">
                 <!-- 关键词列表将在这里动态生成 -->
             </div>
         </div>
-
-        <!-- 高亮关键词管理 -->
+        
         <div style="margin-bottom:12px;">
             <label style="font-weight:bold;color:#ff9800;">🔆 高亮关键词：</label><br>
             <div style="margin-bottom:6px;font-size:13px;color:#666;line-height:1.4;">
@@ -705,7 +806,6 @@ function createFilterUI(onFilter) {
             <div id="ns-highlight-length-hint" style="margin-top:2px;font-size:12px;color:#999;min-height:16px;"></div>
         </div>
 
-        <!-- 已高亮的关键词列表 -->
         <div id="ns-highlight-keywords-section" style="margin-bottom:12px;margin-top:-5px;">
             <label style="font-weight:bold;">已高亮的关键词：</label>
             <div id="ns-highlight-keywords-list" style="margin-top:6px;height:110px;min-height:110px;max-height:110px;overflow-y:auto;overflow-x:hidden;border:1px solid #eee;border-radius:4px;padding:6px;background:#fafafa;box-sizing:border-box;width:100%;">
@@ -713,7 +813,6 @@ function createFilterUI(onFilter) {
             </div>
         </div>
 
-        <!-- 显示关键词 -->
         <div style="margin-bottom:12px;padding-top:8px;border-top:1px solid #eee;">
             <label style="font-weight:bold;color:#4CAF50;">✅ 显示关键词（逗号分隔）：</label><br>
             <div style="margin-bottom:6px;font-size:13px;color:#666;line-height:1.4;">
@@ -727,9 +826,28 @@ function createFilterUI(onFilter) {
             </div>
         </div>
 
+        </div>
 
-    `;
+        
+        `;
     document.body.appendChild(dialog);
+
+    const openWhitelistBtn = dialog.querySelector('#ns-open-whitelist-panel');
+    const whitelistPanel = dialog.querySelector('#ns-whitelist-panel');
+    const mainContent = dialog.querySelector('#ns-filter-main-content');
+    if (openWhitelistBtn && whitelistPanel && mainContent) {
+        openWhitelistBtn.addEventListener('click', function () {
+            whitelistPanel.style.display = 'block';
+            mainContent.style.display = 'none';
+        });
+    }
+    const closeWhitelistBtn = dialog.querySelector('#ns-close-whitelist-panel');
+    if (closeWhitelistBtn && whitelistPanel && mainContent) {
+        closeWhitelistBtn.addEventListener('click', function () {
+            whitelistPanel.style.display = 'none';
+            mainContent.style.display = '';
+        });
+    }
 
     // 移动端特殊样式调整
     if (isMobile) {
@@ -737,7 +855,7 @@ function createFilterUI(onFilter) {
         const button = dialog.querySelector('#ns-keyword-btn');
         const addKeywordInput = dialog.querySelector('#ns-add-keyword-input');
         const addKeywordBtn = dialog.querySelector('#ns-add-keyword-btn');
-        
+
         // 显示关键词输入框和按钮
         if (input) {
             input.style.width = '100%';
@@ -754,7 +872,7 @@ function createFilterUI(onFilter) {
             button.style.fontSize = '16px';
             button.style.boxSizing = 'border-box';
         }
-        
+
         // 屏蔽关键词输入框和按钮
         if (addKeywordInput) {
             addKeywordInput.style.fontSize = '16px';
@@ -764,7 +882,19 @@ function createFilterUI(onFilter) {
             addKeywordBtn.style.fontSize = '16px';
             addKeywordBtn.style.padding = '8px 12px';
         }
-        
+
+        // 不屏蔽用户输入框和按钮
+        const addWhitelistUserInput = dialog.querySelector('#ns-add-whitelist-user-input');
+        const addWhitelistUserBtn = dialog.querySelector('#ns-add-whitelist-user-btn');
+        if (addWhitelistUserInput) {
+            addWhitelistUserInput.style.fontSize = '16px';
+            addWhitelistUserInput.style.padding = '8px 10px';
+        }
+        if (addWhitelistUserBtn) {
+            addWhitelistUserBtn.style.fontSize = '16px';
+            addWhitelistUserBtn.style.padding = '8px 12px';
+        }
+
         // 高亮关键词输入框和按钮
         const addHighlightInput = dialog.querySelector('#ns-add-highlight-input');
         const addHighlightBtn = dialog.querySelector('#ns-add-highlight-btn');
@@ -776,7 +906,7 @@ function createFilterUI(onFilter) {
             addHighlightBtn.style.fontSize = '16px';
             addHighlightBtn.style.padding = '8px 12px';
         }
-        
+
         // 调整显示关键词区域的布局
         const showKeywordSection = dialog.querySelector('#ns-keyword-input').parentElement.parentElement;
         if (showKeywordSection) {
@@ -797,9 +927,9 @@ function createFilterUI(onFilter) {
     function renderCustomKeywordsList() {
         const customKeywords = getCustomKeywords();
         const listContainer = dialog.querySelector('#ns-custom-keywords-list');
-        
 
-        
+
+
         if (customKeywords.length === 0) {
             listContainer.innerHTML = '<div style="color:#999;font-size:13px;text-align:center;padding:38px 8px;">暂无已屏蔽的关键词</div>';
             // 没有关键词时调整样式，避免滚动条
@@ -814,7 +944,7 @@ function createFilterUI(onFilter) {
                 const borderColor = isLong ? '#ff9800' : '#ddd';
                 const textColor = isLong ? '#ff9800' : 'inherit';
                 const title = isLong ? `关键词过长(${keyword.length}字符)，建议删除重新添加` : '删除关键词';
-                
+
                 return `
                     <div style="display:inline-flex;align-items:center;margin:2px;padding:4px 8px;background:#fff;border:1px solid ${borderColor};border-radius:12px;font-size:13px;color:${textColor};max-width:100%;word-break:break-all;">
                         <span title="${isLong ? '长度超限' : ''}" style="max-width:calc(100% - 22px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${keyword}</span>
@@ -831,7 +961,7 @@ function createFilterUI(onFilter) {
 
         // 添加删除按钮事件监听器
         listContainer.querySelectorAll('.ns-remove-keyword').forEach(btn => {
-            btn.addEventListener('click', function(e) {
+            btn.addEventListener('click', function (e) {
                 e.stopPropagation();
                 const keyword = this.dataset.keyword;
                 removeCustomKeyword(keyword);
@@ -844,20 +974,61 @@ function createFilterUI(onFilter) {
         });
     }
 
+    // 渲染不屏蔽用户列表
+    function renderWhitelistUsersList() {
+        const users = getWhitelistUsers();
+        const listContainer = dialog.querySelector('#ns-whitelist-users-list');
+
+        if (users.length === 0) {
+            listContainer.innerHTML = '<div style="color:#999;font-size:13px;text-align:center;padding:25px 8px;">暂无不屏蔽的用户</div>';
+            listContainer.style.height = 'auto';
+            listContainer.style.minHeight = '160px';
+            listContainer.style.maxHeight = '160px';
+            listContainer.style.overflowY = 'hidden';
+        } else {
+            listContainer.innerHTML = users.map(user => {
+                return `
+                    <div style="display:inline-flex;align-items:center;margin:2px;padding:4px 8px;background:#fff;border:1px solid #b3e5fc;border-radius:12px;font-size:13px;color:#0277bd;max-width:100%;word-break:break-all;">
+                        <span style="max-width:calc(100% - 22px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${user}</span>
+                        <button class="ns-remove-whitelist-user" data-user="${user}" style="margin-left:6px;background:none;border:none;color:#999;cursor:pointer;font-size:16px;line-height:1;padding:0;width:16px;height:16px;flex-shrink:0;" title="删除">×</button>
+                    </div>
+                `;
+            }).join('');
+            listContainer.style.height = '160px';
+            listContainer.style.minHeight = '160px';
+            listContainer.style.maxHeight = '160px';
+            listContainer.style.overflowY = 'auto';
+        }
+
+        // Add remove listeners
+        listContainer.querySelectorAll('.ns-remove-whitelist-user').forEach(btn => {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                const user = this.dataset.user;
+                removeWhitelistUser(user);
+                renderWhitelistUsersList();
+                // Re-apply filter
+                const blacklistKeywords = getCustomKeywords();
+                const whitelistKeywords = input.value.split(/,|，/).map(s => s.trim()).filter(Boolean);
+                filterPosts(blacklistKeywords, whitelistKeywords);
+            });
+        });
+    }
+
     // 渲染高亮关键词列表
     function renderHighlightKeywordsList() {
         const highlightKeywords = getHighlightKeywords();
         const listContainer = dialog.querySelector('#ns-highlight-keywords-list');
-        
+
         // 使用DocumentFragment减少DOM操作
         const fragment = document.createDocumentFragment();
-        
+
         if (highlightKeywords.length === 0) {
             const emptyDiv = document.createElement('div');
             emptyDiv.style.cssText = 'color:#999;font-size:13px;text-align:center;padding:38px 8px;';
             emptyDiv.textContent = '暂无已高亮的关键词';
             fragment.appendChild(emptyDiv);
-            
+
             // 没有关键词时调整样式，避免滚动条
             listContainer.style.height = 'auto';
             listContainer.style.minHeight = '110px';
@@ -870,24 +1041,24 @@ function createFilterUI(onFilter) {
                 const borderColor = isLong ? '#ff9800' : '#ddd';
                 const textColor = isLong ? '#ff9800' : 'inherit';
                 const title = isLong ? `关键词过长(${keyword.length}字符)，建议删除重新添加` : '删除关键词';
-                
+
                 const keywordDiv = document.createElement('div');
                 keywordDiv.style.cssText = `display:inline-flex;align-items:center;margin:2px;padding:4px 8px;background:#fff;border:1px solid ${borderColor};border-radius:12px;font-size:13px;color:${textColor};max-width:100%;word-break:break-all;`;
-                
+
                 const span = document.createElement('span');
                 span.title = isLong ? '长度超限' : '';
                 span.style.cssText = 'max-width:calc(100% - 22px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
                 span.textContent = keyword;
-                
+
                 const removeBtn = document.createElement('button');
                 removeBtn.className = 'ns-remove-highlight';
                 removeBtn.dataset.keyword = keyword;
                 removeBtn.style.cssText = 'margin-left:6px;background:none;border:none;color:#999;cursor:pointer;font-size:16px;line-height:1;padding:0;width:16px;height:16px;flex-shrink:0;';
                 removeBtn.title = title;
                 removeBtn.textContent = '×';
-                
+
                 // 添加删除按钮事件监听器
-                removeBtn.addEventListener('click', function(e) {
+                removeBtn.addEventListener('click', function (e) {
                     e.stopPropagation();
                     const keyword = this.dataset.keyword;
                     removeHighlightKeyword(keyword);
@@ -895,19 +1066,19 @@ function createFilterUI(onFilter) {
                     // 重新应用高亮
                     applyKeywordHighlight();
                 });
-                
+
                 keywordDiv.appendChild(span);
                 keywordDiv.appendChild(removeBtn);
                 fragment.appendChild(keywordDiv);
             });
-            
+
             // 有关键词时恢复滚动样式
             listContainer.style.height = '110px';
             listContainer.style.minHeight = '110px';
             listContainer.style.maxHeight = '110px';
             listContainer.style.overflowY = 'auto';
         }
-        
+
         // 清空容器并添加新内容
         listContainer.innerHTML = '';
         listContainer.appendChild(fragment);
@@ -918,39 +1089,40 @@ function createFilterUI(onFilter) {
     // 初始渲染关键词列表
     renderCustomKeywordsList();
     renderHighlightKeywordsList();
-    
+    renderWhitelistUsersList();
+
     // 初始化作者高亮选项状态
     const highlightAuthorCheckbox = dialog.querySelector('#ns-highlight-author-checkbox');
     if (highlightAuthorCheckbox) {
         highlightAuthorCheckbox.checked = getHighlightAuthorOption();
-        
+
         // 添加作者高亮选项变化事件监听器
-        highlightAuthorCheckbox.addEventListener('change', function() {
+        highlightAuthorCheckbox.addEventListener('change', function () {
             saveHighlightAuthorOption(this.checked);
             // 重新应用高亮
             applyKeywordHighlight();
-            
+
             // 操作日志记录
             if (typeof window.addLog === 'function') {
                 window.addLog(`${this.checked ? '开启' : '关闭'}作者高亮`);
             }
         });
     }
-    
+
     // 初始化高亮颜色选择器
     const colorPicker = dialog.querySelector('#ns-highlight-color-picker');
     if (colorPicker) {
         const currentColor = getHighlightColor();
         colorPicker.value = currentColor;
-        
+
         // 添加颜色变化事件监听器
-        colorPicker.addEventListener('change', function() {
+        colorPicker.addEventListener('change', function () {
             const newColor = this.value;
             saveHighlightColor(newColor);
-            
+
             // 重新应用高亮
             applyKeywordHighlight();
-            
+
             // 操作日志记录
             if (typeof window.addLog === 'function') {
                 window.addLog(`高亮颜色已更改为${newColor}`);
@@ -963,35 +1135,35 @@ function createFilterUI(onFilter) {
     if (displayColorPicker) {
         const currentDisplayColor = getDisplayHighlightColor();
         displayColorPicker.value = currentDisplayColor;
-        
-        displayColorPicker.addEventListener('change', function() {
+
+        displayColorPicker.addEventListener('change', function () {
             const newColor = this.value;
             saveDisplayHighlightColor(newColor);
-            
+
             // 重新应用高亮（显示与高亮关键词均更新）
             applyKeywordHighlight();
-            
+
             if (typeof window.addLog === 'function') {
                 window.addLog(`显示关键词高亮颜色已更改为${newColor}`);
             }
         });
     }
-    
+
     // 确保在页面加载时应用已保存的屏蔽关键词过滤和高亮
     setTimeout(() => {
         const blacklistKeywords = getCustomKeywords();
         const whitelistKeywords = input.value.split(/,|，/).map(s => s.trim()).filter(Boolean);
-        
+
         // 总是应用过滤逻辑（无论关键词是否为空）
         filterPosts(blacklistKeywords, whitelistKeywords);
-        
+
         // 如果显示关键词为空，仅在存在屏蔽关键词时记录日志
         if (whitelistKeywords.length === 0 && typeof window.addLog === 'function') {
             const blackCount = blacklistKeywords.length;
             if (blackCount > 0) {
             }
         }
-        
+
         // 应用高亮
         applyKeywordHighlight();
     }, 100);
@@ -1009,9 +1181,9 @@ function createFilterUI(onFilter) {
 
     // 初始显示字符计数
     showLengthHint('0/15 字符', '#999');
-    
+
     // 实时字符计数
-    addKeywordInput.addEventListener('input', function() {
+    addKeywordInput.addEventListener('input', function () {
         const length = this.value.length;
         if (length === 0) {
             showLengthHint('0/15 字符', '#999');
@@ -1035,12 +1207,12 @@ function createFilterUI(onFilter) {
             addKeywordInput.value = '';
             renderCustomKeywordsList();
             showLengthHint('0/15 字符', '#999');
-            
+
             // 立即应用过滤（黑名单逻辑）
             const blacklistKeywords = getCustomKeywords();
             const whitelistKeywords = input.value.split(/,|，/).map(s => s.trim()).filter(Boolean);
             filterPosts(blacklistKeywords, whitelistKeywords);
-            
+
             // 操作日志记录
             if (typeof window.addLog === 'function') {
                 window.addLog(`屏蔽关键词"${keyword}"`);
@@ -1066,25 +1238,98 @@ function createFilterUI(onFilter) {
 
     // 添加关键词按钮事件
     addKeywordBtn.addEventListener('click', addKeywordAction);
-    
+
     // 添加关键词输入框回车事件
-    addKeywordInput.addEventListener('keydown', function(e) {
+    addKeywordInput.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
             addKeywordAction();
         }
     });
-    
+
     // 输入框点击时隐藏placeholder
-    addKeywordInput.addEventListener('focus', function() {
+    addKeywordInput.addEventListener('focus', function () {
         this.placeholder = '';
     });
-    
+
     // 输入框失焦时恢复placeholder（如果为空）
-    addKeywordInput.addEventListener('blur', function() {
+    addKeywordInput.addEventListener('blur', function () {
         if (!this.value.trim()) {
             this.placeholder = '输入要屏蔽的关键词(≤15字符)';
         }
     });
+
+    // ===== 不屏蔽用户功能 =====
+    const addWhitelistUserInput = dialog.querySelector('#ns-add-whitelist-user-input');
+    const addWhitelistUserBtn = dialog.querySelector('#ns-add-whitelist-user-btn');
+    const whitelistHintEl = dialog.querySelector('#ns-whitelist-user-hint');
+
+    function showWhitelistUserHint(message, color = '#999') {
+        if (!whitelistHintEl) return;
+        whitelistHintEl.textContent = message;
+        whitelistHintEl.style.color = color;
+    }
+
+    function addWhitelistUserAction() {
+        const username = addWhitelistUserInput.value.trim();
+        if (!username) {
+            addWhitelistUserInput.focus();
+            return;
+        }
+
+        const result = addWhitelistUser(username);
+        if (result === true) {
+            addWhitelistUserInput.value = '';
+            renderWhitelistUsersList();
+
+            // 立即应用过滤
+            const blacklistKeywords = getCustomKeywords();
+            const whitelistKeywords = input.value.split(/,|，/).map(s => s.trim()).filter(Boolean);
+            filterPosts(blacklistKeywords, whitelistKeywords);
+
+            if (typeof window.addLog === 'function') {
+                window.addLog(`添加不屏蔽用户"${username}"`);
+            }
+            showWhitelistUserHint('', '#999');
+        } else if (result === 'too_long') {
+            addWhitelistUserInput.style.borderColor = '#f44336';
+            showWhitelistUserHint('用户名长度不能超过20个字符', '#f44336');
+            setTimeout(() => {
+                addWhitelistUserInput.style.borderColor = '#ccc';
+                showWhitelistUserHint('', '#999');
+            }, 2000);
+        } else {
+            // 已存在提示
+            addWhitelistUserInput.style.borderColor = '#ff9800';
+            showWhitelistUserHint('关键词已存在', '#ff9800');
+            setTimeout(() => {
+                addWhitelistUserInput.style.borderColor = '#ccc';
+                showWhitelistUserHint('', '#999');
+            }, 1500);
+        }
+    }
+
+    if (addWhitelistUserBtn) {
+        addWhitelistUserBtn.addEventListener('click', addWhitelistUserAction);
+    }
+    if (addWhitelistUserInput) {
+        addWhitelistUserInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                addWhitelistUserAction();
+            }
+        });
+
+        // 输入框点击时隐藏placeholder
+        addWhitelistUserInput.addEventListener('focus', function () {
+            this.placeholder = '';
+        });
+
+        // 输入框失焦时恢复placeholder（如果为空）
+        addWhitelistUserInput.addEventListener('blur', function () {
+            if (!this.value.trim()) {
+                this.placeholder = '输入用户名(≤20字符)';
+            }
+        });
+    }
 
     // ===== 高亮关键词功能 =====
     const addHighlightInput = dialog.querySelector('#ns-add-highlight-input');
@@ -1099,9 +1344,9 @@ function createFilterUI(onFilter) {
 
     // 初始显示高亮字符计数
     showHighlightLengthHint('0/15 字符', '#999');
-    
+
     // 实时高亮字符计数
-    addHighlightInput.addEventListener('input', function() {
+    addHighlightInput.addEventListener('input', function () {
         const length = this.value.length;
         if (length === 0) {
             showHighlightLengthHint('0/15 字符', '#999');
@@ -1125,10 +1370,10 @@ function createFilterUI(onFilter) {
             addHighlightInput.value = '';
             renderHighlightKeywordsList();
             showHighlightLengthHint('0/15 字符', '#999');
-            
+
             // 使用防抖机制应用高亮，避免卡顿
             applyKeywordHighlight();
-            
+
             // 操作日志记录
             if (typeof window.addLog === 'function') {
                 window.addLog(`高亮关键词"${keyword}"`);
@@ -1154,28 +1399,28 @@ function createFilterUI(onFilter) {
 
     // 添加高亮关键词按钮事件
     addHighlightBtn.addEventListener('click', addHighlightKeywordAction);
-    
+
     // 添加高亮关键词输入框回车事件
-    addHighlightInput.addEventListener('keydown', function(e) {
+    addHighlightInput.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
             addHighlightKeywordAction();
         }
     });
-    
+
     // 高亮输入框点击时隐藏placeholder
-    addHighlightInput.addEventListener('focus', function() {
+    addHighlightInput.addEventListener('focus', function () {
         this.placeholder = '';
     });
-    
+
     // 高亮输入框失焦时恢复placeholder（如果为空）
-    addHighlightInput.addEventListener('blur', function() {
+    addHighlightInput.addEventListener('blur', function () {
         if (!this.value.trim()) {
             this.placeholder = '输入要高亮的关键词(≤15字符)';
         }
     });
 
     // 关闭按钮 - 关闭弹窗并清空显示关键词输入
-    dialog.querySelector('#ns-keyword-filter-close').onclick = function() {
+    dialog.querySelector('#ns-keyword-filter-close').onclick = function () {
         // 清空显示关键词输入框
         const keywordInput = dialog.querySelector('#ns-keyword-input');
         if (keywordInput) {
@@ -1188,27 +1433,27 @@ function createFilterUI(onFilter) {
         filterPosts(blacklistKeywords, []);
         // 重新应用高亮：移除显示关键词的高亮，仅保留高亮关键词与作者高亮
         applyKeywordHighlight();
-        
+
         // 操作日志记录：仅在存在屏蔽关键词时记录
         if (typeof window.addLog === 'function') {
             const blackCount = blacklistKeywords.length;
             if (blackCount > 0) {
             }
         }
-        
+
         dialog.remove();
     };
 
     // 过滤逻辑
     function doFilter() {
         const whitelistKeywords = input.value.split(/,|，/).map(s => s.trim()).filter(Boolean);
-        const blacklistKeywords = getCustomKeywords(); 
-        
+        const blacklistKeywords = getCustomKeywords();
+
         filterPosts(blacklistKeywords, whitelistKeywords);
         saveKeywords(whitelistKeywords); // 保存显示关键词
         // 过滤后立即应用关键词高亮（显示关键词也参与高亮）
         applyKeywordHighlight();
-        
+
         // 操作日志记录
         if (typeof window.addLog === 'function') {
             const blackCount = blacklistKeywords.length;
@@ -1223,7 +1468,7 @@ function createFilterUI(onFilter) {
     }
 
     dialog.querySelector('#ns-keyword-btn').onclick = doFilter;
-    input.addEventListener('keydown', function(e) {
+    input.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
             doFilter();
         }
@@ -1231,7 +1476,7 @@ function createFilterUI(onFilter) {
 
     // 仅在输入框变为空时，恢复默认显示并移除“显示关键词”的高亮
     // 非空编辑不触发过滤/高亮更新，需点击“显示”或按 Enter 才应用
-    input.addEventListener('input', function() {
+    input.addEventListener('input', function () {
         const currentValue = this.value.trim();
         if (!currentValue) {
             const blacklistKeywords = getCustomKeywords();
@@ -1250,63 +1495,63 @@ function createFilterUI(onFilter) {
             }
         }
     });
-    
-    input.onclick = function() {
+
+    input.onclick = function () {
         input.placeholder = '';
     };
-    input.onblur = function() {
+    input.onblur = function () {
         if (!input.value) input.placeholder = '输入关键词，如VPS,測試,服务器';
     };
     // 桌面端拖动功能，移动端禁用
     setTimeout(() => {
         if (!isMobile) {
-        const titleBar = dialog.querySelector('div');
-        if (titleBar && window.makeDraggable) {
-            window.makeDraggable(dialog, {width: 30, height: 30});
-                
-            // 鼠标移动到左上角30x30像素时变为move
-            dialog.addEventListener('mousemove', function(e) {
-                const rect = dialog.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                if (x >= 0 && x < 30 && y >= 0 && y < 30) {
-                    dialog.style.cursor = 'move';
-                } else {
+            const titleBar = dialog.querySelector('div');
+            if (titleBar && window.makeDraggable) {
+                window.makeDraggable(dialog, { width: 30, height: 30 });
+
+                // 鼠标移动到左上角30x30像素时变为move
+                dialog.addEventListener('mousemove', function (e) {
+                    const rect = dialog.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    if (x >= 0 && x < 30 && y >= 0 && y < 30) {
+                        dialog.style.cursor = 'move';
+                    } else {
+                        dialog.style.cursor = 'default';
+                    }
+                });
+
+                dialog.addEventListener('mouseleave', function () {
                     dialog.style.cursor = 'default';
-                }
-            });
-                
-            dialog.addEventListener('mouseleave', function() {
-                dialog.style.cursor = 'default';
-            });
-                
+                });
+
                 // 拖动结束时保存位置
                 let originalMouseUp = null;
                 const observeMutation = () => {
                     // 监听style变化，当位置改变时保存
                     let lastLeft = dialog.style.left;
                     let lastTop = dialog.style.top;
-                    
+
                     const checkPosition = () => {
                         if (dialog.style.left !== lastLeft || dialog.style.top !== lastTop) {
                             lastLeft = dialog.style.left;
                             lastTop = dialog.style.top;
-                            
+
                             // 位置变化时不再保存（总是使用默认位置）
                         }
                     };
-                    
+
                     // 定期检查位置变化
                     const positionObserver = setInterval(checkPosition, 100);
-                    
+
                     // 弹窗关闭时清除观察器
                     const originalRemove = dialog.remove;
-                    dialog.remove = function() {
+                    dialog.remove = function () {
                         clearInterval(positionObserver);
                         originalRemove.call(this);
                     };
                 };
-                
+
                 observeMutation();
             }
         }
@@ -1315,16 +1560,16 @@ function createFilterUI(onFilter) {
 
 // 关键词过滤的 observer 初始化（用于主插件调用）
 function initFilterObserver() {
-    
+
     // 检查是否有保存的关键词，如果有则自动应用过滤
     const whitelistKeywords = getKeywords(); // 显示关键词
     const blacklistKeywords = getCustomKeywords(); // 屏蔽关键词
     const highlightKeywords = getHighlightKeywords(); // 高亮关键词
-    
+
     if (whitelistKeywords.length > 0 || blacklistKeywords.length > 0) {
         // 自动应用过滤
         filterPosts(blacklistKeywords, whitelistKeywords);
-        
+
         // 只有显示关键词时才自动显示过滤弹窗（保持位置）
         // 仅屏蔽关键词时不显示弹窗
         if (whitelistKeywords.length > 0) {
@@ -1334,14 +1579,14 @@ function initFilterObserver() {
             }, 100);
         }
     }
-    
+
     // 应用高亮关键词（无论是否有过滤关键词）
     if (highlightKeywords.length > 0) {
         // 延迟应用高亮，确保DOM完全加载
         setTimeout(() => {
             applyKeywordHighlight();
         }, 100);
-        
+
         // 也立即尝试应用一次
         applyKeywordHighlight();
     }
@@ -1349,7 +1594,7 @@ function initFilterObserver() {
 
 // 拖动功能实现（与主插件一致，支持 window.makeDraggable）
 if (!window.makeDraggable) {
-    window.makeDraggable = function(element, dragAreaSize = {width: 100, height: 32}) {
+    window.makeDraggable = function (element, dragAreaSize = { width: 100, height: 32 }) {
         let isDragging = false;
         let initialMouseX, initialMouseY;
         let initialElementX, initialElementY;
@@ -1398,69 +1643,69 @@ if (!window.makeDraggable) {
 // 测试简体繁体转换功能
 function testConversion() {
     console.log('[NodeSeek过滤] 简体繁体转换测试开始...\n');
-    
+
     const testCases = [
         '国家', '國家', 'VPS服务器', 'VPS伺服器', '测试', '測試',
         '简体中文', '簡體中文', '传统', '傳統', '发布', '發佈',
         '网络设备', '網路設備', '计算机硬件', '電腦硬體', '软件下载', '軟體下載'
     ];
-    
+
     console.log('1. 文本标准化测试：');
     testCases.forEach(text => {
         const normalized = normalizeText(text);
         console.log(`  "${text}" → "${normalized}"`);
     });
-    
+
     console.log('\n2. 关键词匹配测试：');
     const testKeywords = [
-        {keyword: '服务器', titles: ['VPS服务器推荐', 'VPS伺服器推薦', 'vps 服務器', 'VPS SERVER', '云服務器']},
-        {keyword: '测试', titles: ['软件测试', '軟體測試', 'TEST测試', '性能測試']},
-        {keyword: 'VPS', titles: ['vps推荐', 'VPS評測', '便宜的VPS', '免費VPS']},
-        {keyword: '网络', titles: ['网络配置', '網路設定', '网絡故障', '網絡問題']}
+        { keyword: '服务器', titles: ['VPS服务器推荐', 'VPS伺服器推薦', 'vps 服務器', 'VPS SERVER', '云服務器'] },
+        { keyword: '测试', titles: ['软件测试', '軟體測試', 'TEST测試', '性能測試'] },
+        { keyword: 'VPS', titles: ['vps推荐', 'VPS評測', '便宜的VPS', '免費VPS'] },
+        { keyword: '网络', titles: ['网络配置', '網路設定', '网絡故障', '網絡問題'] }
     ];
-    
-    testKeywords.forEach(({keyword, titles}) => {
+
+    testKeywords.forEach(({ keyword, titles }) => {
         console.log(`\n  关键词: "${keyword}"`);
         titles.forEach(title => {
             const match = normalizeText(title).includes(normalizeText(keyword));
             console.log(`    ${match ? '✓' : '✗'} "${title}"`);
         });
     });
-    
+
     console.log('\n3. 大小写测试：');
     const caseTests = [
-        {keyword: 'VPS', titles: ['vps', 'Vps', 'VPS', 'vPs']},
-        {keyword: 'SERVER', titles: ['server', 'Server', 'SERVER', 'SeRvEr']}
+        { keyword: 'VPS', titles: ['vps', 'Vps', 'VPS', 'vPs'] },
+        { keyword: 'SERVER', titles: ['server', 'Server', 'SERVER', 'SeRvEr'] }
     ];
-    
-    caseTests.forEach(({keyword, titles}) => {
+
+    caseTests.forEach(({ keyword, titles }) => {
         console.log(`\n  关键词: "${keyword}"`);
         titles.forEach(title => {
             const match = normalizeText(title).includes(normalizeText(keyword));
             console.log(`    ${match ? '✓' : '✗'} "${title}"`);
         });
     });
-    
+
     console.log('\n4. 黑白名单过滤测试：');
     const testTitles = [
-        'VPS推荐',       
-        '服务器评测',    
-        'VPS伺服器',     
-        '域名购买',      
-        '网络故障',      
+        'VPS推荐',
+        '服务器评测',
+        'VPS伺服器',
+        '域名购买',
+        '网络故障',
         'CDN加速',
         '免费VPS试用'
     ];
-    
+
     console.log('\n  白名单过滤（必须同时包含所有关键词）：');
-    
+
     // 单个关键词测试
     console.log('\n    单个关键词 "VPS"：');
     testTitles.forEach(title => {
         const match = normalizeText(title).includes(normalizeText('VPS'));
         console.log(`      ${match ? '显示' : '隐藏'} "${title}"`);
     });
-    
+
     // 多个关键词AND测试
     console.log('\n    多个关键词 "VPS,推荐" (必须同时包含)：');
     const andKeywords = ['VPS', '推荐'];
@@ -1469,7 +1714,7 @@ function testConversion() {
         const match = andKeywords.every(kw => normalizedTitle.includes(normalizeText(kw)));
         console.log(`      ${match ? '显示' : '隐藏'} "${title}"`);
     });
-    
+
     console.log('\n    多个关键词 "claw,jp" (必须同时包含)：');
     const andKeywords2 = ['claw', 'jp'];
     testTitles.forEach(title => {
@@ -1477,7 +1722,7 @@ function testConversion() {
         const match = andKeywords2.every(kw => normalizedTitle.includes(normalizeText(kw)));
         console.log(`      ${match ? '显示' : '隐藏'} "${title}"`);
     });
-    
+
     console.log('\n  黑名单过滤（隐藏包含关键词的帖子）：');
     const blacklistKeywords = ['广告', '出售'];
     const extendedTitles = [...testTitles, '广告推广', '出售域名', '代理服务'];
@@ -1488,35 +1733,35 @@ function testConversion() {
             console.log(`      ${match ? '隐藏' : '显示'} "${title}"`);
         });
     });
-    
+
     console.log('\n5. 关键词管理功能测试：');
-    
+
     // 测试添加关键词
     console.log('\n  测试添加关键词：');
     console.log('    添加"VPS":', NodeSeekFilter.addCustomKeyword('VPS') === true ? '✓成功' : '✗失败/已存在');
     console.log('    添加"服务器":', NodeSeekFilter.addCustomKeyword('服务器') === true ? '✓成功' : '✗失败/已存在');
     console.log('    重复添加"vps":', NodeSeekFilter.addCustomKeyword('vps') === true ? '✓成功' : '✗失败/已存在（应该被智能去重）');
-    
+
     // 测试长度限制
     console.log('\n  测试长度限制：');
     console.log('    添加"123456789012345"(15字符):', NodeSeekFilter.addCustomKeyword('123456789012345') === true ? '✓成功' : '✗失败');
     console.log('    添加"1234567890123456"(16字符):', NodeSeekFilter.addCustomKeyword('1234567890123456') === 'too_long' ? '✓正确拒绝' : '✗应该被拒绝');
     console.log('    添加"这是一个超级长的关键词测试"(16字符):', NodeSeekFilter.addCustomKeyword('这是一个超级长的关键词测试') === 'too_long' ? '✓正确拒绝' : '✗应该被拒绝');
-    
+
     // 显示当前关键词
     const currentKeywords = NodeSeekFilter.getCustomKeywords();
     console.log(`\n  当前自定义关键词列表: [${currentKeywords.join(', ')}]`);
-    
+
     // 测试删除功能
     if (currentKeywords.length > 0) {
         console.log('\n  测试删除关键词：');
         NodeSeekFilter.removeCustomKeyword(currentKeywords[0]);
         console.log(`    删除"${currentKeywords[0]}"后: [${NodeSeekFilter.getCustomKeywords().join(', ')}]`);
     }
-    
+
     console.log('\n[NodeSeek过滤] 测试完成！');
     console.log('使用方法：');
-    console.log('  - 运行 NodeSeekFilter.testConversion() 测试功能');  
+    console.log('  - 运行 NodeSeekFilter.testConversion() 测试功能');
     console.log('  - 调用 NodeSeekFilter.createFilterUI() 显示过滤界面');
     console.log('功能特性：');
     console.log('  - 🚫 屏蔽关键词：永久隐藏包含关键词的帖子（黑名单，OR逻辑）');
@@ -1535,7 +1780,7 @@ function testConversion() {
 // 调试函数：检查页面结构和过滤功能
 function debugPageStructure() {
     console.log('=== NodeSeek页面结构调试 ===');
-    
+
     // 1. 检查可能的帖子容器
     console.log('1. 寻找帖子容器：');
     const containers = document.querySelectorAll('ul, ol, div[class*="list"], table, tbody');
@@ -1544,7 +1789,7 @@ function debugPageStructure() {
             console.log(`   容器${index}: ${container.tagName}.${container.className} (${container.children.length}个子元素)`);
         }
     });
-    
+
     // 2. 检查实际的帖子选择器
     console.log('\n2. 测试不同的帖子选择器：');
     const selectors = [
@@ -1557,10 +1802,10 @@ function debugPageStructure() {
         'li[class*="post"]',
         'tr'
     ];
-    
+
     let workingSelector = null;
     let workingElements = null;
-    
+
     selectors.forEach(selector => {
         const elements = document.querySelectorAll(selector);
         console.log(`   ${selector}: ${elements.length}个元素`);
@@ -1569,7 +1814,7 @@ function debugPageStructure() {
             workingElements = elements;
         }
     });
-    
+
     // 3. 分析工作的选择器
     if (workingSelector && workingElements.length > 0) {
         console.log(`\n3. 使用选择器 "${workingSelector}" 分析前3个元素：`);
@@ -1577,7 +1822,7 @@ function debugPageStructure() {
             const element = workingElements[i];
             console.log(`   元素${i}:`);
             console.log(`     HTML: ${element.outerHTML.substring(0, 200)}...`);
-            
+
             // 查找标题
             const titleSelectors = ['.post-title a', 'a[href*="/topic/"]', 'a', 'td a'];
             titleSelectors.forEach(sel => {
@@ -1587,7 +1832,7 @@ function debugPageStructure() {
                 }
             });
         }
-        
+
         // 4. 测试过滤功能
         console.log('\n4. 测试过滤功能：');
         filterPosts([], ['jp']);
@@ -1598,23 +1843,23 @@ function debugPageStructure() {
 function testLocalStorage() {
     // 清除现有数据
     localStorage.removeItem('ns-filter-custom-keywords');
-    
+
     // 测试保存
     const testKeywords = ['测试1', '测试2', '测试3'];
     saveCustomKeywords(testKeywords);
-    
+
     // 测试读取
     const loaded = getCustomKeywords();
-    
+
     // 测试添加
     const addResult = addCustomKeyword('新关键词');
-    
+
     // 再次读取
     const afterAdd = getCustomKeywords();
-    
+
     // 检查localStorage原始数据
     const raw = localStorage.getItem('ns-filter-custom-keywords');
-    
+
     return afterAdd;
 }
 
@@ -1629,7 +1874,7 @@ function applyKeywordHighlight() {
     if (highlightDebounceTimer) {
         clearTimeout(highlightDebounceTimer);
     }
-    
+
     // 设置防抖延迟
     highlightDebounceTimer = setTimeout(() => {
         applyKeywordHighlightImmediate();
@@ -1641,16 +1886,16 @@ function applyKeywordHighlightImmediate() {
     const highlightKeywords = (getHighlightKeywords() || []).map(k => k && k.trim()).filter(Boolean);
     const displayKeywords = (getKeywords() || []).map(k => k && k.trim()).filter(Boolean);
     const highlightAuthorEnabled = getHighlightAuthorOption();
-    
+
     // 当两类关键词均为空且未开启作者高亮时，清除所有高亮
     if (highlightKeywords.length === 0 && displayKeywords.length === 0 && !highlightAuthorEnabled) {
         clearKeywordHighlight();
         return;
     }
-    
+
     // 缓存选择器结果，避免重复查询
     let postItems = document.querySelectorAll('ul.post-list > li.post-list-item');
-    
+
     if (postItems.length === 0) {
         const selectors = [
             'ul.post-list > li',
@@ -1664,7 +1909,7 @@ function applyKeywordHighlightImmediate() {
             '.topic-list tr',
             '.topic-list > tr'
         ];
-        
+
         for (const selector of selectors) {
             postItems = document.querySelectorAll(selector);
             if (postItems.length > 0) {
@@ -1672,12 +1917,12 @@ function applyKeywordHighlightImmediate() {
             }
         }
     }
-    
+
     // 如果还是没找到，直接返回
     if (postItems.length === 0) {
         return;
     }
-    
+
     // 预计算两类关键词的标准化版本，避免重复计算
     const normalizedHighlightKeywords = highlightKeywords.map(keyword => ({
         original: keyword,
@@ -1687,22 +1932,22 @@ function applyKeywordHighlightImmediate() {
         original: keyword,
         normalized: normalizeText(keyword)
     })).filter(item => item.normalized);
-    
+
     // 使用更高效的批量处理
     const processItem = (item) => {
         // 先清除该项目的现有高亮
         clearItemHighlight(item);
-        
+
         // 处理标题高亮（显示关键词使用显示颜色；高亮关键词使用高亮颜色）
         if (normalizedHighlightKeywords.length > 0 || normalizedDisplayKeywords.length > 0) {
             // 尝试多种方式获取帖子标题
             let titleEl = item.querySelector('.post-title a');
             let title = titleEl ? titleEl.textContent.trim() : '';
-            
+
             if (!title) {
                 const titleSelectors = [
                     'a[href*="/topic/"]',
-                    'a[href*="/post"]', 
+                    'a[href*="/post"]',
                     '.post-title',
                     '.topic-title',
                     '.title',
@@ -1714,7 +1959,7 @@ function applyKeywordHighlightImmediate() {
                     'a[class*="subject"]',
                     'a'
                 ];
-                
+
                 for (const selector of titleSelectors) {
                     titleEl = item.querySelector(selector);
                     if (titleEl && titleEl.textContent.trim()) {
@@ -1723,15 +1968,15 @@ function applyKeywordHighlightImmediate() {
                     }
                 }
             }
-            
+
             if (title && titleEl) {
                 const normalizedTitle = normalizeText(title);
                 // 匹配显示关键词
-                const matchedDisplay = normalizedDisplayKeywords.filter(item => 
+                const matchedDisplay = normalizedDisplayKeywords.filter(item =>
                     normalizedTitle.includes(item.normalized)
                 ).map(item => item.original);
                 // 匹配高亮关键词
-                const matchedHighlight = normalizedHighlightKeywords.filter(item => 
+                const matchedHighlight = normalizedHighlightKeywords.filter(item =>
                     normalizedTitle.includes(item.normalized)
                 ).map(item => item.original);
 
@@ -1748,13 +1993,13 @@ function applyKeywordHighlightImmediate() {
                 }
             }
         }
-        
+
         // 处理作者高亮（仅使用“高亮关键词”组，不使用显示关键词）
         if (highlightAuthorEnabled && normalizedHighlightKeywords.length > 0) {
             // 尝试多种方式获取作者元素
             let authorEl = item.querySelector('.post-author a');
             let author = authorEl ? authorEl.textContent.trim() : '';
-            
+
             if (!author) {
                 const authorSelectors = [
                     '.post-author',
@@ -1767,7 +2012,7 @@ function applyKeywordHighlightImmediate() {
                     '.post-info a',
                     '.user-link'
                 ];
-                
+
                 for (const selector of authorSelectors) {
                     authorEl = item.querySelector(selector);
                     if (authorEl && authorEl.textContent.trim()) {
@@ -1776,13 +2021,13 @@ function applyKeywordHighlightImmediate() {
                     }
                 }
             }
-            
+
             if (author && authorEl) {
                 const normalizedAuthor = normalizeText(author);
-                const matchedHighlight = normalizedHighlightKeywords.filter(item => 
+                const matchedHighlight = normalizedHighlightKeywords.filter(item =>
                     normalizedAuthor.includes(item.normalized)
                 ).map(item => item.original);
-                
+
                 if (matchedHighlight.length > 0) {
                     // 仅对作者应用高亮关键词颜色
                     highlightTitleKeywordsMulti(authorEl, author, [{ keywords: matchedHighlight, color: getHighlightColor() }]);
@@ -1790,26 +2035,26 @@ function applyKeywordHighlightImmediate() {
             }
         }
     };
-    
+
     // 分批处理，避免阻塞UI
     const batchSize = 10;
     let currentIndex = 0;
-    
+
     const processBatch = () => {
         const endIndex = Math.min(currentIndex + batchSize, postItems.length);
-        
+
         for (let i = currentIndex; i < endIndex; i++) {
             processItem(postItems[i]);
         }
-        
+
         currentIndex = endIndex;
-        
+
         if (currentIndex < postItems.length) {
             // 使用requestAnimationFrame确保UI响应
             requestAnimationFrame(processBatch);
         }
     };
-    
+
     processBatch();
 }
 
@@ -1823,7 +2068,7 @@ function clearKeywordHighlight() {
             el.parentNode.replaceChild(document.createTextNode(el.textContent), el);
         }
     });
-    
+
     // 标准化文本节点（合并相邻的文本节点）
     const allPostItems = document.querySelectorAll('ul.post-list > li.post-list-item, ul.post-list > li, .post-list > li, .post-list-item, .post-item, .topic-item');
     allPostItems.forEach(item => {
@@ -1844,7 +2089,7 @@ function clearItemHighlight(item) {
             el.parentNode.replaceChild(document.createTextNode(el.textContent), el);
         }
     });
-    
+
     // 标准化文本节点
     const titleElements = item.querySelectorAll('a[href*="/topic/"], .post-title a, .topic-title a, .title a');
     titleElements.forEach(titleEl => {
@@ -1858,19 +2103,19 @@ function clearItemHighlight(item) {
 function highlightTitleKeywords(titleEl, originalTitle, keywords) {
     // 保存原始HTML结构
     const originalHTML = titleEl.innerHTML;
-    
+
     try {
         let processedHTML = originalTitle;
-        
+
         // 按关键词长度排序，优先处理长关键词，避免短关键词覆盖长关键词
         const sortedKeywords = keywords.sort((a, b) => b.length - a.length);
-        
+
         // 使用简单的字符串替换，避免复杂的算法
         const highlightColor = getHighlightColor();
-        
+
         sortedKeywords.forEach(keyword => {
             if (!keyword || keyword.trim() === '') return;
-            
+
             // 同时匹配简体与繁体的变体
             const variantsSet = new Set();
             const kw = keyword.trim();
@@ -1882,16 +2127,16 @@ function highlightTitleKeywords(titleEl, originalTitle, keywords) {
             variants.sort((a, b) => b.length - a.length);
             const pattern = variants.map(v => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
             const regex = new RegExp(pattern, 'gi');
-            
+
             processedHTML = processedHTML.replace(regex, (match) => {
                 // 使用自定义颜色的高亮样式
                 return `<span class="ns-keyword-highlight" style="background-color: ${highlightColor}; color: #333; font-weight: inherit; display: inline; margin: 0; padding: 0; line-height: inherit; vertical-align: baseline;">${match}</span>`;
             });
         });
-        
+
         // 应用处理后的HTML
         titleEl.innerHTML = processedHTML;
-        
+
     } catch (error) {
         console.warn('高亮关键词时出错:', error);
         // 如果出错，恢复原始HTML
@@ -1943,64 +2188,64 @@ function highlightTitleKeywordsMulti(titleEl, originalTitle, groups) {
 // 测试高亮匹配功能
 function testHighlightMatching() {
     console.log('\n=== 高亮匹配功能测试 ===');
-    
+
     // 创建测试元素
     const testEl = document.createElement('div');
     testEl.innerHTML = '<a>Test Content</a>';
     document.body.appendChild(testEl);
-    
+
     const testCases = [
-        {title: 'VPS rn服务器', keyword: 'rn', expected: 'rn'},
-        {title: '测试 rn 内容', keyword: 'rn', expected: 'rn'},  
-        {title: 'VPS伺服器', keyword: '服务器', expected: '伺服器'},
-        {title: 'TEST测試', keyword: '测试', expected: '測試'},
-        {title: 'NodeSeek论坛', keyword: '论坛', expected: '论坛'},
-        {title: 'rn rna RNA', keyword: 'rn', expected: 'rn'},
-        {title: 'rm rn ra', keyword: 'rn', expected: 'rn'}
+        { title: 'VPS rn服务器', keyword: 'rn', expected: 'rn' },
+        { title: '测试 rn 内容', keyword: 'rn', expected: 'rn' },
+        { title: 'VPS伺服器', keyword: '服务器', expected: '伺服器' },
+        { title: 'TEST测試', keyword: '测试', expected: '測試' },
+        { title: 'NodeSeek论坛', keyword: '论坛', expected: '论坛' },
+        { title: 'rn rna RNA', keyword: 'rn', expected: 'rn' },
+        { title: 'rm rn ra', keyword: 'rn', expected: 'rn' }
     ];
-    
+
     console.log('测试用例：');
     testCases.forEach((testCase, index) => {
         console.log(`\n测试 ${index + 1}:`);
         console.log(`  标题: "${testCase.title}"`);
         console.log(`  关键词: "${testCase.keyword}"`);
         console.log(`  期望高亮: "${testCase.expected}"`);
-        
+
         // 模拟高亮过程
         const titleEl = testEl.querySelector('a');
         titleEl.textContent = testCase.title;
-        
+
         try {
             // 应用高亮
             highlightTitleKeywords(titleEl, testCase.title, [testCase.keyword]);
-            
+
             // 检查结果
             const highlightedSpans = titleEl.querySelectorAll('.ns-keyword-highlight');
             console.log(`  实际高亮数量: ${highlightedSpans.length}`);
-            
+
             highlightedSpans.forEach((span, i) => {
                 const highlightedText = span.textContent;
                 const normalizedHighlighted = normalizeText(highlightedText);
                 const normalizedKeyword = normalizeText(testCase.keyword);
                 const match = normalizedHighlighted === normalizedKeyword;
-                
+
                 console.log(`    高亮片段 ${i + 1}: "${highlightedText}" ${match ? '✓' : '✗'}`);
                 if (!match) {
                     console.log(`      标准化: "${normalizedHighlighted}" vs "${normalizedKeyword}"`);
                 }
             });
-            
+
         } catch (error) {
             console.log(`  错误: ${error.message}`);
         }
-        
+
         // 清理
         titleEl.innerHTML = testCase.title;
     });
-    
+
     // 清理测试元素
     document.body.removeChild(testEl);
-    
+
     console.log('\n=== 测试完成 ===');
     console.log('使用方法: NodeSeekFilter.testHighlightMatching()');
 }
@@ -2008,7 +2253,7 @@ function testHighlightMatching() {
 // 测试简繁转换字库扩展
 function testTraditionalChineseConversion() {
     console.log('\n=== 繁体字库扩展测试 ===');
-    
+
     const testPairs = [
         // 基础测试
         ['服务器', '伺服器'], ['测试', '測試'], ['网络', '網絡'], ['计算机', '計算機'],
@@ -2062,59 +2307,59 @@ function testTraditionalChineseConversion() {
         ['阴天', '陰天'], ['风雨', '風雨'], ['云朵', '雲朵'], ['雾霾', '霧霾'], ['烟尘', '煙塵'],
         ['凉爽', '涼爽'], ['温暖', '溫暖'], ['干燥', '乾燥'], ['湿润', '濕潤'], ['波涛', '波濤']
     ];
-    
+
     console.log(`测试 ${testPairs.length} 组简繁对照：\n`);
-    
+
     let successCount = 0;
     let failedCases = [];
-    
+
     testPairs.forEach(([simplified, expectedTraditional], index) => {
         const actualTraditional = convertSimplifiedToTraditional(simplified);
         const backToSimplified = convertTraditionalToSimplified(expectedTraditional);
         const success = actualTraditional === expectedTraditional && backToSimplified === simplified;
-        
+
         if (success) {
             successCount++;
             console.log(`✓ ${index + 1}. "${simplified}" ⟺ "${expectedTraditional}"`);
         } else {
-            failedCases.push({index: index + 1, simplified, expectedTraditional, actualTraditional, backToSimplified});
+            failedCases.push({ index: index + 1, simplified, expectedTraditional, actualTraditional, backToSimplified });
             console.log(`✗ ${index + 1}. "${simplified}" → "${actualTraditional}" (期望: "${expectedTraditional}")`);
         }
     });
-    
+
     console.log(`\n=== 测试统计 ===`);
     console.log(`总测试数: ${testPairs.length}`);
-    console.log(`成功: ${successCount} (${(successCount/testPairs.length*100).toFixed(1)}%)`);
-    console.log(`失败: ${failedCases.length} (${(failedCases.length/testPairs.length*100).toFixed(1)}%)`);
-    
+    console.log(`成功: ${successCount} (${(successCount / testPairs.length * 100).toFixed(1)}%)`);
+    console.log(`失败: ${failedCases.length} (${(failedCases.length / testPairs.length * 100).toFixed(1)}%)`);
+
     if (failedCases.length > 0) {
         console.log(`\n=== 失败详情 ===`);
-        failedCases.forEach(({index, simplified, expectedTraditional, actualTraditional, backToSimplified}) => {
+        failedCases.forEach(({ index, simplified, expectedTraditional, actualTraditional, backToSimplified }) => {
             console.log(`${index}. "${simplified}"`);
             console.log(`   期望繁体: "${expectedTraditional}"`);
             console.log(`   实际繁体: "${actualTraditional}"`);
             console.log(`   回转简体: "${backToSimplified}"`);
-            
+
             // 分析字符级差异
             const missingChars = [];
             for (let i = 0; i < simplified.length; i++) {
                 const simpleChar = simplified[i];
                 const expectedTradChar = expectedTraditional[i];
                 const actualTradChar = actualTraditional[i];
-                
+
                 if (expectedTradChar !== actualTradChar) {
                     if (!SIMPLIFIED_TO_TRADITIONAL[simpleChar]) {
                         missingChars.push(simpleChar);
                     }
                 }
             }
-            
+
             if (missingChars.length > 0) {
                 console.log(`   缺失字典: [${missingChars.join(', ')}]`);
             }
         });
     }
-    
+
     console.log(`\n字典统计:`);
     console.log(`- 字典条目总数: ${Object.keys(SIMPLIFIED_TO_TRADITIONAL).length}`);
     console.log(`- 基础常用字: ~200个`);
@@ -2132,7 +2377,7 @@ function testTraditionalChineseConversion() {
     console.log(`- 建筑房屋: ~40个`);
     console.log(`- 自然环境: ~60个`);
     console.log(`- 天气气候: ~40个`);
-    
+
     console.log('\n使用方法: NodeSeekFilter.testTraditionalChineseConversion()');
 }
 
