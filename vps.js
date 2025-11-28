@@ -159,7 +159,7 @@
                 if (expiryDateInput) {
                     expiryDateInput.value = tomorrowStr;
                 }
-                
+
             },
 
             // 更新汇率显示
@@ -943,7 +943,7 @@
             dialog.id = dialogId;
             const isMobile = window.innerWidth <= 768;
             const dialogWidth = isMobile ? Math.min(400, window.innerWidth * 0.95) : 400;
-            const dialogHeight = 420;
+            const dialogHeight = 370;
             const left = Math.max(0, (window.innerWidth - dialogWidth) / 2);
             const top = Math.max(0, (window.innerHeight - dialogHeight) / 2);
 
@@ -996,10 +996,10 @@
                         <h3 style="margin: 0; color: #333;">货币转换器</h3>
                         <span style="cursor: pointer; font-size: 24px; color: #666;" onclick="this.closest('#${dialogId}').remove()">×</span>
                     </div>
-                    
+
                     <div style="margin-bottom: 15px;">
                         <label style="display: block; margin-bottom: 5px; font-weight: bold;">金额</label>
-                        <input type="number" id="vps-conv-amount" value="1" style="width: 100%; height: 36px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; line-height: 1.2;">
+                        <input type="number" id="vps-conv-amount" value="" style="width: 100%; height: 36px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; line-height: 1.2;">
                     </div>
 
                     <div style="display: flex; gap: 10px; margin-bottom: 15px;">
@@ -1024,10 +1024,10 @@
                          <button id="vps-conv-btn" style="width: 100%; background: #2196F3; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold; height: 40px;">转换</button>
                     </div>
 
-                    <div style="background: #f5f5f5; padding: 15px; border-radius: 4px; text-align: center;">
+                    <div style="background: #f5f5f5; padding: 15px; border-radius: 4px; text-align: center; min-height: 100px;">
                         <div style="font-size: 14px; color: #666; margin-bottom: 5px;">结果</div>
-                        <div id="vps-conv-result" style="font-size: 24px; font-weight: bold; color: #333;">-</div>
-                        <div id="vps-conv-rate" style="font-size: 12px; color: #999; margin-top: 5px;"></div>
+                        <div id="vps-conv-result" style="font-size: 24px; font-weight: bold; color: #333; min-height: 36px; display: flex; align-items: center; justify-content: center;">-</div>
+                        <div id="vps-conv-rate" style="font-size: 12px; color: #999; margin-top: 5px; min-height: 18px;"></div>
                     </div>
                 </div>
             `;
@@ -1064,8 +1064,8 @@
             document.head.appendChild(swapStyle);
 
             // 设置默认值
-            document.getElementById('vps-conv-from').value = 'CNY';
-            document.getElementById('vps-conv-to').value = 'USD';
+            document.getElementById('vps-conv-from').value = 'USD';
+            document.getElementById('vps-conv-to').value = 'CNY';
 
             // 绑定事件
             const calculate = () => {
@@ -1074,7 +1074,8 @@
                 const to = document.getElementById('vps-conv-to').value;
 
                 if (isNaN(amount)) {
-                    document.getElementById('vps-conv-result').textContent = '请输入金额';
+                    document.getElementById('vps-conv-result').textContent = '';
+                    document.getElementById('vps-conv-rate').textContent = '';
                     return;
                 }
 
@@ -1089,6 +1090,15 @@
             };
 
             document.getElementById('vps-conv-btn').onclick = calculate;
+
+            // 回车触发转换
+            dialog.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    calculate();
+                }
+            });
+            calculate();
 
             // 互换左右货币
             const swapEl = document.getElementById('vps-conv-swap');
@@ -1199,15 +1209,15 @@
                         <h3 style="margin: 0; color: #333;">计算器</h3>
                         <span style="cursor: pointer; font-size: 24px; color: #666;" onclick="this.closest('#${dialogId}').remove()">×</span>
                     </div>
-                    
+
                     <!-- 计算步骤显示区域 -->
                     <div class="calc-steps" style="height: 100px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; color: #666; line-height: 1.6;">
                         <div style="color: #999; font-style: italic;">计算步骤将显示在这里...</div>
                     </div>
-                    
+
                     <!-- 显示屏 -->
                     <div class="calc-display" style="background: #2c3e50; color: #ecf0f1; padding: 20px; border-radius: 8px; margin-bottom: 15px; text-align: right; font-size: 32px; font-weight: bold; min-height: 60px; word-wrap: break-word; overflow-x: auto;">0</div>
-                    
+
                     <!-- 按钮区域 -->
                     <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
                         <!-- 第一行 -->
@@ -1215,31 +1225,31 @@
                         <button class="calc-btn calc-delete" style="background: #95a5a6; color: white;">⌫</button>
                         <button class="calc-btn calc-operator" data-op="/">÷</button>
                         <button class="calc-btn calc-operator" data-op="*">×</button>
-                        
+
                         <!-- 第二行 -->
                         <button class="calc-btn calc-number" data-num="7">7</button>
                         <button class="calc-btn calc-number" data-num="8">8</button>
                         <button class="calc-btn calc-number" data-num="9">9</button>
                         <button class="calc-btn calc-operator" data-op="-">−</button>
-                        
+
                         <!-- 第三行 -->
                         <button class="calc-btn calc-number" data-num="4">4</button>
                         <button class="calc-btn calc-number" data-num="5">5</button>
                         <button class="calc-btn calc-number" data-num="6">6</button>
                         <button class="calc-btn calc-operator" data-op="+">+</button>
-                        
+
                         <!-- 第四行 -->
                         <button class="calc-btn calc-number" data-num="1">1</button>
                         <button class="calc-btn calc-number" data-num="2">2</button>
                         <button class="calc-btn calc-number" data-num="3">3</button>
                         <button class="calc-btn calc-equals" style="background: #27ae60; color: white; grid-row: span 2;">=</button>
-                        
+
                         <!-- 第五行 -->
                         <button class="calc-btn calc-number" data-num="0" style="grid-column: span 2;">0</button>
                         <button class="calc-btn calc-number" data-num=".">.</button>
                     </div>
                 </div>
-                
+
                 <style>
                     .calc-btn {
                         padding: 18px;
