@@ -1010,7 +1010,7 @@
                             </select>
                         </div>
                         <div style="display: flex; align-items: flex-end; padding-bottom: 10px;">
-                            <span style="font-size: 20px;">➜</span>
+                            <span id="vps-conv-swap" title="互换" style="font-size: 18px; cursor: pointer; user-select: none; width: 36px; height: 36px; border-radius: 50%; border: 1px solid #ddd; background: #f5f5f5; display: flex; align-items: center; justify-content: center; color: #333; transition: transform 0.2s ease;">⇄</span>
                         </div>
                         <div style="flex: 1;">
                             <label style="display: block; margin-bottom: 5px; font-weight: bold;">到</label>
@@ -1055,6 +1055,14 @@
             `;
             document.head.appendChild(style);
 
+            const swapStyle = document.createElement('style');
+            swapStyle.textContent = `
+                #${dialogId} #vps-conv-swap { transform: scale(0.8) translateY(13px); }
+                #${dialogId} #vps-conv-swap:hover { background: #e9ecef; }
+                #${dialogId} #vps-conv-swap:active { transform: scale(0.8) translateY(13px) rotate(180deg); }
+            `;
+            document.head.appendChild(swapStyle);
+
             // 设置默认值
             document.getElementById('vps-conv-from').value = 'CNY';
             document.getElementById('vps-conv-to').value = 'USD';
@@ -1081,6 +1089,19 @@
             };
 
             document.getElementById('vps-conv-btn').onclick = calculate;
+
+            // 互换左右货币
+            const swapEl = document.getElementById('vps-conv-swap');
+            if (swapEl) {
+                swapEl.onclick = () => {
+                    const fromEl = document.getElementById('vps-conv-from');
+                    const toEl = document.getElementById('vps-conv-to');
+                    const tmp = fromEl.value;
+                    fromEl.value = toEl.value;
+                    toEl.value = tmp;
+                    calculate();
+                };
+            }
 
             // 拖动逻辑
             let isDragging = false;
