@@ -345,16 +345,19 @@ function filterPosts(blacklistKeywords = [], whitelistKeywords = []) {
         
         let shouldShow = true;
         
-        // 如果有白名单关键词，则只显示同时匹配所有白名单关键词的帖子
-        if (whitelistKeywords.length > 0) {
-            shouldShow = whitelistKeywords.every(kw => kw && normalizeText(title).includes(normalizeText(kw)));
-        }
-        
-        // 在白名单过滤基础上，再隐藏黑名单帖子
-        if (shouldShow && blacklistKeywords.length > 0) {
-            const containsBlacklist = blacklistKeywords.some(kw => kw && normalizeText(title).includes(normalizeText(kw)));
-            if (containsBlacklist) {
-                shouldShow = false;
+        // 检查当前网址是否包含 'post'，如果包含则不进行过滤
+        if (!window.location.href.includes('post')) {
+            // 如果有白名单关键词，则只显示同时匹配所有白名单关键词的帖子
+            if (whitelistKeywords.length > 0) {
+                shouldShow = whitelistKeywords.every(kw => kw && normalizeText(title).includes(normalizeText(kw)));
+            }
+            
+            // 在白名单过滤基础上，再隐藏黑名单帖子
+            if (shouldShow && blacklistKeywords.length > 0) {
+                const containsBlacklist = blacklistKeywords.some(kw => kw && normalizeText(title).includes(normalizeText(kw)));
+                if (containsBlacklist) {
+                    shouldShow = false;
+                }
             }
         }
         
