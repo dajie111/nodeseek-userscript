@@ -36,11 +36,11 @@
 
         // 自动采集定时器
         autoCollectTimer: null,
-        autoCollectInterval: 30 * 60 * 1000, // 30分钟
+        // autoCollectInterval: 30 * 60 * 1000, // 自动采集已废弃
 
-                // 采集时间记录
+        // 采集时间记录
         lastCollectTime: 0,
-        nextCollectTime: 0,
+        // nextCollectTime: 0, // 已废弃
 
         // 数据保留期限
         dataRetentionDays: 7,
@@ -246,6 +246,37 @@
             return similarity;
         },
 
+        // 清理所有数据（供手动清理和弹窗关闭时调用）
+        clearAllData(showConfirm = false) {
+            if (showConfirm && !confirm('确定要清理所有数据吗？\n这将清除：\n- 7天历史采集数据\n- 7天热词历史\n- 7天时间分布统计\n- 7天用户统计数据\n- 当前缓存数据\n此操作不可撤销。')) {
+                return false;
+            }
+
+            // 清理历史数据
+            this.historyData = [];
+            this.saveHistoryData();
+
+            // 清理热词历史
+            this.hotWordsHistory = [];
+            this.saveHotWordsHistory();
+
+            // 清理时间分布历史
+            this.timeDistributionHistory = [];
+            this.saveTimeDistributionHistory();
+
+            // 清理用户统计历史
+            this.userStatsHistory = [];
+            this.saveUserStatsHistory();
+
+            // 清理当前缓存
+            this.rssCache = null;
+            this.rssCacheTime = 0;
+            this.dataCleared = true; // 设置清理标记
+
+            this.log('已清理所有数据');
+            return true;
+        },
+
         // 清理7天前的旧数据
         cleanOldData() {
             if (!this.historyData || this.historyData.length === 0) return;
@@ -359,17 +390,15 @@
 
                     // 恢复采集时间信息
                     this.lastCollectTime = globalState.lastCollectTime || Date.now();
-                    this.nextCollectTime = globalState.nextCollectTime || (Date.now() + this.autoCollectInterval);
+                    // this.nextCollectTime = ... // 已移除自动采集
 
                     if (!silent) {
                         // console.log('加载全局状态成功'); // 已删除此日志输出
-                        // console.log('上次采集时间:', new Date(this.lastCollectTime).toLocaleString()); // 已删除此日志输出
-                        // console.log('下次采集时间:', new Date(this.nextCollectTime).toLocaleString()); // 已删除此日志输出
                     }
                 } else {
                     // 初始化全局状态
                     this.lastCollectTime = Date.now();
-                    this.nextCollectTime = Date.now() + this.autoCollectInterval;
+                    // this.nextCollectTime = ... // 已移除自动采集
                     this.saveGlobalState();
                     if (!silent) {
                         if (this.isDebug) console.log('初始化全局状态');
@@ -380,7 +409,7 @@
                     console.error('加载全局状态失败:', error);
                 }
                 this.lastCollectTime = Date.now();
-                this.nextCollectTime = Date.now() + this.autoCollectInterval;
+                // this.nextCollectTime = ... // 已移除自动采集
             }
         },
 
@@ -389,7 +418,7 @@
             try {
                 const globalState = {
                     lastCollectTime: this.lastCollectTime,
-                    nextCollectTime: this.nextCollectTime,
+                    // nextCollectTime: this.nextCollectTime, // 已移除自动采集
                     mainWindowId: this.isMainWindow ? this.windowId : null,
                     mainWindowHeartbeat: this.isMainWindow ? Date.now() : null,
                     version: Date.now()
@@ -436,7 +465,7 @@
         becomeMainWindow() {
             this.isMainWindow = true;
             this.saveGlobalState();
-            this.startAutoCollect();
+            // this.startAutoCollect(); // 移除自动采集启动
             this.startHeartbeat();
             // console.log(`窗口 ${this.windowId} 成为主窗口`); // 已删除此日志输出
         },
@@ -482,9 +511,9 @@
                 if (globalState.lastCollectTime) {
                     this.lastCollectTime = globalState.lastCollectTime;
                 }
-                if (globalState.nextCollectTime) {
-                    this.nextCollectTime = globalState.nextCollectTime;
-                }
+                // if (globalState.nextCollectTime) {
+                //    this.nextCollectTime = globalState.nextCollectTime;
+                // }
 
                 // 检查主窗口变化
                 const now = Date.now();
@@ -526,97 +555,38 @@
             this.stopHeartbeat();
         },
 
-                // 开始自动采集
+                // 开始自动采集 (已废弃，仅保留空函数防止报错)
         startAutoCollect() {
-            // 只有主窗口才能开始采集
-            if (!this.isMainWindow) {
-                                    if (this.isDebug) console.log('非主窗口，跳过自动采集启动');
-                return;
-            }
-
-            // 清除可能存在的旧定时器
-            if (this.autoCollectTimer) {
-                clearInterval(this.autoCollectTimer);
-            }
-
-            // 计算首次采集的延迟时间
-            const now = Date.now();
-            let firstCollectDelay = 0;
-
-            // 如果下次采集时间还没到，等待到指定时间
-            if (this.nextCollectTime > now) {
-                firstCollectDelay = this.nextCollectTime - now;
-                // console.log(`距离下次采集还有 ${Math.round(firstCollectDelay / 1000)} 秒`); // 已删除此日志输出
-            } else {
-                // 下次采集时间已过，立即执行
-                this.log('下次采集时间已过，立即执行采集');
-            }
-
-            // 设置首次采集
-            setTimeout(() => {
-                this.performAutoCollect(false);
-
-                // 设置定期采集定时器
-                this.autoCollectTimer = setInterval(() => {
-                    this.performAutoCollect(false);
-                }, this.autoCollectInterval);
-            }, firstCollectDelay);
-
-            // console.log(`主窗口开始自动采集RSS数据，间隔：3分钟`); // 已删除此日志输出
-
-
+            // 自动采集功能已移除
         },
 
-        // 停止自动采集
+        // 停止自动采集 (已废弃，仅保留空函数防止报错)
         stopAutoCollect() {
             if (this.autoCollectTimer) {
                 clearInterval(this.autoCollectTimer);
                 this.autoCollectTimer = null;
-                this.log('停止自动采集RSS数据');
-
-
             }
         },
 
-                // 执行自动采集
-        async performAutoCollect(isManualTrigger = false) {
+                // 执行手动采集
+        async performCollect() {
             const maxRetries = 3;
             const retryDelay = 60 * 1000; // 1分钟
 
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                 try {
-                    // 如果不是手动触发且不是主窗口，跳过采集
-                    if (!isManualTrigger && !this.isMainWindow) {
-                        this.log('非主窗口，跳过自动采集');
-                        return;
-                    }
+                    this.log(`执行手动采集RSS数据${attempt > 1 ? `(第${attempt}次重试)` : ''}...`);
 
-                    this.log(`${this.isMainWindow ? '主窗口' : ''}执行${isManualTrigger ? '手动' : '自动'}采集RSS数据${attempt > 1 ? `(第${attempt}次重试)` : ''}...`);
-
-                    // 重置清理标记（无论手动还是自动采集）
+                    // 1. 完全清除旧数据 (复用清理逻辑)
+                    this.clearAllData(false);
+                    
+                    // 2. 重置清理标记，准备接收新数据
                     this.dataCleared = false;
 
-                    // 强制重新获取数据（绕过缓存）
+                    // 3. 更新采集时间记录
                     const currentTime = Date.now();
-                    this.rssCache = null; // 清除缓存
-                    this.rssCacheTime = 0;
-
-                    // 清空本地历史与统计数据
-                    this.historyData = [];
-                    this.saveHistoryData();
-                    this.hotWordsHistory = [];
-                    this.saveHotWordsHistory();
-                    this.timeDistributionHistory = [];
-                    this.saveTimeDistributionHistory();
-                    this.userStatsHistory = [];
-                    this.saveUserStatsHistory();
-
-                    // 更新采集时间记录
                     this.lastCollectTime = currentTime;
-
-                    // 无论自动采集还是手动采集，都重置下次采集时间
-                    this.nextCollectTime = currentTime + this.autoCollectInterval;
-                    this.log(`${isManualTrigger ? '手动' : '自动'}采集：更新下次采集时间为`, new Date(this.nextCollectTime).toLocaleString());
+                    // this.nextCollectTime = ... // 已移除自动采集下次时间
 
                     // 保存全局状态（同步到其他窗口）
                     this.saveGlobalState();
@@ -630,7 +600,7 @@
                         articles: articles, // 直接保存服务器返回的所有文章
                         titles: articles.map(a => a.title), // 向后兼容，保留titles字段
                         count: articles.length,
-                        source: isManualTrigger ? 'manual' : 'auto',
+                        source: 'manual',
                         totalFetched: articles.length, // 记录本次总共抓取的文章数
                         duplicateCount: 0 // 不进行去重处理
                     };
@@ -638,7 +608,7 @@
                     this.historyData.push(historyRecord);
                     this.saveHistoryData();
 
-                    this.log(`${isManualTrigger ? '手动' : '自动'}采集完成：获取服务器7天数据 ${articles.length} 篇文章（不进行去重）`);
+                    this.log(`手动采集完成：获取服务器7天数据 ${articles.length} 篇文章（不进行去重）`);
 
                     // 自动保存每日热词和统计（基于服务器返回的7天数据进行统计）
                     this.saveDailyHotWords();
@@ -649,7 +619,7 @@
                     this.notifyDialogUpdate();
 
                     // 记录到日志（仅在控制台输出，不保存到操作日志）
-                    this.log(`[${new Date(currentTime).toLocaleString()}] 热点统计${isManualTrigger ? '手动' : '自动'}采集：获取${articles.length}篇服务器数据（不去重）`);
+                    this.log(`[${new Date(currentTime).toLocaleString()}] 热点统计手动采集：获取${articles.length}篇服务器数据（不去重）`);
 
                     // 采集成功，退出重试循环
                     return;
@@ -658,7 +628,7 @@
                     // 如果是最后一次尝试，记录到操作日志
                     if (attempt === maxRetries) {
                         if (window.addLog) {
-                            window.addLog(`热点统计${isManualTrigger ? '手动' : '自动'}采集失败，已重试${maxRetries}次: ` + error.message);
+                            window.addLog(`热点统计手动采集失败，已重试${maxRetries}次: ` + error.message);
                         }
                         return;
                     }
@@ -1499,11 +1469,6 @@
                         `;
                         newEmptyDiv.innerHTML = `
                             <div style="font-size: 14px; margin-bottom: 8px;">📊 暂无热点数据</div>
-                            <div style="font-size: 12px; color: #999;">
-                                ${this.getHistoryStats().totalTitles > 0 ?
-                                    '当前7天数据中无出现≥2次的热词' :
-                                    '点击"立即采集"获取服务器RSS数据'}
-                            </div>
                         `;
 
                         // 插入到按钮组前面
@@ -1713,7 +1678,11 @@
             closeBtn.style.fontSize = '20px';
             closeBtn.style.color = '#333';
             closeBtn.className = 'close-btn';
-            closeBtn.onclick = () => dialog.remove();
+            closeBtn.onclick = () => {
+                // 关闭弹窗时自动清理所有数据
+                this.clearAllData(false);
+                dialog.remove();
+            };
 
             header.appendChild(title);
             header.appendChild(closeBtn);
@@ -1744,50 +1713,23 @@
                        String(date.getSeconds()).padStart(2, '0');
             };
 
-            // 计算下次采集倒计时
-            const getCountdown = () => {
-                if (!this.nextCollectTime) return '未知';
-                const now = Date.now();
-                const remaining = Math.max(0, this.nextCollectTime - now);
-                const minutes = Math.floor(remaining / (1000 * 60));
-                const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
-                return `${minutes}分${seconds}秒`;
-            };
-
             const updateStatsContent = () => {
-                const collectStatus = this.isMainWindow ? '⭕ 主窗口采集中' : '⚪ 从窗口同步中';
                 const historyStats = this.getHistoryStats();
 
                 statsDiv.innerHTML = `
                     数据来源：服务器7天RSS数据<br>
                     文章总数：${historyStats.totalTitles} 篇<br>
                     热门词汇：${wordFrequency.length} 个（≥3次）<br>
-                    <span style="color: #28a745;">${collectStatus} (30分钟间隔)</span><br>
                     上次采集：${formatTime(this.lastCollectTime)}<br>
-                    <span id="countdown-display" style="color: #007bff;">下次采集：${getCountdown()}</span>
+                    <span style="color: #28a745;">点击立即采集获取数据，关闭弹窗会自动清理数据。</span>
                 `;
             };
 
             // 初始化显示
             updateStatsContent();
 
-            // 设置实时更新倒计时（每秒更新）
-            const countdownTimer = setInterval(() => {
-                const countdownElement = dialog.querySelector('#countdown-display');
-                if (countdownElement && dialog.parentElement) {
-                    // 从窗口需要更新全局状态
-                    if (!this.isMainWindow) {
-                        this.loadGlobalState(true); // 静默更新
-                    }
-                    countdownElement.innerHTML = `下次采集：${getCountdown()}`;
-
-                    // 实时更新窗口状态显示
-                    updateStatsContent();
-                } else {
-                    // 弹窗已关闭，清除定时器
-                    clearInterval(countdownTimer);
-                }
-            }, 1000);
+            // 移除倒计时定时器
+            // const countdownTimer = ...
 
             dialog.appendChild(statsDiv);
 
@@ -1854,13 +1796,8 @@
                     border-radius: 5px;
                 `;
                 const historyStats = this.getHistoryStats();
-                                    emptyDiv.innerHTML = `
+                    emptyDiv.innerHTML = `
                         <div style="font-size: 14px; margin-bottom: 8px;">📊 暂无热点数据</div>
-                        <div style="font-size: 12px; color: #999;">
-                            ${historyStats.totalTitles === 0 ?
-                                '点击"立即采集"获取服务器RSS数据' :
-                                '当前7天数据中无出现≥3次的热词'}
-                        </div>
                     `;
                 dialog.appendChild(emptyDiv);
             }
@@ -1917,7 +1854,7 @@
                 try {
                     // 重置清理标记，允许重新获取数据
                     this.dataCleared = false;
-                    await this.performAutoCollect(true); // 标记为手动触发
+                    await this.performCollect(); // 执行手动采集
                     // 直接刷新当前弹窗内容，而不是关闭重开
                     await this.refreshHotTopicsDialog();
 
@@ -2013,28 +1950,7 @@
                 font-size: 12px;
             `;
             clearBtn.onclick = () => {
-                if (confirm('确定要清理所有数据吗？\n这将清除：\n- 7天历史采集数据\n- 7天热词历史\n- 7天时间分布统计\n- 7天用户统计数据\n- 当前缓存数据\n此操作不可撤销。')) {
-                    // 清理历史数据
-                    this.historyData = [];
-                    this.saveHistoryData();
-
-                    // 清理热词历史
-                    this.hotWordsHistory = [];
-                    this.saveHotWordsHistory();
-
-                    // 清理时间分布历史
-                    this.timeDistributionHistory = [];
-                    this.saveTimeDistributionHistory();
-
-                    // 清理用户统计历史
-                    this.userStatsHistory = [];
-                    this.saveUserStatsHistory();
-
-                    // 清理当前缓存
-                    this.rssCache = null;
-                    this.rssCacheTime = 0;
-                    this.dataCleared = true; // 设置清理标记
-
+                if (this.clearAllData(true)) {
                     // 清理完毕后立即显示空状态，不重新抓取数据
                     dialog.remove();
 
@@ -2285,42 +2201,19 @@
                      return `${minutes}分${seconds}秒`;
                  };
 
-                 const updateHistoryStats = () => {
-                     const windowStatus = this.isMainWindow ? '主窗口' : '从窗口';
-                     const collectStatus = this.isMainWindow ? '⭕ 主窗口采集中' : '⚪ 从窗口同步中';
-
-                     statsDiv.innerHTML = `
-                         查看模式：${modeLabel}（${periodLabel}）<br>
-                         数据记录：${historyRecords.length > 0 ? '有' : '无'}<br>
-                         热门词汇：${hotWords.length} 个（≥3次）<br>
-                         数据更新：${historyRecords.length > 0 ? (historyRecords[0].dateStr || '未知') : '无数据'}<br>
-                         ${collectStatus}<br>
-                         上次采集：${formatTime(this.lastCollectTime)}<br>
-                         <span id="history-countdown-display" style="color: #007bff;">下次采集：${getCountdown()}</span>
-                     `;
-                 };
+                const updateHistoryStats = () => {
+                    statsDiv.innerHTML = `
+                        查看模式：${modeLabel}（${periodLabel}）<br>
+                        数据记录：${historyRecords.length > 0 ? '有' : '无'}<br>
+                        热门词汇：${hotWords.length} 个（≥3次）<br>
+                    `;
+                };
 
                  // 初始化显示
                  updateHistoryStats();
 
-                 // 设置实时更新倒计时（每秒更新）
-                 const historyCountdownTimer = setInterval(() => {
-                     const countdownElement = dialog.querySelector('#history-countdown-display');
-                     if (countdownElement && dialog.parentElement) {
-                         // 从窗口需要更新全局状态
-                         if (!this.isMainWindow) {
-                             this.loadGlobalState(true); // 静默更新
-                         }
-                         countdownElement.innerHTML = `下次采集：${getCountdown()}`;
-
-                         // 实时更新窗口状态显示
-                         updateHistoryStats();
-                     } else {
-                         // 弹窗已关闭，清除定时器
-                         clearInterval(historyCountdownTimer);
-                     }
-                 }, 1000);
                 contentContainer.appendChild(statsDiv);
+                
 
                 // 热词列表
                 if (hotWords.length > 0) {
