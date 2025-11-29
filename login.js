@@ -1,6 +1,6 @@
 // ========== 账号同步 ==========
 
-(function() {
+(function () {
     'use strict';
 
     // 配置
@@ -17,7 +17,7 @@
     // 工具函数
     const Utils = {
         // 显示消息
-        showMessage: function(message, type = 'info', showToast = true) {
+        showMessage: function (message, type = 'info', showToast = true) {
             // 记录日志（去除模块前缀）
             if (typeof window.addLog === 'function') {
                 window.addLog(message);
@@ -32,7 +32,7 @@
         },
 
         // 显示临时提示框
-        showToast: function(message, type = 'info') {
+        showToast: function (message, type = 'info') {
             // 移除现有的提示框
             const existingToast = document.getElementById('nodeseek-login-toast');
             if (existingToast) {
@@ -110,7 +110,7 @@
         },
 
         // HTTP请求（带重试机制）
-        request: async function(url, options = {}) {
+        request: async function (url, options = {}) {
             // 检测是否为同步操作，使用更长的超时和重试
             const isSyncOperation = url.includes('/api/sync');
 
@@ -226,7 +226,7 @@
         },
 
         // 获取所有配置数据
-        getAllConfig: function(selectedItems) {
+        getAllConfig: function (selectedItems) {
             const config = {};
 
             // 如果没有选择特定项目，默认获取所有配置
@@ -434,6 +434,12 @@
                         filterData.dialogPosition = JSON.parse(dialogPosition);
                     }
 
+                    // 不屏蔽用户
+                    const whitelistUsers = localStorage.getItem('ns-filter-whitelist-users');
+                    if (whitelistUsers) {
+                        filterData.whitelistUsers = JSON.parse(whitelistUsers);
+                    }
+
                     // 只在有数据时才添加到配置中
                     if (Object.keys(filterData).length > 0) {
                         config.filterData = filterData;
@@ -475,24 +481,24 @@
                 const enabledRaw = localStorage.getItem('nodeseek_auto_sync_enabled');
                 const itemsRaw = localStorage.getItem('nodeseek_auto_sync_items');
                 const lastRaw = localStorage.getItem('nodeseek_auto_sync_last_time');
-            const enabled = enabledRaw ? JSON.parse(enabledRaw) : false;
-            const items = itemsRaw ? JSON.parse(itemsRaw) : [];
-            const last = lastRaw ? parseInt(lastRaw) : 0;
-            config.autoSync = {
-                enabled: !!enabled,
-                items: Array.isArray(items) ? items : [],
-                intervalMs: 24 * 60 * 60 * 1000,
-                lastTime: isNaN(last) ? 0 : last
-            };
+                const enabled = enabledRaw ? JSON.parse(enabledRaw) : false;
+                const items = itemsRaw ? JSON.parse(itemsRaw) : [];
+                const last = lastRaw ? parseInt(lastRaw) : 0;
+                config.autoSync = {
+                    enabled: !!enabled,
+                    items: Array.isArray(items) ? items : [],
+                    intervalMs: 24 * 60 * 60 * 1000,
+                    lastTime: isNaN(last) ? 0 : last
+                };
             } catch (e) {
-            config.autoSync = { enabled: false, items: [], intervalMs: 24 * 60 * 60 * 1000, lastTime: 0 };
+                config.autoSync = { enabled: false, items: [], intervalMs: 24 * 60 * 60 * 1000, lastTime: 0 };
             }
             config.timestamp = new Date().toISOString();
             return config;
         },
 
         // 应用配置数据
-        applyConfig: function(config, selectedItems) {
+        applyConfig: function (config, selectedItems) {
             let applied = [];
 
             // 如果没有选择特定项目，默认应用所有配置
@@ -533,8 +539,8 @@
                             localStorage.removeItem('nodeseek_auto_sync_lock_until');
                         }
                         applied.push(`自动同步设置(${enabled ? '开启' : '关闭'})`);
-                        try { Sync.initAutoSync(); } catch (e) {}
-                    } catch (e) {}
+                        try { Sync.initAutoSync(); } catch (e) { }
+                    } catch (e) { }
                 }
 
                 if ((selectedItems.includes('favorites') || selectedItems.includes('favoriteCategories'))) {
@@ -756,10 +762,18 @@
                             localStorage.setItem('ns-filter-dialog-position', JSON.stringify(config.filterData.dialogPosition));
                         }
 
-                        if (filterImportCount > 0 || highlightImportCount > 0) {
+                        // 导入不屏蔽用户
+                        let whitelistUserCount = 0;
+                        if (config.filterData.whitelistUsers && Array.isArray(config.filterData.whitelistUsers)) {
+                            localStorage.setItem('ns-filter-whitelist-users', JSON.stringify(config.filterData.whitelistUsers));
+                            whitelistUserCount = config.filterData.whitelistUsers.length;
+                        }
+
+                        if (filterImportCount > 0 || highlightImportCount > 0 || whitelistUserCount > 0) {
                             const parts = [];
                             if (filterImportCount > 0) parts.push(`${filterImportCount}个屏蔽词`);
                             if (highlightImportCount > 0) parts.push(`${highlightImportCount}个高亮词`);
+                            if (whitelistUserCount > 0) parts.push(`${whitelistUserCount}个不屏蔽用户`);
                             applied.push(`关键词过滤(${parts.join('、')})`);
                         } else {
                             applied.push("关键词过滤");
@@ -817,7 +831,7 @@
     // 认证管理
     const Auth = {
         // 初始化
-        init: function() {
+        init: function () {
             // 从localStorage加载token和用户信息
             authToken = localStorage.getItem(CONFIG.STORAGE_KEY);
             const userStr = localStorage.getItem(CONFIG.USER_KEY);
@@ -831,7 +845,7 @@
         },
 
         // 保存认证信息
-        saveAuth: function(token, user) {
+        saveAuth: function (token, user) {
             authToken = token;
             currentUser = user;
             localStorage.setItem(CONFIG.STORAGE_KEY, token);
@@ -839,7 +853,7 @@
         },
 
         // 清除认证信息
-        clearAuth: function() {
+        clearAuth: function () {
             authToken = null;
             currentUser = null;
             localStorage.removeItem(CONFIG.STORAGE_KEY);
@@ -847,17 +861,17 @@
         },
 
         // 检查是否已登录
-        isLoggedIn: function() {
+        isLoggedIn: function () {
             return !!(authToken && currentUser);
         },
 
         // 获取当前用户
-        getCurrentUser: function() {
+        getCurrentUser: function () {
             return currentUser;
         },
 
         // 注册
-        register: async function(username, password, securityCode) {
+        register: async function (username, password, securityCode) {
             try {
                 const data = await Utils.request(`${CONFIG.SERVER_URL}/api/register`, {
                     method: 'POST',
@@ -874,7 +888,7 @@
         },
 
         // 找回密码
-        resetPassword: async function(username, securityCode, newPassword) {
+        resetPassword: async function (username, securityCode, newPassword) {
             try {
                 const data = await Utils.request(`${CONFIG.SERVER_URL}/api/reset-password`, {
                     method: 'POST',
@@ -890,7 +904,7 @@
         },
 
         // 修改密码
-        changePassword: async function(currentPassword, newPassword) {
+        changePassword: async function (currentPassword, newPassword) {
             try {
                 const data = await Utils.request(`${CONFIG.SERVER_URL}/api/change-password`, {
                     method: 'POST',
@@ -906,7 +920,7 @@
         },
 
         // 登录
-        login: async function(username, password) {
+        login: async function (username, password) {
             try {
                 const data = await Utils.request(`${CONFIG.SERVER_URL}/api/login`, {
                     method: 'POST',
@@ -926,7 +940,7 @@
         },
 
         // 退出登录
-        logout: async function() {
+        logout: async function () {
             try {
                 if (authToken) {
                     await Utils.request(`${CONFIG.SERVER_URL}/api/logout`, {
@@ -942,7 +956,7 @@
         },
 
         // 验证token（增强错误处理）
-        validateToken: async function() {
+        validateToken: async function () {
             if (!authToken) return false;
 
             try {
@@ -976,7 +990,7 @@
         _autoSyncTimerId: null,
         // 显示配置选择对话框
         // onCancel: 可选，当用户关闭/取消对话框且未执行同步时触发
-        showConfigSelectionDialog: function(mode, callback, onCancel) {
+        showConfigSelectionDialog: function (mode, callback, onCancel) {
             // 移除已存在的对话框
             const existingDialog = document.getElementById('config-selection-dialog');
             if (existingDialog) {
@@ -1181,14 +1195,14 @@
                             const nowTs = Date.now().toString();
                             localStorage.setItem('nodeseek_auto_sync_last_time', nowTs);
                             localStorage.setItem('nodeseek_auto_sync_last_attempt_time', nowTs);
-                            try { Sync.initAutoSync(); } catch (e) {}
+                            try { Sync.initAutoSync(); } catch (e) { }
                             Utils.showMessage('自动同步已开启', 'info', false);
                         } else {
                             localStorage.removeItem('nodeseek_auto_sync_items');
                             localStorage.removeItem('nodeseek_auto_sync_lock_until');
                             Utils.showMessage('自动同步已关闭', 'info', false);
                         }
-                    } catch (e) {}
+                    } catch (e) { }
                 });
 
             }
@@ -1296,16 +1310,16 @@
                     if (autoSyncCheckbox && autoSyncCheckbox.checked) {
                         localStorage.setItem('nodeseek_auto_sync_items', JSON.stringify(getSelectedItems()));
                     }
-                } catch (e) {}
+                } catch (e) { }
             };
 
-            selectAllCheckbox.onchange = function() {
+            selectAllCheckbox.onchange = function () {
                 checkboxes.forEach(cb => cb.checked = this.checked);
                 persistAutoSyncItems();
             };
 
             checkboxes.forEach(cb => {
-                cb.onchange = function() {
+                cb.onchange = function () {
                     const allChecked = checkboxes.every(c => c.checked);
                     const anyChecked = checkboxes.some(c => c.checked);
                     selectAllCheckbox.checked = allChecked;
@@ -1466,7 +1480,7 @@
                     }
                     progressFill.style.width = '70%';
                     // 通知开始（只在用户真正点击确认后触发）
-                    try { window.dispatchEvent(new CustomEvent('ns-sync-start', { detail: { mode } })); } catch (e) {}
+                    try { window.dispatchEvent(new CustomEvent('ns-sync-start', { detail: { mode } })); } catch (e) { }
 
                     // 执行同步操作
                     opSuccess = await callback(selectedItems);
@@ -1502,7 +1516,7 @@
                                 localStorage.removeItem('nodeseek_auto_sync_items');
                             }
                         }
-                    } catch (e) {}
+                    } catch (e) { }
                     // 隐藏进度条
                     progressContainer.style.display = 'none';
                     progressFill.style.width = '0%';
@@ -1515,7 +1529,7 @@
                     confirmBtn.textContent = originalText;
                     confirmBtn.style.background = '#1890ff';
                     // 通知结束
-                    try { window.dispatchEvent(new CustomEvent('ns-sync-end', { detail: { mode, success: !!opSuccess } })); } catch (e) {}
+                    try { window.dispatchEvent(new CustomEvent('ns-sync-end', { detail: { mode, success: !!opSuccess } })); } catch (e) { }
                     dialog.remove();
                 }
             };
@@ -1554,35 +1568,35 @@
                     const sec = s % 60;
                     return `${pad(h)}:${pad(m)}:${pad(sec)}`;
                 };
-            const updateCountdown = () => {
-                const enabled = !!document.getElementById('auto-sync-config')?.checked;
-                const el = autoSyncContainer && autoSyncContainer.querySelector('span');
-                if (!el) return;
-                if (!enabled) { el.textContent = '已关闭'; return; }
-                const last = parseInt(localStorage.getItem('nodeseek_auto_sync_last_time') || '0');
-                const now = Date.now();
-                const intervalMs = 24 * 60 * 60 * 1000;
-                const lockUntil = parseInt(localStorage.getItem('nodeseek_auto_sync_lock_until') || '0');
-                if (!last && (!lockUntil || lockUntil <= now)) { el.textContent = '未开始'; return; }
-                const elapsed = last ? Math.max(0, now - last) : 0;
-                const remainClient = last ? ((intervalMs - (elapsed % intervalMs)) % intervalMs) : 0;
-                const remainServer = (lockUntil && lockUntil > now) ? (lockUntil - now) : 0;
-                const remain = Math.max(remainClient, remainServer);
-                el.textContent = `下次剩余 ${fmt(remain)}`;
-            };
+                const updateCountdown = () => {
+                    const enabled = !!document.getElementById('auto-sync-config')?.checked;
+                    const el = autoSyncContainer && autoSyncContainer.querySelector('span');
+                    if (!el) return;
+                    if (!enabled) { el.textContent = '已关闭'; return; }
+                    const last = parseInt(localStorage.getItem('nodeseek_auto_sync_last_time') || '0');
+                    const now = Date.now();
+                    const intervalMs = 24 * 60 * 60 * 1000;
+                    const lockUntil = parseInt(localStorage.getItem('nodeseek_auto_sync_lock_until') || '0');
+                    if (!last && (!lockUntil || lockUntil <= now)) { el.textContent = '未开始'; return; }
+                    const elapsed = last ? Math.max(0, now - last) : 0;
+                    const remainClient = last ? ((intervalMs - (elapsed % intervalMs)) % intervalMs) : 0;
+                    const remainServer = (lockUntil && lockUntil > now) ? (lockUntil - now) : 0;
+                    const remain = Math.max(remainClient, remainServer);
+                    el.textContent = `下次剩余 ${fmt(remain)}`;
+                };
                 const countdownTimer = setInterval(updateCountdown, 1000);
                 updateCountdown();
 
                 const originalCancel = cancelBtn.onclick;
-                cancelBtn.onclick = () => { try { clearInterval(countdownTimer); } catch (e) {} originalCancel(); };
+                cancelBtn.onclick = () => { try { clearInterval(countdownTimer); } catch (e) { } originalCancel(); };
                 const originalClose = closeBtn.onclick;
-                closeBtn.onclick = () => { try { clearInterval(countdownTimer); } catch (e) {} originalClose(); };
-                try { window.addEventListener('ns-sync-end', () => { try { clearInterval(countdownTimer); } catch (e) {} }, { once: true }); } catch (e) {}
+                closeBtn.onclick = () => { try { clearInterval(countdownTimer); } catch (e) { } originalClose(); };
+                try { window.addEventListener('ns-sync-end', () => { try { clearInterval(countdownTimer); } catch (e) { } }, { once: true }); } catch (e) { }
             }
         },
 
         // 上传配置到服务器
-        upload: async function() {
+        upload: async function () {
             if (!Auth.isLoggedIn()) {
                 Utils.showMessage('请先登录', 'error');
                 return false;
@@ -1661,7 +1675,7 @@
             });
         },
 
-        uploadSelected: async function(selectedItems) {
+        uploadSelected: async function (selectedItems) {
             if (!Auth.isLoggedIn()) return false;
             try {
                 const config = Utils.getAllConfig(selectedItems);
@@ -1707,7 +1721,7 @@
             }
         },
 
-        initAutoSync: function() {
+        initAutoSync: function () {
             try {
                 if (this._autoSyncTimerId) return;
                 this._autoSyncInFlight = false;
@@ -1725,7 +1739,7 @@
                             }
                         };
                     }
-                } catch (e) {}
+                } catch (e) { }
                 const tick = () => {
                     try {
                         const enabled = JSON.parse(localStorage.getItem('nodeseek_auto_sync_enabled') || 'false');
@@ -1745,23 +1759,23 @@
                         if (lastAttempt && now - lastAttempt < startAfterMs) return;
                         const shortLockMs = 60000;
                         const shortLockUntil = now + shortLockMs;
-                        try { localStorage.setItem('nodeseek_auto_sync_lock_until', shortLockUntil.toString()); } catch (e) {}
-                        try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'start', lockUntil: shortLockUntil }); } catch (e) {}
+                        try { localStorage.setItem('nodeseek_auto_sync_lock_until', shortLockUntil.toString()); } catch (e) { }
+                        try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'start', lockUntil: shortLockUntil }); } catch (e) { }
                         this._autoSyncInFlight = true;
-                        try { localStorage.setItem('nodeseek_auto_sync_last_attempt_time', now.toString()); } catch (e) {}
+                        try { localStorage.setItem('nodeseek_auto_sync_last_attempt_time', now.toString()); } catch (e) { }
                         this.uploadSelected(items).finally(() => {
                             this._autoSyncInFlight = false;
-                            try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'end' }); } catch (e) {}
+                            try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'end' }); } catch (e) { }
                         });
-                    } catch (e) {}
+                    } catch (e) { }
                 };
                 this._autoSyncTimerId = setInterval(tick, 1000);
                 tick();
-            } catch (e) {}
+            } catch (e) { }
         },
 
         // 删除同步数据
-        deleteServerConfig: async function() {
+        deleteServerConfig: async function () {
             if (!Auth.isLoggedIn()) {
                 Utils.showMessage('请先登录', 'error');
                 return false;
@@ -1797,7 +1811,7 @@
         },
 
         // 显示删除同步数据确认对话框
-        showDeleteConfigDialog: function() {
+        showDeleteConfigDialog: function () {
             // 移除已存在的对话框
             const existingDialog = document.getElementById('delete-config-dialog');
             if (existingDialog) {
@@ -1998,7 +2012,7 @@
             `;
 
             // 输入验证
-            confirmInput.addEventListener('input', function() {
+            confirmInput.addEventListener('input', function () {
                 const isValid = this.value.trim() === 'DELETE';
                 confirmBtn.disabled = !isValid;
                 if (isValid) {
@@ -2094,7 +2108,7 @@
         },
 
         // 从服务器下载配置
-        download: async function() {
+        download: async function () {
             if (!Auth.isLoggedIn()) {
                 Utils.showMessage('请先登录', 'error');
                 return false;
@@ -2162,7 +2176,7 @@
     // UI管理
     const UI = {
         // 创建登录/注册对话框
-        showAuthDialog: function() {
+        showAuthDialog: function () {
             // 检查是否已存在对话框
             const existingDialog = document.getElementById('login-auth-dialog');
             if (existingDialog) {
@@ -2253,7 +2267,7 @@
         },
 
         // 优化输入框样式（移动端适配）
-        optimizeInputForMobile: function(input, isMobile) {
+        optimizeInputForMobile: function (input, isMobile) {
             const styles = `
                 width: 100%;
                 padding: ${isMobile ? '12px 8px' : '8px'};
@@ -2276,7 +2290,7 @@
         },
 
         // 优化按钮样式（移动端适配）
-        optimizeButtonForMobile: function(button, isMobile) {
+        optimizeButtonForMobile: function (button, isMobile) {
             const currentStyles = button.style.cssText;
             button.style.cssText = currentStyles + `
                 min-height: ${isMobile ? '44px' : '32px'};
@@ -2286,7 +2300,7 @@
         },
 
         // 创建带显示/隐藏功能的密码输入框
-        createPasswordInputWithToggle: function(input, isMobile) {
+        createPasswordInputWithToggle: function (input, isMobile) {
             // 创建容器
             const container = document.createElement('div');
             container.style.cssText = `
@@ -2354,7 +2368,7 @@
         },
 
         // 创建认证面板
-        createAuthPanel: function(container) {
+        createAuthPanel: function (container) {
             const form = document.createElement('div');
             const isMobile = window.innerWidth <= 768;
 
@@ -2674,7 +2688,7 @@
         },
 
         // 创建找回密码对话框
-        createForgotPasswordDialog: function() {
+        createForgotPasswordDialog: function () {
             // 移除可能存在的对话框
             const existingDialog = document.getElementById('nodeseek-forgot-password-dialog');
             if (existingDialog) {
@@ -2895,7 +2909,7 @@
         },
 
         // 创建用户面板
-        createUserPanel: function(container) {
+        createUserPanel: function (container) {
             const user = Auth.getCurrentUser();
             const isMobile = window.innerWidth <= 768;
 
@@ -3110,7 +3124,7 @@
         },
 
         // 创建修改密码对话框
-        createChangePasswordDialog: function() {
+        createChangePasswordDialog: function () {
             // 移除可能存在的对话框
             const existingDialog = document.getElementById('nodeseek-change-password-dialog');
             if (existingDialog) {
@@ -3338,12 +3352,12 @@
         },
 
         // 获取当前token
-        getToken: function() {
+        getToken: function () {
             return authToken;
         },
 
         // 加载存储空间信息
-        loadStorageInfo: async function(storageElement) {
+        loadStorageInfo: async function (storageElement) {
             try {
                 const data = await Utils.request(`${CONFIG.SERVER_URL}/api/user`, {
                     method: 'GET'
@@ -3352,7 +3366,7 @@
                 if (data.success && data.user && data.user.storage) {
                     const storage = data.user.storage;
                     const usageColor = storage.usage_percent >= 90 ? '#ff4d4f' :
-                                     storage.usage_percent >= 70 ? '#faad14' : '#52c41a';
+                        storage.usage_percent >= 70 ? '#faad14' : '#52c41a';
 
                     storageElement.innerHTML = `
                         <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
@@ -3384,12 +3398,12 @@
         },
 
         // 使对话框可拖动（支持PC和移动端）
-        makeDraggable: function(element) {
+        makeDraggable: function (element) {
             let isDragging = false;
             let startX, startY, startLeft, startTop;
 
             // 通用的开始拖拽函数
-            const startDrag = function(clientX, clientY, target) {
+            const startDrag = function (clientX, clientY, target) {
                 // 只有点击标题区域才能拖动
                 if (target.className === 'dialog-title-draggable' ||
                     target.closest('.dialog-title-draggable')) {
@@ -3404,7 +3418,7 @@
             };
 
             // 通用的拖拽移动函数
-            const handleDrag = function(clientX, clientY) {
+            const handleDrag = function (clientX, clientY) {
                 if (isDragging) {
                     const deltaX = clientX - startX;
                     const deltaY = clientY - startY;
@@ -3414,29 +3428,29 @@
             };
 
             // 通用的结束拖拽函数
-            const endDrag = function() {
+            const endDrag = function () {
                 if (isDragging) {
                     isDragging = false;
                 }
             };
 
             // PC端鼠标事件
-            element.addEventListener('mousedown', function(e) {
+            element.addEventListener('mousedown', function (e) {
                 if (startDrag(e.clientX, e.clientY, e.target)) {
                     e.preventDefault();
                 }
             });
 
-            document.addEventListener('mousemove', function(e) {
+            document.addEventListener('mousemove', function (e) {
                 handleDrag(e.clientX, e.clientY);
             });
 
-            document.addEventListener('mouseup', function() {
+            document.addEventListener('mouseup', function () {
                 endDrag();
             });
 
             // 移动端触摸事件
-            element.addEventListener('touchstart', function(e) {
+            element.addEventListener('touchstart', function (e) {
                 if (e.touches.length === 1) {
                     const touch = e.touches[0];
                     if (startDrag(touch.clientX, touch.clientY, e.target)) {
@@ -3445,7 +3459,7 @@
                 }
             }, { passive: false });
 
-            document.addEventListener('touchmove', function(e) {
+            document.addEventListener('touchmove', function (e) {
                 if (e.touches.length === 1) {
                     const touch = e.touches[0];
                     handleDrag(touch.clientX, touch.clientY);
@@ -3455,11 +3469,11 @@
                 }
             }, { passive: false });
 
-            document.addEventListener('touchend', function() {
+            document.addEventListener('touchend', function () {
                 endDrag();
             });
 
-            document.addEventListener('touchcancel', function() {
+            document.addEventListener('touchcancel', function () {
                 endDrag();
             });
         }
@@ -3467,7 +3481,7 @@
 
     // 主对象
     const NodeSeekLogin = {
-        init: function() {
+        init: function () {
             Auth.init();
 
             // 验证token有效性
@@ -3478,34 +3492,34 @@
         },
 
         // 显示登录对话框
-        showDialog: function() {
+        showDialog: function () {
             UI.showAuthDialog();
         },
 
         // 获取当前用户
-        getCurrentUser: function() {
+        getCurrentUser: function () {
             return Auth.getCurrentUser();
         },
 
         // 检查是否已登录
-        isLoggedIn: function() {
+        isLoggedIn: function () {
             return Auth.isLoggedIn();
         },
 
         // 同步配置到服务器
-        syncToServer: async function() {
+        syncToServer: async function () {
             return await Sync.upload();
         },
 
         // 从服务器同步配置
-        syncFromServer: async function() {
+        syncFromServer: async function () {
             return await Sync.download();
         },
 
         // 新增：直接显示配置选择对话框（用于预览/调试）
-        showSelectionDialog: function(mode = 'upload') {
+        showSelectionDialog: function (mode = 'upload') {
             try {
-                Sync.showConfigSelectionDialog(mode, () => {});
+                Sync.showConfigSelectionDialog(mode, () => { });
             } catch (e) {
                 console.error('显示选择对话框失败:', e);
             }
