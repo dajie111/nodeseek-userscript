@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NodeSeek 综合插件
 // @namespace    http://tampermonkey.net/
-// @version      2025.11.29
+// @version      2025.11.14
 // @description  NodeSeek 论坛黑名单，拉黑后红色高亮并可备注，增加域名检测控制按钮显隐，支持折叠功能，显示用户详细信息，快捷回复功能
 // @author       YourName
 // @match        https://www.nodeseek.com/*
@@ -22,7 +22,7 @@
 
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
     // 黑名单数据结构：{ username: {remark: 'xxx'} }
@@ -1034,7 +1034,7 @@
     function processUsernames() {
         const SCRIPT_BUTTON_MARKER_CLASS = 'userscript-nodeseek-interaction-btn'; // 新增标记类
 
-        document.querySelectorAll('a.author-name').forEach(function(a) {
+        document.querySelectorAll('a.author-name').forEach(function (a) {
             const username = a.textContent.trim();
             const parent = a.parentNode;
 
@@ -1049,7 +1049,7 @@
             // 为按钮添加标记类
             btn.className = 'blacklist-btn ' + SCRIPT_BUTTON_MARKER_CLASS + (isBlacklisted(username) ? ' red' : '');
             btn.textContent = isBlacklisted(username) ? '移除黑名单' : '拉黑';
-            btn.onclick = function(e) {
+            btn.onclick = function (e) {
                 e.stopPropagation();
                 if (isBlacklisted(username)) {
                     if (confirm('确定要移除黑名单？')) {
@@ -1060,7 +1060,7 @@
                         btn.className = 'blacklist-btn ' + SCRIPT_BUTTON_MARKER_CLASS;
 
                         // 更新当前页面上该用户的所有显示
-                        document.querySelectorAll('a.author-name').forEach(function(link) {
+                        document.querySelectorAll('a.author-name').forEach(function (link) {
                             if (link.textContent.trim() === username) {
                                 // 移除黑名单样式
                                 link.classList.remove('blacklisted-user');
@@ -1084,14 +1084,14 @@
                             // 查找该用户在弹窗中对应的行
                             const tbody = blacklistDialog.querySelector('tbody');
                             if (tbody) {
-                                Array.from(tbody.children).forEach(function(row) {
+                                Array.from(tbody.children).forEach(function (row) {
                                     const userNameCell = row.querySelector('td:first-child a');
                                     if (userNameCell && userNameCell.textContent.trim() === username) {
                                         // 添加淡出动画
                                         row.style.opacity = '0.5';
                                         row.style.transition = 'opacity 0.2s';
 
-                                        setTimeout(function() {
+                                        setTimeout(function () {
                                             row.remove();
 
                                             // 检查是否还有其他用户，如果没有则显示空提示
@@ -1144,7 +1144,7 @@
             friendBtn.style.background = isFriend(username) ? '#aaa' : '#2ea44f';
             friendBtn.style.marginLeft = '4px';
             friendBtn.textContent = isFriend(username) ? '删除好友' : '添加好友';
-            friendBtn.onclick = function(e) {
+            friendBtn.onclick = function (e) {
                 e.stopPropagation();
                 if (!isFriend(username)) {
                     if (isBlacklisted(username)) {
@@ -1159,14 +1159,14 @@
                             // 查找该用户在弹窗中对应的行
                             const tbody = blacklistDialog.querySelector('tbody');
                             if (tbody) {
-                                Array.from(tbody.children).forEach(function(row) {
+                                Array.from(tbody.children).forEach(function (row) {
                                     const userNameCell = row.querySelector('td:first-child a');
                                     if (userNameCell && userNameCell.textContent.trim() === username) {
                                         // 添加淡出动画
                                         row.style.opacity = '0.5';
                                         row.style.transition = 'opacity 0.2s';
 
-                                        setTimeout(function() {
+                                        setTimeout(function () {
                                             row.remove();
 
                                             // 检查是否还有其他用户，如果没有则显示空提示
@@ -1208,7 +1208,7 @@
                         friendBtn.style.background = '#2ea44f';
 
                         // 更新当前页面上该用户的所有显示
-                        document.querySelectorAll('a.author-name').forEach(function(link) {
+                        document.querySelectorAll('a.author-name').forEach(function (link) {
                             if (link.textContent.trim() === username) {
                                 // 移除好友样式
                                 link.classList.remove('friend-user');
@@ -1248,7 +1248,7 @@
     function highlightBlacklisted() {
         const list = getBlacklist();
 
-        document.querySelectorAll('a.author-name').forEach(function(a) {
+        document.querySelectorAll('a.author-name').forEach(function (a) {
             const username = a.textContent.trim();
             // 先移除样式
             a.classList.remove('blacklisted-user');
@@ -1382,7 +1382,7 @@
             // 创建包装器
             const wrapper = document.createElement('div');
             wrapper.className = 'code-block-wrapper';
-            
+
             // 将pre元素包装在wrapper中
             preElement.parentNode.insertBefore(wrapper, preElement);
             wrapper.appendChild(preElement);
@@ -1417,7 +1417,7 @@
     function replaceRelativeTimeWithAbsolute() {
         const processedAttr = 'data-ns-time-replaced';
         const elements = document.querySelectorAll('[title]:not([' + processedAttr + '])');
-        elements.forEach(function(element) {
+        elements.forEach(function (element) {
             try {
                 const titleText = element.getAttribute('title') || '';
                 if (!titleText) return;
@@ -1474,7 +1474,7 @@
         const favoriteCategories = getFavoriteCategories();
         const logs = getLogs();
         const browseHistory = getBrowseHistory();
-        
+
         // 常用表情（emojis.js 本地收藏）
         let emojiFavorites = [];
         try {
@@ -1486,9 +1486,9 @@
         } catch (error) {
             console.error('导出常用表情数据失败:', error);
         }
-        
+
         // 不再导出热点统计相关数据
-        
+
         // 添加快捷回复数据
         let quickReplies = {};
         try {
@@ -1541,7 +1541,7 @@
         } catch (error) {
             console.error('导出自动同步设置失败:', error);
         }
-        
+
         // 添加鸡腿统计数据
         let chickenLegStats = {};
         try {
@@ -1553,7 +1553,7 @@
                 const nextAllow = localStorage.getItem('nodeseek_chicken_leg_next_allow');
                 const lastHtml = localStorage.getItem('nodeseek_chicken_leg_last_html');
                 const history = localStorage.getItem('nodeseek_chicken_leg_history');
-                
+
                 if (lastFetch || nextAllow || lastHtml || history) {
                     chickenLegStats = {
                         lastFetch: lastFetch,
@@ -1566,7 +1566,7 @@
         } catch (error) {
             console.error('导出鸡腿统计数据失败:', error);
         }
-        
+
         // 添加关键词过滤数据
         let filterData = {};
         try {
@@ -1577,22 +1577,24 @@
                 const highlightAuthorEnabled = localStorage.getItem('ns-filter-highlight-author-enabled');
                 const highlightColor = localStorage.getItem('ns-filter-highlight-color');
                 const dialogPosition = localStorage.getItem('ns-filter-dialog-position');
-                
-                if (customKeywords || displayKeywords || highlightKeywords || highlightAuthorEnabled || highlightColor || dialogPosition) {
+                const whitelistUsers = localStorage.getItem('ns-filter-whitelist-users');
+
+                if (customKeywords || displayKeywords || highlightKeywords || highlightAuthorEnabled || highlightColor || dialogPosition || whitelistUsers) {
                     filterData = {
                         customKeywords: customKeywords ? JSON.parse(customKeywords) : [],
                         displayKeywords: displayKeywords ? JSON.parse(displayKeywords) : [],
                         highlightKeywords: highlightKeywords ? JSON.parse(highlightKeywords) : [],
                         highlightAuthorEnabled: highlightAuthorEnabled ? JSON.parse(highlightAuthorEnabled) : false,
                         highlightColor: highlightColor || '#ffeb3b',
-                        dialogPosition: dialogPosition ? JSON.parse(dialogPosition) : null
+                        dialogPosition: dialogPosition ? JSON.parse(dialogPosition) : null,
+                        whitelistUsers: whitelistUsers ? JSON.parse(whitelistUsers) : []
                     };
                 }
             }
         } catch (error) {
             console.error('导出关键词过滤数据失败:', error);
         }
-        
+
         // 添加笔记数据
         let notesData = {};
         try {
@@ -1602,7 +1604,7 @@
         } catch (error) {
             console.error('导出笔记数据失败:', error);
         }
-        
+
         const data = JSON.stringify({
             blacklist: blacklist,
             friends: friends,
@@ -1619,7 +1621,7 @@
             notesData: notesData, // 添加笔记数据
             autoSync: autoSync
         }, null, 2);
-        const blob = new Blob([data], {type: 'application/json'});
+        const blob = new Blob([data], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -1661,11 +1663,11 @@
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'application/json';
-        input.onchange = function(e) {
+        input.onchange = function (e) {
             const file = e.target.files[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = function(evt) {
+            reader.onload = function (evt) {
                 try {
                     const json = JSON.parse(evt.target.result);
                     // 记录导入前信息
@@ -1726,37 +1728,37 @@
                         try {
                             const hotData = json.hotTopicsData;
                             let hotImportCount = 0;
-                            
+
                             // 导入RSS历史数据
                             if (hotData.rssHistory && Array.isArray(hotData.rssHistory)) {
                                 localStorage.setItem('nodeseek_rss_history', JSON.stringify(hotData.rssHistory));
                                 hotImportCount++;
                             }
-                            
+
                             // 导入热词历史数据
                             if (hotData.hotWordsHistory && Array.isArray(hotData.hotWordsHistory)) {
                                 localStorage.setItem('nodeseek_hot_words_history', JSON.stringify(hotData.hotWordsHistory));
                                 hotImportCount++;
                             }
-                            
+
                             // 导入时间分布数据
                             if (hotData.timeDistributionHistory && Array.isArray(hotData.timeDistributionHistory)) {
                                 localStorage.setItem('nodeseek_time_distribution_history', JSON.stringify(hotData.timeDistributionHistory));
                                 hotImportCount++;
                             }
-                            
+
                             // 导入用户统计数据
                             if (hotData.userStatsHistory && Array.isArray(hotData.userStatsHistory)) {
                                 localStorage.setItem('nodeseek_user_stats_history', JSON.stringify(hotData.userStatsHistory));
                                 hotImportCount++;
                             }
-                            
+
                             // 导入全局状态数据
                             if (hotData.globalState && typeof hotData.globalState === 'object') {
                                 localStorage.setItem('nodeseek_focus_global_state', JSON.stringify(hotData.globalState));
                                 hotImportCount++;
                             }
-                            
+
                             if (hotImportCount > 0) {
                                 importInfo.push(`热点统计(${hotImportCount}项)`);
                             }
@@ -1838,22 +1840,22 @@
                             } else {
                                 // 如果模块未加载，直接保存到localStorage的相应键中
                                 let importedCount = 0;
-                                
+
                                 if (json.chickenLegStats.lastFetch) {
                                     localStorage.setItem('nodeseek_chicken_leg_last_fetch', json.chickenLegStats.lastFetch);
                                     importedCount++;
                                 }
-                                
+
                                 if (json.chickenLegStats.nextAllow) {
                                     localStorage.setItem('nodeseek_chicken_leg_next_allow', json.chickenLegStats.nextAllow);
                                     importedCount++;
                                 }
-                                
+
                                 if (json.chickenLegStats.lastHtml) {
                                     localStorage.setItem('nodeseek_chicken_leg_last_html', json.chickenLegStats.lastHtml);
                                     importedCount++;
                                 }
-                                
+
                                 if (json.chickenLegStats.history && Array.isArray(json.chickenLegStats.history)) {
                                     localStorage.setItem('nodeseek_chicken_leg_history', JSON.stringify(json.chickenLegStats.history));
                                     importedCount++;
@@ -1873,44 +1875,50 @@
                     if (json.filterData && typeof json.filterData === 'object') {
                         try {
                             let filterImportCount = 0;
-                            
+
                             // 导入屏蔽关键词
                             if (json.filterData.customKeywords && Array.isArray(json.filterData.customKeywords)) {
                                 localStorage.setItem('ns-filter-custom-keywords', JSON.stringify(json.filterData.customKeywords));
                                 filterImportCount += json.filterData.customKeywords.length;
                             }
-                            
+
                             // 导入显示关键词
                             if (json.filterData.displayKeywords && Array.isArray(json.filterData.displayKeywords)) {
                                 localStorage.setItem('ns-filter-keywords', JSON.stringify(json.filterData.displayKeywords));
                             }
-                            
+
                             // 导入高亮关键词
                             if (json.filterData.highlightKeywords && Array.isArray(json.filterData.highlightKeywords)) {
                                 localStorage.setItem('ns-filter-highlight-keywords', JSON.stringify(json.filterData.highlightKeywords));
                             }
-                            
+
                             // 导入作者高亮选项
                             if (json.filterData.highlightAuthorEnabled !== undefined) {
                                 localStorage.setItem('ns-filter-highlight-author-enabled', JSON.stringify(json.filterData.highlightAuthorEnabled));
                             }
-                            
+
                             // 导入高亮颜色
                             if (json.filterData.highlightColor) {
                                 localStorage.setItem('ns-filter-highlight-color', json.filterData.highlightColor);
                             }
-                            
+
                             // 导入弹窗位置
                             if (json.filterData.dialogPosition && typeof json.filterData.dialogPosition === 'object') {
                                 localStorage.setItem('ns-filter-dialog-position', JSON.stringify(json.filterData.dialogPosition));
                             }
-                            
-                            if (filterImportCount > 0 || (json.filterData.displayKeywords && json.filterData.displayKeywords.length > 0) || (json.filterData.highlightKeywords && json.filterData.highlightKeywords.length > 0) || json.filterData.highlightAuthorEnabled !== undefined) {
+
+                            // 导入不屏蔽用户
+                            if (json.filterData.whitelistUsers && Array.isArray(json.filterData.whitelistUsers)) {
+                                localStorage.setItem('ns-filter-whitelist-users', JSON.stringify(json.filterData.whitelistUsers));
+                            }
+
+                            if (filterImportCount > 0 || (json.filterData.displayKeywords && json.filterData.displayKeywords.length > 0) || (json.filterData.highlightKeywords && json.filterData.highlightKeywords.length > 0) || json.filterData.highlightAuthorEnabled !== undefined || (json.filterData.whitelistUsers && json.filterData.whitelistUsers.length > 0)) {
                                 const customCount = json.filterData.customKeywords ? json.filterData.customKeywords.length : 0;
                                 const displayCount = json.filterData.displayKeywords ? json.filterData.displayKeywords.length : 0;
                                 const highlightCount = json.filterData.highlightKeywords ? json.filterData.highlightKeywords.length : 0;
+                                const whitelistCount = json.filterData.whitelistUsers ? json.filterData.whitelistUsers.length : 0;
                                 const authorHighlightEnabled = json.filterData.highlightAuthorEnabled ? '开启' : '关闭';
-                                importInfo.push(`关键词过滤(屏蔽${customCount}个,显示${displayCount}个,高亮${highlightCount}个,作者高亮${authorHighlightEnabled})`);
+                                importInfo.push(`关键词过滤(屏蔽${customCount}个,显示${displayCount}个,高亮${highlightCount}个,不屏蔽用户${whitelistCount}个,作者高亮${authorHighlightEnabled})`);
                             } else {
                                 importInfo.push("关键词过滤");
                             }
@@ -2123,7 +2131,7 @@
         closeBtn.style.top = '8px';
         closeBtn.style.cursor = 'pointer';
         closeBtn.style.fontSize = '20px';
-        closeBtn.onclick = function() { dialog.remove(); };
+        closeBtn.onclick = function () { dialog.remove(); };
         // 添加类名便于CSS选择器选中
         closeBtn.className = 'close-btn';
 
@@ -2131,25 +2139,25 @@
         header.appendChild(closeBtn);
         dialog.appendChild(header);
 
-            // 清空按钮
-    const clearBtn = document.createElement('button');
-    clearBtn.textContent = '清空日志';
-    clearBtn.style.marginBottom = '10px';
-    clearBtn.style.padding = '3px 8px';
-    clearBtn.style.background = '#f44336';
-    clearBtn.style.color = 'white';
-    clearBtn.style.border = 'none';
-    clearBtn.style.borderRadius = '3px';
-    clearBtn.style.cursor = 'pointer';
-    clearBtn.onclick = function() {
-        if (confirm('确定要清空所有日志吗？')) {
-            clearLogs();
-            // 不再提示任何文本，直接清空显示内容
-            // 清空后展示空状态占位文案
-            logContent.textContent = '暂无日志记录';
-        }
-    };
-    dialog.appendChild(clearBtn);
+        // 清空按钮
+        const clearBtn = document.createElement('button');
+        clearBtn.textContent = '清空日志';
+        clearBtn.style.marginBottom = '10px';
+        clearBtn.style.padding = '3px 8px';
+        clearBtn.style.background = '#f44336';
+        clearBtn.style.color = 'white';
+        clearBtn.style.border = 'none';
+        clearBtn.style.borderRadius = '3px';
+        clearBtn.style.cursor = 'pointer';
+        clearBtn.onclick = function () {
+            if (confirm('确定要清空所有日志吗？')) {
+                clearLogs();
+                // 不再提示任何文本，直接清空显示内容
+                // 清空后展示空状态占位文案
+                logContent.textContent = '暂无日志记录';
+            }
+        };
+        dialog.appendChild(clearBtn);
         // 新增：鸡腿统计按钮
         const chickenLegBtn = document.createElement('button');
         chickenLegBtn.textContent = '鸡腿统计';
@@ -2161,7 +2169,7 @@
         chickenLegBtn.style.border = 'none';
         chickenLegBtn.style.borderRadius = '3px';
         chickenLegBtn.style.cursor = 'pointer';
-        chickenLegBtn.onclick = function() {
+        chickenLegBtn.onclick = function () {
             if (window.NodeSeekRegister && typeof window.NodeSeekRegister.showChickenLegStatsDialog === 'function') {
                 try {
                     window.NodeSeekRegister.showChickenLegStatsDialog();
@@ -2189,7 +2197,7 @@
         browseHistoryBtn.style.border = 'none';
         browseHistoryBtn.style.borderRadius = '3px';
         browseHistoryBtn.style.cursor = 'pointer';
-        browseHistoryBtn.onclick = function() {
+        browseHistoryBtn.onclick = function () {
             showBrowseHistoryDialog();
         };
         dialog.appendChild(browseHistoryBtn); // 添加到日志弹窗中
@@ -2205,7 +2213,7 @@
         hotTopicsBtn.style.border = 'none';
         hotTopicsBtn.style.borderRadius = '3px';
         hotTopicsBtn.style.cursor = 'pointer';
-        hotTopicsBtn.onclick = function() {
+        hotTopicsBtn.onclick = function () {
             if (window.NodeSeekFocus && typeof window.NodeSeekFocus.showHotTopicsDialog === 'function') {
                 try {
                     window.NodeSeekFocus.showHotTopicsDialog();
@@ -2233,7 +2241,7 @@
         configSyncBtn.style.border = 'none';
         configSyncBtn.style.borderRadius = '3px';
         configSyncBtn.style.cursor = 'pointer';
-        configSyncBtn.onclick = function() {
+        configSyncBtn.onclick = function () {
             if (window.NodeSeekLogin && typeof window.NodeSeekLogin.showDialog === 'function') {
                 try {
                     window.NodeSeekLogin.showDialog();
@@ -2261,7 +2269,7 @@
         vpsCalculatorBtn.style.border = 'none';
         vpsCalculatorBtn.style.borderRadius = '3px';
         vpsCalculatorBtn.style.cursor = 'pointer';
-        vpsCalculatorBtn.onclick = function() {
+        vpsCalculatorBtn.onclick = function () {
             if (window.NodeSeekVPS && typeof window.NodeSeekVPS.showCalculatorDialog === 'function') {
                 try {
                     window.NodeSeekVPS.showCalculatorDialog();
@@ -2289,7 +2297,7 @@
         notesBtn.style.border = 'none';
         notesBtn.style.borderRadius = '3px';
         notesBtn.style.cursor = 'pointer';
-        notesBtn.onclick = function() {
+        notesBtn.onclick = function () {
             if (window.NodeSeekNotes && typeof window.NodeSeekNotes.showNotesDialog === 'function') {
                 try {
                     window.NodeSeekNotes.showNotesDialog();
@@ -2328,7 +2336,7 @@
 
         dialog.appendChild(logContent);
         document.body.appendChild(dialog);
-        makeDraggable(dialog, {width: 50, height: 50}); // Make logs dialog draggable, increased drag area for testing
+        makeDraggable(dialog, { width: 50, height: 50 }); // Make logs dialog draggable, increased drag area for testing
     }
 
 
@@ -2409,7 +2417,7 @@
         signInBtn.style.width = '100px';
 
         // 签到按钮点击逻辑
-        signInBtn.addEventListener('click', function() {
+        signInBtn.addEventListener('click', function () {
             // 切换状态
             const newStatus = localStorage.getItem('nodeseek_sign_enabled') !== 'true';
             localStorage.setItem('nodeseek_sign_enabled', newStatus);
@@ -2535,7 +2543,7 @@
         quickEditBtn.textContent = '快捷编辑';
         quickEditBtn.title = "编辑#0帖子"; // 添加鼠标悬停提示文本
         // 添加功能：点击时自动点击#0楼层的编辑按钮
-        quickEditBtn.onclick = function() {
+        quickEditBtn.onclick = function () {
             // 寻找#0楼层的编辑按钮并点击
             function findAndClickEditButton() {
                 // 查找所有包含"编辑"文本的菜单项
@@ -2580,8 +2588,8 @@
 
                             // 2. 检查是否有明确包含"#0"但不包含其他楼层号的元素
                             const hasZeroMark = parent.textContent.includes('#0') &&
-                                               !parent.textContent.includes('#1') &&
-                                               !parent.textContent.includes('#2');
+                                !parent.textContent.includes('#1') &&
+                                !parent.textContent.includes('#2');
 
                             if (hasExactZeroMark || hasZeroMark) {
                                 found = true;
@@ -2635,7 +2643,7 @@
         filterBtn.textContent = '关键词过滤';
         filterBtn.style.width = '100%';
         filterBtn.style.marginTop = '1px';
-        filterBtn.onclick = function() {
+        filterBtn.onclick = function () {
             if (window.NodeSeekFilter && typeof window.NodeSeekFilter.createFilterUI === 'function') {
                 window.NodeSeekFilter.createFilterUI();
             } else {
@@ -2650,7 +2658,7 @@
         addFavoriteBtn.style.background = '#1890ff'; // 蓝色背景
         addFavoriteBtn.textContent = '收藏';
         addFavoriteBtn.style.width = '50%'; // 设置为50%宽度，与查看按钮共享一行
-        addFavoriteBtn.onclick = function() {
+        addFavoriteBtn.onclick = function () {
             // 获取当前页面URL
             const url = window.location.href;
             // 获取当前页面标题
@@ -2716,7 +2724,7 @@
         quickReplyBtn.textContent = '快捷回复';
         quickReplyBtn.style.width = '100%';
         quickReplyBtn.style.marginTop = '1px';
-        quickReplyBtn.onclick = function() {
+        quickReplyBtn.onclick = function () {
             if (window.NodeSeekQuickReply && typeof window.NodeSeekQuickReply.showQuickReplyDialog === 'function') {
                 window.NodeSeekQuickReply.showQuickReplyDialog();
             } else {
@@ -2740,7 +2748,7 @@
         emojiBtn.textContent = '表情';
         emojiBtn.style.width = '100%';
         emojiBtn.style.marginTop = '1px';
-        emojiBtn.onclick = function() {
+        emojiBtn.onclick = function () {
             if (window.NodeSeekEmoji && typeof window.NodeSeekEmoji.open === 'function') {
                 window.NodeSeekEmoji.open();
             } else {
@@ -2758,7 +2766,7 @@
 
 
         // 折叠按钮点击事件
-        collapseBtn.onclick = function() {
+        collapseBtn.onclick = function () {
             const isCurrentlyCollapsed = container.classList.contains('nodeseek-plugin-container-collapsed');
 
             if (isCurrentlyCollapsed) {
@@ -2903,7 +2911,7 @@
         categoryManageBtn.style.padding = '4px 8px';
         // 右上角分类管理按钮左移30px：通过增加右侧外边距实现
         categoryManageBtn.style.marginRight = '38px';
-        categoryManageBtn.onclick = function() {
+        categoryManageBtn.onclick = function () {
             showCategoryManageDialog();
         };
         titleBar.appendChild(categoryManageBtn);
@@ -2918,11 +2926,11 @@
         closeBtn.style.cursor = 'pointer';
         closeBtn.style.fontSize = '20px';
         closeBtn.className = 'close-btn'; // 添加类名便于CSS选择器选中
-        closeBtn.onclick = function() { dialog.remove(); };
+        closeBtn.onclick = function () { dialog.remove(); };
         dialog.appendChild(closeBtn);
 
         // 简繁体与大小写标准化函数（优先使用 NodeSeekFilter.normalizeText）
-        const normalizeForSearch = function(text) {
+        const normalizeForSearch = function (text) {
             const s = (text || '').toString();
             if (window.NodeSeekFilter && typeof window.NodeSeekFilter.normalizeText === 'function') {
                 return window.NodeSeekFilter.normalizeText(s);
@@ -3047,10 +3055,10 @@
             // 固定表格布局，按列宽分配，减少空白
             table.style.tableLayout = 'fixed';
             table.innerHTML = '<thead><tr>'
-+ '<th style="text-align:left;font-size:13px;width:42%;">标题</th>'
-+ '<th style="text-align:left;font-size:13px;width:19%;padding-left:18px;position:relative;left:75px;">备注</th>'
-+ '<th style="text-align:left;font-size:13px;width:18%;padding-left:42px;white-space:nowrap;position:relative;left:38px;">分类</th>'
-            + '<th style="text-align:left;font-size:13px;width:11%;padding-left:0px;position:relative;left:-7px;">收藏时间</th>'
+                + '<th style="text-align:left;font-size:13px;width:42%;">标题</th>'
+                + '<th style="text-align:left;font-size:13px;width:19%;padding-left:18px;position:relative;left:75px;">备注</th>'
+                + '<th style="text-align:left;font-size:13px;width:18%;padding-left:42px;white-space:nowrap;position:relative;left:38px;">分类</th>'
+                + '<th style="text-align:left;font-size:13px;width:11%;padding-left:0px;position:relative;left:-7px;">收藏时间</th>'
                 + '<th style="width:54px;text-align:right;"></th></tr></thead>';
 
             try {
@@ -3061,7 +3069,7 @@
                     thead.style.background = '#fff';
                     thead.style.zIndex = '1';
                 }
-            } catch (e) {}
+            } catch (e) { }
 
             const tableWrapper = document.createElement('div');
             // 将滚动容器上移到内容根（contentRoot），避免百分比高度在某些环境下不生效
@@ -3128,7 +3136,7 @@
                 // 备注列整体右移 10px（不改变列宽）
                 tdRemark.style.paddingLeft = '18px';
                 tdRemark.style.position = 'relative';
-                    tdRemark.style.left = '75px';
+                tdRemark.style.left = '75px';
                 if (!isMobile) {
                     // 备注列使用固定布局下的列宽，移除硬编码maxWidth，减少空白
                     tdRemark.style.overflow = 'hidden';
@@ -3140,7 +3148,7 @@
                 if (item.remark) {
                     tdRemark.title = item.remark;
                     if (!isMobile) {
-                        tdRemark.onmouseover = function() {
+                        tdRemark.onmouseover = function () {
                             if (this.offsetWidth < this.scrollWidth) {
                                 this.style.position = 'relative';
                             }
@@ -3150,7 +3158,7 @@
                     tdRemark.title = '点击编辑备注';
                 }
                 tdRemark.style.cursor = 'pointer';
-                tdRemark.onclick = function(e) {
+                tdRemark.onclick = function (e) {
                     e.stopPropagation();
                     if (tdRemark.querySelector('input')) return;
                     const currentText = tdRemark.textContent;
@@ -3166,7 +3174,7 @@
                     tdRemark.textContent = '';
                     tdRemark.appendChild(input);
                     input.focus();
-                    input.onblur = function() {
+                    input.onblur = function () {
                         const newRemark = input.value;
                         input.remove();
                         tdRemark.textContent = newRemark;
@@ -3180,7 +3188,7 @@
                             item.remark = newRemark;
                         }
                     };
-                    input.onkeydown = function(e) {
+                    input.onkeydown = function (e) {
                         if (e.key === 'Enter') input.blur();
                         else if (e.key === 'Escape') { tdRemark.textContent = currentText; tdRemark.title = currentText || '点击编辑备注'; }
                     };
@@ -3196,13 +3204,13 @@
                 tdCategory.style.color = '#666';
                 tdCategory.style.fontSize = '12px';
                 tdCategory.style.textAlign = 'left';
-        tdCategory.style.paddingLeft = '42px';
-        tdCategory.style.whiteSpace = 'nowrap';
-        tdCategory.style.position = 'relative';
-        tdCategory.style.left = '38px';
+                tdCategory.style.paddingLeft = '42px';
+                tdCategory.style.whiteSpace = 'nowrap';
+                tdCategory.style.position = 'relative';
+                tdCategory.style.left = '38px';
                 tdCategory.style.cursor = 'pointer';
                 tdCategory.title = '点击修改分类';
-                tdCategory.onclick = function(e) {
+                tdCategory.onclick = function (e) {
                     e.stopPropagation();
                     if (tdCategory.querySelector('select')) return;
                     const select = document.createElement('select');
@@ -3226,7 +3234,7 @@
                     tdCategory.textContent = '';
                     tdCategory.appendChild(select);
                     select.focus();
-                    select.onblur = function() {
+                    select.onblur = function () {
                         const newCategory = select.value;
                         select.remove();
                         tdCategory.textContent = (newCategory === '未分类') ? '全部分类' : newCategory;
@@ -3240,11 +3248,11 @@
                             item.category = newCategory;
                         }
                     };
-                    select.onkeydown = function(e) {
+                    select.onkeydown = function (e) {
                         if (e.key === 'Enter') select.blur();
-                        else if (e.key === 'Escape') { 
-                            tdCategory.textContent = displayCategory; 
-                            tdCategory.title = '点击修改分类'; 
+                        else if (e.key === 'Escape') {
+                            tdCategory.textContent = displayCategory;
+                            tdCategory.title = '点击修改分类';
                             select.remove();
                         }
                     };
@@ -3262,9 +3270,9 @@
                 } else { tdTime.textContent = ''; }
                 tdTime.style.fontSize = '12px';
                 tdTime.style.whiteSpace = 'nowrap';
-        tdTime.style.paddingLeft = '0px';
-        tdTime.style.position = 'relative';
-        tdTime.style.left = '-7px';
+                tdTime.style.paddingLeft = '0px';
+                tdTime.style.position = 'relative';
+                tdTime.style.left = '-7px';
                 tr.appendChild(tdTime);
 
                 const tdOp = document.createElement('td');
@@ -3273,7 +3281,7 @@
                 removeBtn.textContent = '移除';
                 removeBtn.className = 'blacklist-btn red';
                 removeBtn.style.fontSize = '11px';
-                removeBtn.onclick = function(e) {
+                removeBtn.onclick = function (e) {
                     e.stopPropagation();
                     if (confirm('确定要移除该收藏？')) {
                         if (removeFromFavorites(item.url)) {
@@ -3305,12 +3313,12 @@
                 }
             });
             base = base.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-            
+
             // 先按分类筛选
             if (selectedCategory) {
                 base = base.filter(item => (item.category || '未分类') === selectedCategory);
             }
-            
+
             // 再按关键词搜索
             if (kw) {
                 base = base.filter(item =>
@@ -3342,9 +3350,9 @@
             contentRoot.style.minHeight = '0'; // 使flex子项可在父容器内滚动
             contentRoot.style.overflowY = 'auto';
             contentRoot.style.overflowX = 'hidden';
-        } catch (e) {}
+        } catch (e) { }
         if (!isMobile && typeof makeDraggable === 'function') {
-            try { makeDraggable(dialog, {width: 30, height: 30}); } catch (e) {}
+            try { makeDraggable(dialog, { width: 30, height: 30 }); } catch (e) { }
         }
     }
 
@@ -3399,7 +3407,7 @@
         closeBtn.style.cursor = 'pointer';
         closeBtn.style.fontSize = '20px';
         closeBtn.style.color = '#999';
-        closeBtn.onclick = function() { dialog.remove(); };
+        closeBtn.onclick = function () { dialog.remove(); };
         titleBar.appendChild(closeBtn);
 
         dialog.appendChild(titleBar);
@@ -3459,7 +3467,7 @@
                     renameBtn.className = 'blacklist-btn';
                     renameBtn.style.fontSize = '11px';
                     renameBtn.style.padding = '4px 8px';
-                    renameBtn.onclick = function() {
+                    renameBtn.onclick = function () {
                         const newName = prompt('请输入新分类名称（最多7个字符）：', category);
                         if (newName && newName.trim() && newName.trim() !== category) {
                             // 检查字符长度
@@ -3489,7 +3497,7 @@
                     deleteBtn.className = 'blacklist-btn red';
                     deleteBtn.style.fontSize = '11px';
                     deleteBtn.style.padding = '4px 8px';
-                    deleteBtn.onclick = function() {
+                    deleteBtn.onclick = function () {
                         if (confirm(`确定要删除分类"${category}"吗？该分类下的收藏将移动到"未分类"。`)) {
                             if (removeFavoriteCategory(category)) {
                                 renderCategoryList();
@@ -3551,9 +3559,9 @@
         lengthHint.style.whiteSpace = 'nowrap';
         lengthHint.textContent = '0/7';
         addInputDiv.appendChild(addInput);
-        
+
         // 实时显示字符长度
-        addInput.addEventListener('input', function() {
+        addInput.addEventListener('input', function () {
             const length = this.value.length;
             lengthHint.textContent = `${length}/7`;
             // 超过限制时显示红色
@@ -3568,7 +3576,7 @@
         addBtn.textContent = '添加';
         addBtn.className = 'blacklist-btn';
         addBtn.style.padding = isMobile ? '10px 16px' : '6px 12px';
-        addBtn.onclick = function() {
+        addBtn.onclick = function () {
             const categoryName = addInput.value.trim();
             if (!categoryName) {
                 alert('请输入分类名称');
@@ -3595,7 +3603,7 @@
                 alert('添加失败：分类名称已存在或超过字符限制');
             }
         };
-        addInput.onkeydown = function(e) {
+        addInput.onkeydown = function (e) {
             if (e.key === 'Enter') {
                 addBtn.onclick();
             }
@@ -3614,8 +3622,8 @@
                 dialog.style.right = 'auto';
                 dialog.style.left = rect.left + 'px';
                 dialog.style.top = Math.max(0, rect.top) + 'px';
-                window.makeDraggable(dialog, {width: 30, height: 30});
-            } catch (e) {}
+                window.makeDraggable(dialog, { width: 30, height: 30 });
+            } catch (e) { }
         }
         if (addInput) addInput.focus();
     }
@@ -3673,7 +3681,7 @@
         closeBtn.style.cursor = 'pointer';
         closeBtn.style.fontSize = '20px';
         closeBtn.style.color = '#999';
-        closeBtn.onclick = function() { dialog.remove(); };
+        closeBtn.onclick = function () { dialog.remove(); };
         titleBar.appendChild(closeBtn);
 
         dialog.appendChild(titleBar);
@@ -3744,7 +3752,7 @@
         confirmBtn.className = 'blacklist-btn';
         confirmBtn.style.background = '#1890ff';
         confirmBtn.style.padding = isMobile ? '10px 16px' : '6px 12px';
-        confirmBtn.onclick = function() {
+        confirmBtn.onclick = function () {
             const remark = remarkInput.value.trim();
             const category = categorySelect.value;
             addToFavorites(remark, category);
@@ -3756,14 +3764,14 @@
 
         document.body.appendChild(dialog);
         remarkInput.focus();
-        
+
         // 回车键确认
-        remarkInput.onkeydown = function(e) {
+        remarkInput.onkeydown = function (e) {
             if (e.key === 'Enter') {
                 confirmBtn.onclick();
             }
         };
-        categorySelect.onkeydown = function(e) {
+        categorySelect.onkeydown = function (e) {
             if (e.key === 'Enter') {
                 confirmBtn.onclick();
             }
@@ -3786,9 +3794,9 @@
         // 尝试找到页面中合适的位置添加按钮
         // 通常在帖子标题旁边或帖子操作区域
         const headerArea = document.querySelector('.topic-header .topic-title') ||
-                          document.querySelector('.thread-header h1') ||
-                          document.querySelector('.article-header h1') ||
-                          document.querySelector('.topic-detail-header h1');
+            document.querySelector('.thread-header h1') ||
+            document.querySelector('.article-header h1') ||
+            document.querySelector('.topic-detail-header h1');
 
         if (!headerArea) return;
 
@@ -3813,7 +3821,7 @@
         }
 
         // 添加点击事件
-        favoriteBtn.onclick = function() {
+        favoriteBtn.onclick = function () {
             if (isFavorited) {
                 // 取消收藏
                 if (confirm('确定要取消收藏吗？')) {
@@ -3826,7 +3834,7 @@
                 // 添加收藏 - 使用自定义弹窗选择分类
                 showAddFavoriteDialog();
                 // 延迟更新按钮状态，等待弹窗关闭
-                setTimeout(function() {
+                setTimeout(function () {
                     if (isCurrentPageFavorited()) {
                         favoriteBtn.textContent = '取消收藏';
                         favoriteBtn.classList.add('favorited');
@@ -3848,19 +3856,19 @@
         // 防止短时间内重复记录同一页面
         const currentUrl = window.location.href;
         const currentTime = Date.now();
-        
+
         // 标准化URL进行比较
         const normalizeUrl = (urlStr) => {
             try {
                 const urlObj = new URL(urlStr);
                 let pathname = urlObj.pathname;
-                
+
                 // 处理NodeSeek帖子分页格式：/post-数字-页码 -> /post-数字-1
                 const postMatch = pathname.match(/^\/post-(\d+)-\d+$/);
                 if (postMatch) {
                     pathname = `/post-${postMatch[1]}-1`; // 统一为第一页
                 }
-                
+
                 return urlObj.origin + pathname + urlObj.search;
             } catch (e) {
                 // 如果URL解析失败，简单处理
@@ -3873,23 +3881,23 @@
                 return cleanUrl;
             }
         };
-        
+
         const normalizedCurrentUrl = normalizeUrl(currentUrl);
         const normalizedLastUrl = normalizeUrl(lastRecordedUrl);
-        
+
         if (normalizedLastUrl === normalizedCurrentUrl && (currentTime - lastRecordedTime) < 5000) {
             return; // 5秒内不重复记录同一页面
         }
-        
+
         // 只记录帖子和文章页面
-        if (window.location.pathname.includes('/topic/') || 
+        if (window.location.pathname.includes('/topic/') ||
             window.location.pathname.includes('/article/') ||
             window.location.pathname.includes('/space/') ||
             window.location.pathname.match(/\/post-\d+/)) { // 添加对 /post-数字 格式的支持
-            
+
             // 获取页面标题，去除网站名称后缀
             let title = document.title.replace(' - NodeSeek', '').trim();
-            
+
             // 如果标题为空，尝试从其他元素获取
             if (!title || title === 'NodeSeek') {
                 const titleElement = document.querySelector('.topic-title, .article-title, h1, .thread-title, .post-title, .content-title');
@@ -3897,7 +3905,7 @@
                     title = titleElement.textContent.trim();
                 }
             }
-            
+
             // 特别处理post-数字格式的页面，尝试从页面中找到帖子标题
             if ((!title || title === 'NodeSeek') && window.location.pathname.match(/\/post-\d+/)) {
                 // 尝试多种可能的标题选择器
@@ -3907,10 +3915,10 @@
                     '[class*="title"]', '[class*="subject"]',
                     '.nsk-content-title'
                 ];
-                
+
                 for (const selector of titleSelectors) {
                     const element = document.querySelector(selector);
-                    if (element && element.textContent.trim() && 
+                    if (element && element.textContent.trim() &&
                         element.textContent.trim().length > 3 &&
                         !element.textContent.includes('NodeSeek')) {
                         title = element.textContent.trim();
@@ -3918,20 +3926,20 @@
                     }
                 }
             }
-            
+
             // 如果仍然没有标题，使用URL路径作为标题
             if (!title || title === 'NodeSeek') {
                 title = window.location.pathname.split('/')[1] + ' - ' + window.location.pathname.split('/')[2];
             }
-            
+
             // 记录浏览历史
             const url = window.location.href;
             addToBrowseHistory(title, url);
-            
+
             // 更新防重复记录变量
             lastRecordedUrl = url;
             lastRecordedTime = Date.now();
-            
+
             // 不再在控制台输出浏览记录
         }
     }
@@ -3940,19 +3948,19 @@
     setTimeout(recordBrowseHistory, 500);  // 第一次尝试
     setTimeout(recordBrowseHistory, 1500); // 第二次尝试
     setTimeout(recordBrowseHistory, 3000); // 第三次尝试，确保页面完全加载
-    
+
     // 监听页面完全加载事件
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', recordBrowseHistory);
     }
-    
+
     // 监听窗口加载完成事件
     window.addEventListener('load', recordBrowseHistory);
 
     // 首次加载
     updateAll();
     addExportImportButtons();
-    
+
     // 清理重复的浏览历史记录
     setTimeout(() => {
         const cleaned = cleanupDuplicateHistory();
@@ -4061,7 +4069,7 @@
         tdRemark.title = info.remark ? info.remark : '点击编辑备注';
 
         // 添加备注编辑功能（复用现有逻辑）
-        tdRemark.onclick = function(e) {
+        tdRemark.onclick = function (e) {
             e.stopPropagation();
             e.preventDefault();
 
@@ -4114,7 +4122,7 @@
             const textLength = input.value.length;
             input.setSelectionRange(textLength, textLength);
 
-            const closeEditor = function(save) {
+            const closeEditor = function (save) {
                 const newText = save ? input.value : currentText;
                 document.body.removeChild(overlay);
 
@@ -4131,13 +4139,13 @@
                 }
             };
 
-            overlay.addEventListener('mousedown', function(e) {
+            overlay.addEventListener('mousedown', function (e) {
                 if (e.target === overlay) {
                     closeEditor(true);
                 }
             });
 
-            input.addEventListener('keydown', function(e) {
+            input.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     closeEditor(true);
@@ -4200,14 +4208,14 @@
         removeBtn.textContent = '移除';
         removeBtn.className = 'blacklist-btn red';
         removeBtn.style.fontSize = '11px';
-        removeBtn.onclick = function() {
+        removeBtn.onclick = function () {
             if (confirm('确定要移除该用户？')) {
                 removeFromBlacklist(username);
 
                 tr.style.opacity = '0.5';
                 tr.style.transition = 'opacity 0.2s';
 
-                setTimeout(function() {
+                setTimeout(function () {
                     tr.remove();
 
                     if (tbody && tbody.children.length === 0) {
@@ -4220,7 +4228,7 @@
                     }
 
                     // 更新页面上的用户显示
-                    document.querySelectorAll('a.author-name').forEach(function(link) {
+                    document.querySelectorAll('a.author-name').forEach(function (link) {
                         if (link.textContent.trim() === username) {
                             link.classList.remove('blacklisted-user');
                             const oldRemark = link.parentNode.querySelector('.blacklist-remark');
@@ -4248,7 +4256,7 @@
         }
 
         // 添加淡入动画效果
-        setTimeout(function() {
+        setTimeout(function () {
             tr.style.opacity = '1';
         }, 50);
     }
@@ -4279,7 +4287,7 @@
     }
 
     // ========== 快捷回复功能UI ==========
-    
+
     // 为快捷回复模块暴露日志函数
     window.addQuickReplyLog = addLog;
 
