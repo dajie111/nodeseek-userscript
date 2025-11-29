@@ -227,7 +227,7 @@
             }
 
             // 从API获取数据
-            const response = await fetch(`https://www.nodeseek.com/api/account/getInfo/${userId}?readme=1`);
+            const response = await fetch(`https://www.nodeseek.com/api/account/getInfo/${userId}`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -239,9 +239,12 @@
                     member_name: data.detail.member_name,
                     rank: data.detail.rank,
                     coin: data.detail.coin,
+                    stardust: data.detail.stardust,
                     created_at: data.detail.created_at,
                     nPost: data.detail.nPost,
                     nComment: data.detail.nComment,
+                    follows: data.detail.follows,
+                    fans: data.detail.fans,
                     created_at_str: data.detail.created_at_str
                 };
 
@@ -426,7 +429,7 @@
         `;
 
         // 横向显示所有信息
-        infoDiv.innerHTML = `加入: ${joinDays}天 | 等级: ${userData.rank} | 鸡腿: ${userData.coin} | 主题: ${userData.nPost} | 评论: ${userData.nComment}`;
+        infoDiv.innerHTML = `加入: ${joinDays}天 | 等级: ${userData.rank} | 鸡腿: ${userData.coin} | 星尘: ${userData.stardust} | 主题: ${userData.nPost} | 评论: ${userData.nComment} | 粉丝: ${userData.fans} | 关注: ${userData.follows}`;
 
         // 确保父元素有相对定位，但不影响其他子元素的布局
         if (parentElement) {
