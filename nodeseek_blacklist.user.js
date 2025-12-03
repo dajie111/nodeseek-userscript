@@ -2767,6 +2767,20 @@
         emojiBtnContainer.style.width = '100%';
         emojiBtnContainer.appendChild(emojiBtn);
 
+        // 新增：高亮统计显示区域
+        const statsContainer = document.createElement('div');
+        statsContainer.id = 'ns-highlight-stats-container';
+        statsContainer.style.width = '100%';
+        statsContainer.style.marginTop = '5px';
+        statsContainer.style.backgroundColor = '#fff';
+        statsContainer.style.borderRadius = '4px';
+        statsContainer.style.border = '1px solid #eee';
+        statsContainer.style.padding = '4px';
+        statsContainer.style.boxSizing = 'border-box';
+
+        // 初始提示（如果 filter.js 还没准备好）
+        statsContainer.innerHTML = '<div style="text-align:center;padding:5px;font-size:12px;color:#999;">没有高亮词</div>';
+
 
         // 折叠按钮点击事件
         collapseBtn.onclick = function () {
@@ -2797,6 +2811,13 @@
         container.appendChild(filterBtnContainer); // 关键词过滤按钮行
         container.appendChild(quickReplyContainer); // 快捷回复按钮行
         container.appendChild(emojiBtnContainer); // 表情按钮行
+        container.appendChild(statsContainer); // 高亮统计显示区域
+
+        // 尝试立即渲染（如果统计数据已就绪）
+        if (window.NodeSeekFilter && typeof window.NodeSeekFilter.renderHighlightStatsToContainer === 'function') {
+            window.NodeSeekFilter.renderHighlightStatsToContainer();
+        }
+
 
         document.body.appendChild(mainContainer);
     }
