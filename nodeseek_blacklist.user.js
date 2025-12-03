@@ -2786,7 +2786,7 @@
         statsContainer.style.boxSizing = 'border-box';
 
         // 初始提示（如果 filter.js 还没准备好）
-        statsContainer.innerHTML = '<div style="text-align:center;padding:5px;font-size:12px;color:#999;">没有高亮词</div>';
+        statsContainer.innerHTML = '<div style="text-align:center;padding:5px;font-size:12px;color:#999;">无高亮记录</div>';
 
 
         // 折叠按钮点击事件
