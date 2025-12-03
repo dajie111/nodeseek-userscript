@@ -275,6 +275,136 @@ function normalizeText(text) {
     return normalized;
 }
 
+// 全局统计变量
+let currentBlockedCount = 0;
+let currentHighlightedCount = 0;
+let isShowingOnlyHighlighted = false;
+let isShowingOnlyBlocked = false;
+
+// 更新统计UI
+function updateStatsUI() {
+    // 仅在首页或列表页显示统计
+    const sorter = document.querySelector('div.sorter');
+    if (!sorter) return;
+
+    // 移除可能存在的旧样式注入（如果用户之前加载过旧版本）
+    const oldStyle = document.getElementById('ns-reset-sorter-bg');
+    if (oldStyle) oldStyle.remove();
+
+    let statsSpan = document.getElementById('ns-filter-stats');
+    if (!statsSpan) {
+        statsSpan = document.createElement('span');
+        statsSpan.id = 'ns-filter-stats';
+        statsSpan.style.marginLeft = '0';
+        statsSpan.style.position = 'relative';
+        statsSpan.style.left = '-135px';
+        statsSpan.style.whiteSpace = 'nowrap';
+        statsSpan.style.zIndex = '1';
+        statsSpan.style.fontSize = '13px';
+        statsSpan.style.color = 'inherit'; // 使用 inherit 跟随父元素颜色，避免反色问题
+        statsSpan.style.background = 'transparent';
+        statsSpan.style.padding = '0';
+        statsSpan.style.borderRadius = '0';
+        statsSpan.style.border = 'none';
+        statsSpan.style.boxShadow = 'none';
+
+        statsSpan.style.display = 'inline-flex';
+        statsSpan.style.alignItems = 'center';
+        statsSpan.style.gap = '0px';
+        statsSpan.style.fontWeight = '500';
+        statsSpan.style.verticalAlign = 'middle';
+
+        // 将统计元素插入到 sorter 后面，而不是里面，避免影响 sorter 的样式
+        if (sorter.parentNode) {
+            sorter.parentNode.insertBefore(statsSpan, sorter.nextSibling);
+        }
+    }
+
+    // 动态更新容器间距，确保新样式生效
+    statsSpan.style.gap = '8px';
+
+    // 标签基础样式 - 采用圆角胶囊风格
+    const tagBaseStyle = 'display:inline-flex; align-items:center; padding: 4px 10px; border-radius: 12px; font-size: 12px; line-height: 1; transition: all 0.3s; box-shadow: 0 1px 2px rgba(0,0,0,0.05);';
+    
+    // 屏蔽标签样式 (柔和红)
+    let blockedTagStyle = tagBaseStyle + 'background: #fff2f0; border: 1px solid #ffccc7; color: #cf1322;';
+    // 如果处于“仅显示屏蔽”模式
+    if (isShowingOnlyBlocked) {
+        blockedTagStyle = tagBaseStyle + 'background: #ffccc7; border: 1px solid #ff7875; color: #a8071a; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);';
+    }
+    blockedTagStyle += 'cursor: pointer;';
+
+    // 高亮标签样式 (柔和黄)
+    let highlightedTagStyle = tagBaseStyle + 'background: #fffbe6; border: 1px solid #ffe58f; color: #d48806;';
+    
+    // 如果处于“仅显示高亮”模式，加深背景色或边框以示激活
+    if (isShowingOnlyHighlighted) {
+        highlightedTagStyle = tagBaseStyle + 'background: #ffe58f; border: 1px solid #ffc53d; color: #d48806; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);';
+    }
+    highlightedTagStyle += 'cursor: pointer;'; // 添加手型光标
+
+    // 数字样式
+    const numberStyle = 'font-weight: 700; margin-left: 6px; min-width: 14px; text-align: center;';
+
+    statsSpan.innerHTML = `
+        <span id="ns-stats-blocked-btn" style="${blockedTagStyle}" title="点击${isShowingOnlyBlocked ? '恢复显示所有' : '只显示屏蔽帖子'}">
+            屏蔽
+            <span style="${numberStyle}">${currentBlockedCount}</span>
+        </span>
+        <span id="ns-stats-highlight-btn" style="${highlightedTagStyle}" title="点击${isShowingOnlyHighlighted ? '恢复显示所有' : '只显示高亮帖子'}">
+            高亮
+            <span style="${numberStyle}">${currentHighlightedCount}</span>
+        </span>
+    `;
+
+    // 添加点击事件
+    setTimeout(() => {
+        const highlightBtn = document.getElementById('ns-stats-highlight-btn');
+        if (highlightBtn) {
+            highlightBtn.onclick = toggleShowOnlyHighlighted;
+        }
+        
+        const blockedBtn = document.getElementById('ns-stats-blocked-btn');
+        if (blockedBtn) {
+            blockedBtn.onclick = toggleShowOnlyBlocked;
+        }
+    }, 0);
+}
+
+// 切换“只显示高亮”模式
+function toggleShowOnlyHighlighted() {
+    isShowingOnlyHighlighted = !isShowingOnlyHighlighted;
+    // 互斥：如果开启高亮模式，则关闭屏蔽模式
+    if (isShowingOnlyHighlighted) isShowingOnlyBlocked = false;
+    
+    refreshFilterAndHighlight();
+}
+
+// 切换“只显示屏蔽”模式
+function toggleShowOnlyBlocked() {
+    isShowingOnlyBlocked = !isShowingOnlyBlocked;
+    // 互斥：如果开启屏蔽模式，则关闭高亮模式
+    if (isShowingOnlyBlocked) isShowingOnlyHighlighted = false;
+    
+    refreshFilterAndHighlight();
+}
+
+function refreshFilterAndHighlight() {
+    // 获取当前的屏蔽关键词和显示关键词
+    const blacklistKeywords = getCustomKeywords();
+    // 尝试从输入框获取显示关键词，如果不存在则从storage获取
+    const input = document.getElementById('ns-keyword-input');
+    const whitelistKeywords = input ? input.value.split(/,|，/).map(s => s.trim()).filter(Boolean) : getKeywords();
+
+    // 重新应用过滤
+    filterPosts(blacklistKeywords, whitelistKeywords);
+    // 重新应用高亮
+    applyKeywordHighlight();
+    
+    // 更新UI状态
+    updateStatsUI();
+}
+
 function filterPosts(blacklistKeywords = [], whitelistKeywords = []) {
 
     // 尝试多种可能的CSS选择器
@@ -309,6 +439,7 @@ function filterPosts(blacklistKeywords = [], whitelistKeywords = []) {
     }
 
     let showCount = 0;
+    let blockedCount = 0;
 
     postItems.forEach((item, index) => {
         // 尝试多种方式获取帖子标题
@@ -395,14 +526,30 @@ function filterPosts(blacklistKeywords = [], whitelistKeywords = []) {
         }
 
         if (shouldShow) {
-            item.style.display = '';
+            // 如果开启了“只显示屏蔽”模式，正常显示的反而要隐藏
+            if (isShowingOnlyBlocked) {
+                item.style.display = 'none';
+            } else {
+                item.style.display = '';
+            }
             showCount++;
         } else {
-            item.style.display = 'none';
+            // 如果开启了“只显示屏蔽”模式，原本被屏蔽的现在要显示
+            if (isShowingOnlyBlocked) {
+                item.style.display = '';
+            } else {
+                item.style.display = 'none';
+            }
+            blockedCount++;
         }
     });
 
-
+    // 注意：高亮模式的过滤是在 applyKeywordHighlight 中处理的
+    // 如果同时开启了高亮模式（虽然目前是互斥的），需要确保逻辑兼容
+    // 但因为 applyKeywordHighlight 在 filterPosts 之后执行，所以那里会再次处理显示逻辑
+    
+    currentBlockedCount = blockedCount;
+    updateStatsUI();
 }
 
 // 保存关键词到 localStorage
@@ -685,12 +832,13 @@ function createFilterUI(onFilter) {
     dialog.style.position = 'fixed';
     dialog.style.zIndex = 10001;
     dialog.style.background = '#fff';
-    dialog.style.borderRadius = '12px'; // Default for desktop
-    dialog.style.boxShadow = '0 4px 18px rgba(0,0,0,0.18)'; // Default for desktop
-    dialog.style.fontSize = '16px';
-    dialog.style.color = '#222';
-    dialog.style.lineHeight = '2';
-    dialog.style.border = '2px solid #4CAF50';
+    dialog.style.borderRadius = '16px'; // Default for desktop
+    dialog.style.boxShadow = '0 12px 48px rgba(0,0,0,0.12), 0 4px 16px rgba(0,0,0,0.08)'; // Modern shadow
+    dialog.style.fontSize = '14px';
+    dialog.style.color = '#333';
+    dialog.style.lineHeight = '1.6';
+    dialog.style.border = '1px solid rgba(0,0,0,0.05)';
+    dialog.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
     dialog.style.userSelect = 'auto';
 
     // 检查是否为移动设备
@@ -730,9 +878,9 @@ function createFilterUI(onFilter) {
     }
 
     dialog.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <span style="font-weight:900;font-size:16px;line-height:1;">关键词过滤</span>
-            <span id="ns-keyword-filter-close" style="cursor:pointer;font-size:22px;line-height:1;">×</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #f0f0f0;">
+            <span style="font-weight:600;font-size:16px;color:#111;">关键词过滤</span>
+            <span id="ns-keyword-filter-close" style="cursor:pointer;font-size:20px;color:#999;padding:4px;transition:color 0.2s;">×</span>
         </div>
 
         <div id="ns-whitelist-panel" style="display:none;">
@@ -741,9 +889,9 @@ function createFilterUI(onFilter) {
                 <div style="margin-bottom:6px;font-size:13px;color:#666;line-height:1.4;">
                     这些用户的帖子即使包含屏蔽词也会显示
                 </div>
-                <div style="display:flex;gap:4px;margin-top:4px;">
-                    <input id="ns-add-whitelist-user-input" type="text" maxlength="20" style="flex:1;padding:4px 8px;font-size:14px;border:1px solid #ccc;border-radius:4px;" placeholder="输入用户名(≤20字符)" />
-                    <button id="ns-add-whitelist-user-btn" style="padding:4px 12px;font-size:14px;background:#2196F3;color:#fff;border:none;border-radius:4px;cursor:pointer;">添加</button>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <input id="ns-add-whitelist-user-input" type="text" maxlength="20" style="flex:1;padding:8px 12px;font-size:14px;border:1px solid #e0e0e0;border-radius:8px;background:#f9f9f9;outline:none;transition:all 0.2s;" placeholder="输入用户名(≤20字符)" />
+                    <button id="ns-add-whitelist-user-btn" style="padding:8px 16px;font-size:14px;background:#2196F3;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:500;box-shadow:0 2px 4px rgba(33,150,243,0.2);">添加</button>
                 </div>
                 <div id="ns-whitelist-user-hint" style="margin-top:2px;font-size:12px;color:#999;height:16px;line-height:16px;overflow:hidden;"></div>
             </div>
@@ -753,6 +901,36 @@ function createFilterUI(onFilter) {
             </div>
             <div style="text-align:right;">
                 <button id="ns-close-whitelist-panel" style="padding:4px 12px;font-size:14px;background:#9e9e9e;color:#fff;border:none;border-radius:4px;cursor:pointer;">返回</button>
+            </div>
+        </div>
+
+        <div id="ns-highlight-post-panel" style="display:none;">
+            <div style="margin-bottom:12px;">
+                <label style="font-weight:bold;color:#FF9800;">🖍️ 高亮帖子内关键词：</label><br>
+                <div style="margin-bottom:6px;font-size:13px;color:#666;line-height:1.4;">
+                    设置帖子内容中需要高亮的关键词及颜色 (支持高亮整个网页关键词)
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+                    <input id="ns-add-highlight-post-input" type="text" maxlength="12" style="flex:1;padding:8px 12px;font-size:14px;border:1px solid #e0e0e0;border-radius:8px;background:#f9f9f9;outline:none;transition:all 0.2s;" placeholder="输入关键词(≤12字符)" />
+                    <input type="color" id="ns-add-highlight-post-color" value="#FFFF00" style="width:32px;height:32px;padding:0;border:none;background:none;cursor:pointer;" title="选择高亮颜色">
+                    <button id="ns-add-highlight-post-btn" style="padding:8px 16px;font-size:14px;background:#FF9800;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:500;box-shadow:0 2px 4px rgba(255,152,0,0.2);">添加</button>
+                </div>
+                <div style="margin-top:2px;margin-left:2px;">
+                    <span id="ns-highlight-post-char-count" style="font-size:12px;color:#999;">0/12 字符</span>
+                </div>
+                <div style="margin-top:8px;display:flex;gap:6px;align-items:center;">
+                    <span style="font-size:12px;color:#666;">高亮范围：</span>
+                    <button id="ns-highlight-mode-all" class="ns-highlight-mode-btn" data-mode="all" style="padding:3px 10px;font-size:12px;background:#FF9800;color:#fff;border:none;border-radius:4px;cursor:pointer;">全部</button>
+                    <button id="ns-highlight-mode-username" class="ns-highlight-mode-btn" data-mode="username" style="padding:3px 10px;font-size:12px;background:#e0e0e0;color:#666;border:none;border-radius:4px;cursor:pointer;">仅用户名</button>
+                    <button id="ns-highlight-mode-content" class="ns-highlight-mode-btn" data-mode="content" style="padding:3px 10px;font-size:12px;background:#e0e0e0;color:#666;border:none;border-radius:4px;cursor:pointer;">仅内容</button>
+                </div>
+            </div>
+            <div id="ns-highlight-post-list-section" style="margin-bottom:12px;margin-top:-5px;">
+                <label style="font-weight:bold;">已设置的高亮词：</label>
+                <div id="ns-highlight-post-list" style="margin-top:6px;height:160px;min-height:160px;max-height:160px;overflow-y:auto;overflow-x:hidden;border:1px solid #eee;border-radius:4px;padding:6px;background:#fafafa;box-sizing:border-box;width:100%;"></div>
+            </div>
+            <div style="text-align:right;">
+                <button id="ns-close-highlight-post-panel" style="padding:4px 12px;font-size:14px;background:#9e9e9e;color:#fff;border:none;border-radius:4px;cursor:pointer;">返回</button>
             </div>
         </div>
 
@@ -767,9 +945,9 @@ function createFilterUI(onFilter) {
                 💡 提示：屏蔽用户请使用官方功能 
                 <a href="https://www.nodeseek.com/setting#block" target="_blank" style="color:#2196F3;text-decoration:underline;">点击跳转</a>
             </div>
-            <div style="display:flex;gap:4px;margin-top:4px;">
-                <input id="ns-add-keyword-input" type="text" maxlength="15" style="flex:1;padding:4px 8px;font-size:14px;border:1px solid #ccc;border-radius:4px;" placeholder="输入要屏蔽的关键词(≤15字符)" />
-                <button id="ns-add-keyword-btn" style="padding:4px 12px;font-size:14px;background:#f44336;color:#fff;border:none;border-radius:4px;cursor:pointer;">屏蔽</button>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+                <input id="ns-add-keyword-input" type="text" maxlength="15" style="flex:1;padding:8px 12px;font-size:14px;border:1px solid #e0e0e0;border-radius:8px;background:#f9f9f9;outline:none;transition:all 0.2s;" placeholder="输入要屏蔽的关键词(≤15字符)" />
+                <button id="ns-add-keyword-btn" style="padding:8px 16px;font-size:14px;background:#f44336;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:500;box-shadow:0 2px 4px rgba(244,67,54,0.2);">屏蔽</button>
             </div>
             <div id="ns-keyword-length-hint" style="margin-top:2px;font-size:12px;color:#999;min-height:16px;"></div>
         </div>
@@ -785,23 +963,26 @@ function createFilterUI(onFilter) {
         </div>
         
         <div style="margin-bottom:12px;">
-            <label style="font-weight:bold;color:#ff9800;">🔆 高亮关键词：</label><br>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                <label style="font-weight:bold;color:#ff9800;">🔆 高亮关键词：</label>
+                <button id="ns-open-highlight-post-panel" style="padding:4px 10px;font-size:14px;background:#FF9800;color:#fff;border:none;border-radius:6px;cursor:pointer;transform: translateY(-5px);">高亮帖子内关键词</button>
+            </div>
             <div style="margin-bottom:6px;font-size:13px;color:#666;line-height:1.4;">
                 添加后高亮显示包含这些关键词的帖子标题 • 限制15个字符以内
             </div>
-            <div style="margin-bottom:6px;">
-                <label style="display:flex;align-items:center;font-size:13px;color:#666;cursor:pointer;">
-                    <input type="checkbox" id="ns-highlight-author-checkbox" style="margin-right:6px;cursor:pointer;" />
-                    同时高亮发帖作者
-                </label>
+            <div style="margin-bottom:6px;display:flex;gap:6px;align-items:center;">
+                <span style="font-size:13px;color:#666;">高亮范围：</span>
+                <button id="ns-highlight-title-mode-all" class="ns-highlight-title-mode-btn" data-mode="all" style="padding:2px 8px;font-size:12px;background:#FF9800;color:#fff;border:none;border-radius:4px;cursor:pointer;">全部</button>
+                <button id="ns-highlight-title-mode-title" class="ns-highlight-title-mode-btn" data-mode="title" style="padding:2px 8px;font-size:12px;background:#e0e0e0;color:#666;border:none;border-radius:4px;cursor:pointer;">仅标题</button>
+                <button id="ns-highlight-title-mode-author" class="ns-highlight-title-mode-btn" data-mode="author" style="padding:2px 8px;font-size:12px;background:#e0e0e0;color:#666;border:none;border-radius:4px;cursor:pointer;">仅作者</button>
             </div>
             <div style="margin-bottom:6px;display:flex;align-items:center;gap:8px;">
                 <label style="font-size:13px;color:#666;">高亮颜色：</label>
                 <input type="color" id="ns-highlight-color-picker" style="width:40px;height:25px;border:1px solid #ccc;border-radius:4px;cursor:pointer;" />
             </div>
-            <div style="display:flex;gap:4px;margin-top:4px;">
-                <input id="ns-add-highlight-input" type="text" maxlength="15" style="flex:1;padding:4px 8px;font-size:14px;border:1px solid #ccc;border-radius:4px;" placeholder="输入要高亮的关键词(≤15字符)" />
-                <button id="ns-add-highlight-btn" style="padding:4px 12px;font-size:14px;background:#ff9800;color:#fff;border:none;border-radius:4px;cursor:pointer;">高亮</button>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+                <input id="ns-add-highlight-input" type="text" maxlength="15" style="flex:1;padding:8px 12px;font-size:14px;border:1px solid #e0e0e0;border-radius:8px;background:#f9f9f9;outline:none;transition:all 0.2s;" placeholder="输入要高亮的关键词(≤15字符)" />
+                <button id="ns-add-highlight-btn" style="padding:8px 16px;font-size:14px;background:#ff9800;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:500;box-shadow:0 2px 4px rgba(255,152,0,0.2);">高亮</button>
             </div>
             <div id="ns-highlight-length-hint" style="margin-top:2px;font-size:12px;color:#999;min-height:16px;"></div>
         </div>
@@ -818,8 +999,10 @@ function createFilterUI(onFilter) {
             <div style="margin-bottom:6px;font-size:13px;color:#666;line-height:1.4;">
                 只显示<strong>同时包含所有</strong>关键词的帖子 • 支持大小写和简繁体混配。<br>可以同时输入多个关键词进行筛选，一般用于搜索使用。
             </div>
-            <input id="ns-keyword-input" type="text" style="width:280px;padding:4px 8px;font-size:15px;border:1px solid #ccc;border-radius:4px;" placeholder="输入关键词，如VPS,測試,服务器" />
-            <button id="ns-keyword-btn" style="margin-left:8px;padding:4px 12px;font-size:15px;background:#4CAF50;color:#fff;border:none;border-radius:4px;cursor:pointer;">显示</button>
+            <div style="display:flex;gap:8px;">
+                <input id="ns-keyword-input" type="text" style="flex:1;padding:8px 12px;font-size:14px;border:1px solid #e0e0e0;border-radius:8px;background:#f9f9f9;outline:none;transition:all 0.2s;" placeholder="输入关键词，如VPS,測試,服务器" />
+                <button id="ns-keyword-btn" style="padding:8px 16px;font-size:14px;background:#4CAF50;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:500;box-shadow:0 2px 4px rgba(76,175,80,0.2);">显示</button>
+            </div>
             <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
                 <label style="font-size:13px;color:#666;">显示关键词高亮颜色：</label>
                 <input type="color" id="ns-display-highlight-color-picker" style="width:40px;height:25px;border:1px solid #ccc;border-radius:4px;cursor:pointer;" />
@@ -848,6 +1031,207 @@ function createFilterUI(onFilter) {
             mainContent.style.display = '';
         });
     }
+
+    // 帖子内容高亮面板逻辑
+    const openHighlightPostBtn = dialog.querySelector('#ns-open-highlight-post-panel');
+    const highlightPostPanel = dialog.querySelector('#ns-highlight-post-panel');
+    const closeHighlightPostBtn = dialog.querySelector('#ns-close-highlight-post-panel');
+    const addHighlightPostBtn = dialog.querySelector('#ns-add-highlight-post-btn');
+    const addHighlightPostInput = dialog.querySelector('#ns-add-highlight-post-input');
+    const addHighlightPostColor = dialog.querySelector('#ns-add-highlight-post-color');
+
+    if (openHighlightPostBtn && highlightPostPanel && mainContent) {
+        openHighlightPostBtn.addEventListener('click', function () {
+            highlightPostPanel.style.display = 'block';
+            mainContent.style.display = 'none';
+            renderHighlightPostKeywordsList();
+        });
+    }
+
+    if (closeHighlightPostBtn && highlightPostPanel && mainContent) {
+        closeHighlightPostBtn.addEventListener('click', function () {
+            highlightPostPanel.style.display = 'none';
+            mainContent.style.display = '';
+        });
+    }
+
+    function renderHighlightPostKeywordsList() {
+        const keywords = getHighlightPostKeywords();
+        const listContainer = dialog.querySelector('#ns-highlight-post-list');
+
+        if (!listContainer) return;
+
+        if (keywords.length === 0) {
+            listContainer.innerHTML = '<div style="color:#999;font-size:13px;text-align:center;padding:38px 8px;">暂无已设置的高亮词</div>';
+            listContainer.style.height = 'auto';
+            listContainer.style.minHeight = '160px';
+            listContainer.style.maxHeight = '160px';
+            listContainer.style.overflowY = 'hidden';
+        } else {
+            listContainer.innerHTML = keywords.map(item => {
+                return `
+                    <div style="display:inline-flex;align-items:center;margin:2px;padding:4px 8px;background:#fff;border:1px solid #ddd;border-radius:12px;font-size:13px;color:#333;max-width:100%;word-break:break-all;">
+                        <span style="max-width:calc(100% - 22px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.keyword}</span>
+                        <button class="ns-remove-highlight-post" data-keyword="${item.keyword}" style="margin-left:6px;background:none;border:none;color:#999;cursor:pointer;font-size:16px;line-height:1;padding:0;width:16px;height:16px;flex-shrink:0;" title="删除">×</button>
+                    </div>
+                `;
+            }).join('');
+            listContainer.style.height = '160px';
+            listContainer.style.minHeight = '160px';
+            listContainer.style.maxHeight = '160px';
+            listContainer.style.overflowY = 'auto';
+        }
+
+        // 添加删除事件
+        listContainer.querySelectorAll('.ns-remove-highlight-post').forEach(btn => {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                const keyword = this.dataset.keyword;
+                removeHighlightPostKeyword(keyword);
+                renderHighlightPostKeywordsList();
+                highlightPostContent(); // 重新应用
+            });
+        });
+    }
+
+    function addHighlightPostAction() {
+        const keyword = addHighlightPostInput.value.trim();
+        const color = addHighlightPostColor.value;
+
+        if (!keyword) {
+            addHighlightPostInput.focus();
+            return;
+        }
+
+        const result = addHighlightPostKeyword(keyword, color);
+        if (result === true) {
+            addHighlightPostInput.value = '';
+            renderHighlightPostKeywordsList();
+            highlightPostContent();
+
+            if (typeof window.addLog === 'function') {
+                window.addLog(`设置帖子高亮词"${keyword}"`);
+            }
+        } else if (result === 'too_long') {
+            alert('关键词过长');
+        }
+    }
+
+    if (addHighlightPostBtn) {
+        addHighlightPostBtn.addEventListener('click', addHighlightPostAction);
+    }
+
+    if (addHighlightPostColor) {
+        addHighlightPostColor.addEventListener('change', function () {
+            const newColor = this.value;
+            const keywords = getHighlightPostKeywords();
+            if (Array.isArray(keywords) && keywords.length > 0) {
+                const updated = keywords.map(item => ({ keyword: item.keyword, color: newColor }));
+                saveHighlightPostKeywords(updated);
+                renderHighlightPostKeywordsList();
+                highlightPostContent();
+                if (typeof window.addLog === 'function') {
+                    window.addLog(`帖子内容高亮颜色已更改为${newColor}`);
+                }
+            }
+        });
+    }
+
+    if (addHighlightPostInput) {
+        const charCountSpan = dialog.querySelector('#ns-highlight-post-char-count');
+
+        addHighlightPostInput.addEventListener('input', function () {
+            const length = this.value.length;
+            if (charCountSpan) {
+                charCountSpan.textContent = `${length}/12 字符`;
+                // 超过限制时显示红色
+                if (length > 12) {
+                    charCountSpan.style.color = '#f00';
+                } else {
+                    charCountSpan.style.color = '#999';
+                }
+            }
+        });
+
+        addHighlightPostInput.addEventListener('focus', function () {
+            this.dataset.placeholder = this.getAttribute('placeholder');
+            this.setAttribute('placeholder', '');
+        });
+
+        addHighlightPostInput.addEventListener('blur', function () {
+            this.setAttribute('placeholder', this.dataset.placeholder || '输入关键词(≤12字符)');
+        });
+
+        addHighlightPostInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                addHighlightPostAction();
+            }
+        });
+    }
+
+    // 高亮模式按钮事件
+    const modeButtons = dialog.querySelectorAll('.ns-highlight-mode-btn');
+    modeButtons.forEach(btn => {
+        btn.addEventListener('click', function () {
+            const mode = this.dataset.mode;
+            saveHighlightMode(mode);
+
+            // 更新按钮样式
+            modeButtons.forEach(b => {
+                if (b.dataset.mode === mode) {
+                    b.style.background = '#FF9800';
+                    b.style.color = '#fff';
+                } else {
+                    b.style.background = '#e0e0e0';
+                    b.style.color = '#666';
+                }
+            });
+
+            // 重新应用高亮
+            highlightPostContent();
+        });
+    });
+
+    // 初始化模式按钮状态
+    const currentMode = getHighlightMode();
+    modeButtons.forEach(btn => {
+        if (btn.dataset.mode === currentMode) {
+            btn.style.background = '#FF9800';
+            btn.style.color = '#fff';
+        }
+    });
+
+    // 标题高亮模式按钮事件
+    const titleModeButtons = dialog.querySelectorAll('.ns-highlight-title-mode-btn');
+    titleModeButtons.forEach(btn => {
+        btn.addEventListener('click', function () {
+            const mode = this.dataset.mode;
+            saveHighlightTitleMode(mode);
+
+            // 更新按钮样式
+            titleModeButtons.forEach(b => {
+                if (b.dataset.mode === mode) {
+                    b.style.background = '#FF9800';
+                    b.style.color = '#fff';
+                } else {
+                    b.style.background = '#e0e0e0';
+                    b.style.color = '#666';
+                }
+            });
+
+            // 重新应用高亮
+            applyKeywordHighlight();
+        });
+    });
+
+    // 初始化标题高亮模式按钮状态
+    const currentTitleMode = getHighlightTitleMode();
+    titleModeButtons.forEach(btn => {
+        if (btn.dataset.mode === currentTitleMode) {
+            btn.style.background = '#FF9800';
+            btn.style.color = '#fff';
+        }
+    });
 
     // 移动端特殊样式调整
     if (isMobile) {
@@ -939,14 +1323,12 @@ function createFilterUI(onFilter) {
             listContainer.style.overflowY = 'hidden';
         } else {
             listContainer.innerHTML = customKeywords.map(keyword => {
-                // 检查关键词长度，超长的用不同样式显示
+                // 检查关键词长度,超长的用不同样式显示
                 const isLong = keyword.length > 15;
-                const borderColor = isLong ? '#ff9800' : '#ddd';
-                const textColor = isLong ? '#ff9800' : 'inherit';
                 const title = isLong ? `关键词过长(${keyword.length}字符)，建议删除重新添加` : '删除关键词';
 
                 return `
-                    <div style="display:inline-flex;align-items:center;margin:2px;padding:4px 8px;background:#fff;border:1px solid ${borderColor};border-radius:12px;font-size:13px;color:${textColor};max-width:100%;word-break:break-all;">
+                    <div style="display:inline-flex;align-items:center;margin:2px;padding:4px 8px;background:#fff;border:1px solid #ddd;border-radius:12px;font-size:13px;color:#333;max-width:100%;word-break:break-all;">
                         <span title="${isLong ? '长度超限' : ''}" style="max-width:calc(100% - 22px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${keyword}</span>
                         <button class="ns-remove-keyword" data-keyword="${keyword}" style="margin-left:6px;background:none;border:none;color:#999;cursor:pointer;font-size:16px;line-height:1;padding:0;width:16px;height:16px;flex-shrink:0;" title="${title}">×</button>
                     </div>
@@ -988,7 +1370,7 @@ function createFilterUI(onFilter) {
         } else {
             listContainer.innerHTML = users.map(user => {
                 return `
-                    <div style="display:inline-flex;align-items:center;margin:2px;padding:4px 8px;background:#fff;border:1px solid #b3e5fc;border-radius:12px;font-size:13px;color:#0277bd;max-width:100%;word-break:break-all;">
+                    <div style="display:inline-flex;align-items:center;margin:2px;padding:4px 8px;background:#fff;border:1px solid #ddd;border-radius:12px;font-size:13px;color:#333;max-width:100%;word-break:break-all;">
                         <span style="max-width:calc(100% - 22px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${user}</span>
                         <button class="ns-remove-whitelist-user" data-user="${user}" style="margin-left:6px;background:none;border:none;color:#999;cursor:pointer;font-size:16px;line-height:1;padding:0;width:16px;height:16px;flex-shrink:0;" title="删除">×</button>
                     </div>
@@ -1036,14 +1418,12 @@ function createFilterUI(onFilter) {
             listContainer.style.overflowY = 'hidden';
         } else {
             highlightKeywords.forEach(keyword => {
-                // 检查关键词长度，超长的用不同样式显示
+                // 检查关键词长度,超长的用不同样式显示
                 const isLong = keyword.length > 15;
-                const borderColor = isLong ? '#ff9800' : '#ddd';
-                const textColor = isLong ? '#ff9800' : 'inherit';
                 const title = isLong ? `关键词过长(${keyword.length}字符)，建议删除重新添加` : '删除关键词';
 
                 const keywordDiv = document.createElement('div');
-                keywordDiv.style.cssText = `display:inline-flex;align-items:center;margin:2px;padding:4px 8px;background:#fff;border:1px solid ${borderColor};border-radius:12px;font-size:13px;color:${textColor};max-width:100%;word-break:break-all;`;
+                keywordDiv.style.cssText = `display:inline-flex;align-items:center;margin:2px;padding:4px 8px;background:#fff;border:1px solid #ddd;border-radius:12px;font-size:13px;color:#333;max-width:100%;word-break:break-all;`;
 
                 const span = document.createElement('span');
                 span.title = isLong ? '长度超限' : '';
@@ -1566,18 +1946,19 @@ function initFilterObserver() {
     const blacklistKeywords = getCustomKeywords(); // 屏蔽关键词
     const highlightKeywords = getHighlightKeywords(); // 高亮关键词
 
-    if (whitelistKeywords.length > 0 || blacklistKeywords.length > 0) {
-        // 自动应用过滤
+    // 总是应用过滤（无论是否有关键词），以确保统计数据显示
+    // 延迟执行以确保页面元素(如.sorter)已加载
+    setTimeout(() => {
         filterPosts(blacklistKeywords, whitelistKeywords);
+    }, 100);
 
-        // 只有显示关键词时才自动显示过滤弹窗（保持位置）
-        // 仅屏蔽关键词时不显示弹窗
-        if (whitelistKeywords.length > 0) {
-            // 延迟创建弹窗，确保页面完全加载
-            setTimeout(() => {
-                createFilterUI(); // 自动打开，恢复保存的位置
-            }, 100);
-        }
+    // 只有显示关键词时才自动显示过滤弹窗（保持位置）
+    // 仅屏蔽关键词时不显示弹窗
+    if (whitelistKeywords.length > 0) {
+        // 延迟创建弹窗，确保页面完全加载
+        setTimeout(() => {
+            createFilterUI(); // 自动打开，恢复保存的位置
+        }, 100);
     }
 
     // 应用高亮关键词（无论是否有过滤关键词）
@@ -1590,6 +1971,11 @@ function initFilterObserver() {
         // 也立即尝试应用一次
         applyKeywordHighlight();
     }
+
+    // 应用帖子内容高亮 (延迟以确保内容加载)
+    setTimeout(() => {
+        highlightPostContent();
+    }, 500);
 }
 
 // 拖动功能实现（与主插件一致，支持 window.makeDraggable）
@@ -1882,14 +2268,17 @@ function applyKeywordHighlight() {
 }
 
 function applyKeywordHighlightImmediate() {
+    let highlightedCount = 0;
     // 分离两类关键词：高亮关键词 与 显示关键词（用于过滤）
     const highlightKeywords = (getHighlightKeywords() || []).map(k => k && k.trim()).filter(Boolean);
     const displayKeywords = (getKeywords() || []).map(k => k && k.trim()).filter(Boolean);
-    const highlightAuthorEnabled = getHighlightAuthorOption();
+    const highlightTitleMode = getHighlightTitleMode();
 
-    // 当两类关键词均为空且未开启作者高亮时，清除所有高亮
-    if (highlightKeywords.length === 0 && displayKeywords.length === 0 && !highlightAuthorEnabled) {
+    // 当两类关键词均为空时，清除所有高亮
+    if (highlightKeywords.length === 0 && displayKeywords.length === 0) {
         clearKeywordHighlight();
+        currentHighlightedCount = 0;
+        updateStatsUI();
         return;
     }
 
@@ -1935,11 +2324,14 @@ function applyKeywordHighlightImmediate() {
 
     // 使用更高效的批量处理
     const processItem = (item) => {
+        let isItemHighlighted = false;
         // 先清除该项目的现有高亮
         clearItemHighlight(item);
 
         // 处理标题高亮（显示关键词使用显示颜色；高亮关键词使用高亮颜色）
-        if (normalizedHighlightKeywords.length > 0 || normalizedDisplayKeywords.length > 0) {
+        // 仅在模式为 'all' 或 'title' 时执行
+        if ((highlightTitleMode === 'all' || highlightTitleMode === 'title') &&
+            (normalizedHighlightKeywords.length > 0 || normalizedDisplayKeywords.length > 0)) {
             // 尝试多种方式获取帖子标题
             let titleEl = item.querySelector('.post-title a');
             let title = titleEl ? titleEl.textContent.trim() : '';
@@ -1981,6 +2373,7 @@ function applyKeywordHighlightImmediate() {
                 ).map(item => item.original);
 
                 if (matchedDisplay.length > 0 || matchedHighlight.length > 0) {
+                    if (matchedHighlight.length > 0) isItemHighlighted = true;
                     const groups = [];
                     if (matchedDisplay.length > 0) {
                         groups.push({ keywords: matchedDisplay, color: getDisplayHighlightColor() });
@@ -1995,7 +2388,8 @@ function applyKeywordHighlightImmediate() {
         }
 
         // 处理作者高亮（仅使用“高亮关键词”组，不使用显示关键词）
-        if (highlightAuthorEnabled && normalizedHighlightKeywords.length > 0) {
+        // 仅在模式为 'all' 或 'author' 时执行
+        if ((highlightTitleMode === 'all' || highlightTitleMode === 'author') && normalizedHighlightKeywords.length > 0) {
             // 尝试多种方式获取作者元素
             let authorEl = item.querySelector('.post-author a');
             let author = authorEl ? authorEl.textContent.trim() : '';
@@ -2029,10 +2423,17 @@ function applyKeywordHighlightImmediate() {
                 ).map(item => item.original);
 
                 if (matchedHighlight.length > 0) {
+                    isItemHighlighted = true;
                     // 仅对作者应用高亮关键词颜色
                     highlightTitleKeywordsMulti(authorEl, author, [{ keywords: matchedHighlight, color: getHighlightColor() }]);
                 }
             }
+        }
+        if (isItemHighlighted && item.style.display !== 'none') {
+            highlightedCount++;
+        } else if (isShowingOnlyHighlighted && !isItemHighlighted) {
+            // 如果是“仅显示高亮”模式，且该项目未高亮，则隐藏
+            item.style.display = 'none';
         }
     };
 
@@ -2052,6 +2453,9 @@ function applyKeywordHighlightImmediate() {
         if (currentIndex < postItems.length) {
             // 使用requestAnimationFrame确保UI响应
             requestAnimationFrame(processBatch);
+        } else {
+            currentHighlightedCount = highlightedCount;
+            updateStatsUI();
         }
     };
 
@@ -2381,6 +2785,363 @@ function testTraditionalChineseConversion() {
     console.log('\n使用方法: NodeSeekFilter.testTraditionalChineseConversion()');
 }
 
+// ========== 帖子内容高亮功能 ==========
+
+// 保存帖子高亮关键词列表到 localStorage
+function saveHighlightPostKeywords(keywords) {
+    localStorage.setItem('ns-filter-highlight-post-keywords', JSON.stringify(keywords));
+}
+
+// 从 localStorage 获取帖子高亮关键词列表
+function getHighlightPostKeywords() {
+    const saved = localStorage.getItem('ns-filter-highlight-post-keywords');
+    return saved ? JSON.parse(saved) : [];
+}
+
+// 保存高亮模式
+function saveHighlightMode(mode) {
+    localStorage.setItem('ns-filter-highlight-mode', mode);
+}
+
+// 获取高亮模式 (all, username, content)
+function getHighlightMode() {
+    return localStorage.getItem('ns-filter-highlight-mode') || 'all';
+}
+
+// 保存标题高亮模式
+function saveHighlightTitleMode(mode) {
+    localStorage.setItem('ns-filter-highlight-title-mode', mode);
+}
+
+// 获取标题高亮模式 (all, title, author)
+function getHighlightTitleMode() {
+    return localStorage.getItem('ns-filter-highlight-title-mode') || 'all';
+}
+
+// 添加帖子高亮关键词
+function addHighlightPostKeyword(keyword, color) {
+    if (!keyword || !keyword.trim()) return false;
+
+    const keywords = getHighlightPostKeywords();
+    const normalizedKeyword = keyword.trim();
+
+    // 检查长度限制
+    if (normalizedKeyword.length > 12) {
+        return 'too_long';
+    }
+
+    // 检查是否已存在
+    const existsIndex = keywords.findIndex(item =>
+        normalizeText(item.keyword) === normalizeText(normalizedKeyword)
+    );
+
+    if (existsIndex >= 0) {
+        // 更新颜色
+        keywords[existsIndex].color = color;
+    } else {
+        // 新增
+        keywords.unshift({ keyword: normalizedKeyword, color: color });
+    }
+
+    saveHighlightPostKeywords(keywords);
+    return true;
+}
+
+// 删除帖子高亮关键词
+function removeHighlightPostKeyword(keyword) {
+    const keywords = getHighlightPostKeywords();
+    const filtered = keywords.filter(k => k.keyword !== keyword);
+    saveHighlightPostKeywords(filtered);
+
+    // 立即更新高亮和统计
+    highlightPostContent();
+
+    return filtered;
+}
+
+// 统计数据存储
+let highlightStats = [];
+
+// 清除帖子内容高亮
+function clearHighlightPostContent() {
+    highlightStats = []; // 清空统计数据
+    const highlights = document.querySelectorAll('span.ns-post-highlight');
+    highlights.forEach(span => {
+        const parent = span.parentNode;
+        if (parent) {
+            const textNode = document.createTextNode(span.textContent);
+            parent.replaceChild(textNode, span);
+            parent.normalize(); // 合并相邻文本节点
+        }
+    });
+}
+
+// 应用帖子内容高亮
+function highlightPostContent() {
+    // 仅在包含 'post' 的网址（帖子详情页）生效
+    if (!window.location.href.includes('post')) {
+        return;
+    }
+
+    // 先清除旧的高亮，确保状态最新（特别是删除或修改颜色时）
+    clearHighlightPostContent();
+
+    const keywords = getHighlightPostKeywords();
+    if (keywords.length === 0) {
+        renderHighlightStatsToContainer(); // 即使没有关键词也要刷新统计显示（清空）
+        return;
+    }
+
+    // 获取所有帖子内容容器
+    const postContents = document.querySelectorAll('.post-content');
+    const authorNames = document.querySelectorAll('.author-name');
+
+    if (postContents.length === 0 && authorNames.length === 0) return;
+
+    // 获取当前高亮模式
+    const highlightMode = getHighlightMode();
+
+    keywords.forEach(item => {
+        const { keyword, color } = item;
+        if (!keyword) return;
+
+        // 创建正则，注意转义特殊字符
+        const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`(${escapedKeyword})`, 'gi');
+
+        // 定义通用高亮函数
+        const processHighlight = (elements, getFloorNum) => {
+            elements.forEach(el => {
+                let floorNum = getFloorNum(el);
+
+                // 使用 TreeWalker 遍历文本节点
+                const walker = document.createTreeWalker(
+                    el,
+                    NodeFilter.SHOW_TEXT,
+                    {
+                        acceptNode: function (node) {
+                            if (!node.parentNode) return NodeFilter.FILTER_REJECT;
+                            if (node.parentNode.classList && node.parentNode.classList.contains('ns-post-highlight')) {
+                                return NodeFilter.FILTER_REJECT;
+                            }
+                            const parentTag = node.parentNode.tagName;
+                            if (['SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT', 'SELECT', 'OPTION', 'BUTTON', 'NOSCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'CODE', 'PRE'].includes(parentTag)) {
+                                return NodeFilter.FILTER_REJECT;
+                            }
+                            if (node.parentNode.isContentEditable) {
+                                return NodeFilter.FILTER_REJECT;
+                            }
+                            return NodeFilter.FILTER_ACCEPT;
+                        }
+                    },
+                    false
+                );
+
+                const nodesToHighlight = [];
+                while (walker.nextNode()) {
+                    if (regex.test(walker.currentNode.nodeValue)) {
+                        nodesToHighlight.push(walker.currentNode);
+                    }
+                }
+
+                nodesToHighlight.forEach(node => {
+                    try {
+                        const fragment = document.createDocumentFragment();
+                        const parts = node.nodeValue.split(regex);
+
+                        let hasMatch = false;
+                        parts.forEach(part => {
+                            if (part.toLowerCase() === keyword.toLowerCase()) {
+                                hasMatch = true;
+                                const span = document.createElement('span');
+                                span.className = 'ns-post-highlight';
+                                span.style.backgroundColor = color;
+                                span.style.color = '#333';
+                                span.style.borderRadius = '2px';
+                                span.style.padding = '0';
+                                span.style.margin = '0';
+                                span.style.boxShadow = `0 0 0 1px ${color}`;
+                                span.style.font = 'inherit';
+                                span.style.verticalAlign = 'baseline';
+                                span.textContent = part;
+                                fragment.appendChild(span);
+                            } else {
+                                fragment.appendChild(document.createTextNode(part));
+                            }
+                        });
+
+                        if (hasMatch && node.parentNode) {
+                            node.parentNode.replaceChild(fragment, node);
+
+                            // 记录统计
+                            if (floorNum >= 0) {
+                                const existing = highlightStats.find(s => s.floor === floorNum && s.keyword === keyword);
+                                if (!existing) {
+                                    highlightStats.push({ floor: floorNum, keyword: keyword });
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error('高亮替换出错:', e);
+                    }
+                });
+            });
+        };
+
+        // 根据模式处理不同的元素
+        if (highlightMode === 'all' || highlightMode === 'content') {
+            // 处理帖子内容
+            processHighlight(postContents, (el) => {
+                const metaInfo = el.previousElementSibling;
+                if (metaInfo && metaInfo.classList.contains('nsk-content-meta-info')) {
+                    const floorLink = metaInfo.querySelector('.floor-link');
+                    if (floorLink) {
+                        const floorText = floorLink.textContent.trim();
+                        const num = parseInt(floorText.replace('#', ''), 10);
+                        if (!isNaN(num)) return num;
+                    }
+                }
+                return -1;
+            });
+        }
+
+        if (highlightMode === 'all' || highlightMode === 'username') {
+            // 处理用户名
+            processHighlight(authorNames, (el) => {
+                const metaInfo = el.closest('.nsk-content-meta-info');
+                if (metaInfo) {
+                    const floorLink = metaInfo.querySelector('.floor-link');
+                    if (floorLink) {
+                        const floorText = floorLink.textContent.trim();
+                        const num = parseInt(floorText.replace('#', ''), 10);
+                        if (!isNaN(num)) return num;
+                    }
+                }
+                return -1;
+            });
+        }
+    });
+
+    // 渲染统计数据（如果容器存在）
+    renderHighlightStatsToContainer();
+}
+
+// 获取统计数据
+function getHighlightStats() {
+    return highlightStats.sort((a, b) => a.floor - b.floor);
+}
+
+// 滚动到指定楼层
+function scrollToFloor(targetFloor) {
+    const floorLinks = document.querySelectorAll('.floor-link');
+    let found = false;
+    for (const link of floorLinks) {
+        const text = link.textContent.trim();
+        const floor = parseInt(text.replace('#', ''), 10);
+        if (floor === targetFloor) {
+            // 滚动到可视区域
+            link.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            // 添加临时高亮闪烁效果提示用户
+            const computedStyle = window.getComputedStyle(link);
+            const originalColor = computedStyle.color;
+            const originalTransform = link.style.transform;
+            const originalTransition = link.style.transition;
+            const originalDisplay = link.style.display;
+
+            // 确保 transform 生效 (inline 元素可能不支持 transform)
+            if (computedStyle.display === 'inline') {
+                link.style.display = 'inline-block';
+            }
+
+            link.style.transition = 'color 0.2s, transform 0.2s';
+
+            let isHighlighted = true;
+            // 初始高亮
+            link.style.color = '#FF0000';
+            link.style.transform = 'scale(1.2)';
+
+            const intervalId = setInterval(() => {
+                isHighlighted = !isHighlighted;
+                if (isHighlighted) {
+                    link.style.color = '#FF0000';
+                    link.style.transform = 'scale(1.2)';
+                } else {
+                    link.style.color = originalColor;
+                    link.style.transform = originalTransform || 'scale(1)';
+                }
+            }, 300); // 300ms 切换一次状态
+
+            setTimeout(() => {
+                clearInterval(intervalId);
+                // 恢复原始状态 - 移除 inline style 让 CSS 规则生效
+                link.style.removeProperty('color');
+                link.style.removeProperty('transform');
+                link.style.removeProperty('transition');
+                if (originalDisplay) {
+                    link.style.display = originalDisplay;
+                } else {
+                    link.style.removeProperty('display');
+                }
+            }, 4000);
+
+            found = true;
+            break;
+        }
+    }
+
+    if (!found && window.addLog) {
+        window.addLog(`未在当前页找到 #${targetFloor} 楼，可能在其他分页`);
+    }
+}
+
+// 渲染高亮统计到指定容器
+function renderHighlightStatsToContainer() {
+    const container = document.getElementById('ns-highlight-stats-container');
+    if (!container) return;
+
+    const stats = getHighlightStats();
+    container.innerHTML = ''; // 清空容器
+
+    if (stats.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:5px;color:#999;">无高亮记录</div>';
+        return;
+    }
+
+    const list = document.createElement('ul');
+    list.style.cssText = 'list-style:none;padding:0;margin:0;max-height:200px;overflow-y:auto;';
+
+    stats.forEach(item => {
+        const li = document.createElement('li');
+        li.style.cssText = 'padding:4px 0;border-bottom:1px dashed #eee;display:flex;justify-content:flex-start;align-items:flex-start;font-size:12px;';
+
+        // 创建楼层链接（可点击跳转）
+        const floorSpan = document.createElement('span');
+        floorSpan.style.cssText = 'color:#2196F3;flex-shrink:0;margin-right:2px;cursor:pointer;text-decoration:underline;';
+        floorSpan.textContent = `#${item.floor}`;
+        floorSpan.title = '点击跳转到该楼层';
+        floorSpan.onclick = function () {
+            scrollToFloor(item.floor);
+        };
+
+        const keywordSpan = document.createElement('span');
+        keywordSpan.style.cssText = 'font-weight:bold;color:#2563eb;background:#eff6ff;padding:1px 4px;border-radius:4px;word-break:break-all;flex:1;white-space:normal;min-width:0;width:0;';
+        keywordSpan.textContent = item.keyword;
+
+        li.appendChild(floorSpan);
+        li.appendChild(keywordSpan);
+
+        list.appendChild(li);
+    });
+
+    container.appendChild(list);
+
+    const countInfo = document.createElement('div');
+    countInfo.style.cssText = 'margin-top:5px;text-align:right;color:#999;font-size:11px;border-top:1px solid #eee;padding-top:2px;';
+    countInfo.textContent = `共 ${stats.length} 条`;
+    container.appendChild(countInfo);
+}
+
 // 导出
 window.NodeSeekFilter = {
     filterPosts,
@@ -2392,6 +3153,14 @@ window.NodeSeekFilter = {
     testConversion,
     normalizeText,
     debugPageStructure,
+
+    // 帖子内容高亮
+    addHighlightPostKeyword,
+    removeHighlightPostKeyword,
+    getHighlightPostKeywords,
+    highlightPostContent,
+    clearHighlightPostContent,
+
     testLocalStorage,
     testHighlightMatching, // 高亮匹配测试函数
     testTraditionalChineseConversion, // 繁体字库测试函数
@@ -2422,5 +3191,9 @@ window.NodeSeekFilter = {
     isMobileDevice,
     // 简繁转换功能
     convertSimplifiedToTraditional,
-    convertTraditionalToSimplified
+    convertTraditionalToSimplified,
+    // 统计功能
+    updateStatsUI,
+    getHighlightStats,
+    renderHighlightStatsToContainer
 };
