@@ -1577,16 +1577,18 @@
                 const customKeywords = localStorage.getItem('ns-filter-custom-keywords');
                 const displayKeywords = localStorage.getItem('ns-filter-keywords');
                 const highlightKeywords = localStorage.getItem('ns-filter-highlight-keywords');
+                const highlightPostKeywords = localStorage.getItem('ns-filter-highlight-post-keywords');
                 const highlightAuthorEnabled = localStorage.getItem('ns-filter-highlight-author-enabled');
                 const highlightColor = localStorage.getItem('ns-filter-highlight-color');
                 const dialogPosition = localStorage.getItem('ns-filter-dialog-position');
                 const whitelistUsers = localStorage.getItem('ns-filter-whitelist-users');
 
-                if (customKeywords || displayKeywords || highlightKeywords || highlightAuthorEnabled || highlightColor || dialogPosition || whitelistUsers) {
+                if (customKeywords || displayKeywords || highlightKeywords || highlightPostKeywords || highlightAuthorEnabled || highlightColor || dialogPosition || whitelistUsers) {
                     filterData = {
                         customKeywords: customKeywords ? JSON.parse(customKeywords) : [],
                         displayKeywords: displayKeywords ? JSON.parse(displayKeywords) : [],
                         highlightKeywords: highlightKeywords ? JSON.parse(highlightKeywords) : [],
+                        highlightPostKeywords: highlightPostKeywords ? JSON.parse(highlightPostKeywords) : [],
                         highlightAuthorEnabled: highlightAuthorEnabled ? JSON.parse(highlightAuthorEnabled) : false,
                         highlightColor: highlightColor || '#ffeb3b',
                         dialogPosition: dialogPosition ? JSON.parse(dialogPosition) : null,
@@ -1893,6 +1895,11 @@
                             // 导入高亮关键词
                             if (json.filterData.highlightKeywords && Array.isArray(json.filterData.highlightKeywords)) {
                                 localStorage.setItem('ns-filter-highlight-keywords', JSON.stringify(json.filterData.highlightKeywords));
+                            }
+
+                            // 导入帖子内容高亮关键词
+                            if (json.filterData.highlightPostKeywords && Array.isArray(json.filterData.highlightPostKeywords)) {
+                                localStorage.setItem('ns-filter-highlight-post-keywords', JSON.stringify(json.filterData.highlightPostKeywords));
                             }
 
                             // 导入作者高亮选项
