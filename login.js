@@ -416,6 +416,12 @@
                         filterData.highlightKeywords = JSON.parse(highlightKeywords);
                     }
 
+                    // 帖子内容高亮关键词
+                    const highlightPostKeywords = localStorage.getItem('ns-filter-highlight-post-keywords');
+                    if (highlightPostKeywords) {
+                        filterData.highlightPostKeywords = JSON.parse(highlightPostKeywords);
+                    }
+
                     // 高亮作者选项
                     const highlightAuthorEnabled = localStorage.getItem('ns-filter-highlight-author-enabled');
                     if (highlightAuthorEnabled) {
@@ -747,6 +753,13 @@
                             highlightImportCount = config.filterData.highlightKeywords.length;
                         }
 
+                        // 导入帖子内容高亮关键词
+                        let highlightPostImportCount = 0;
+                        if (config.filterData.highlightPostKeywords && Array.isArray(config.filterData.highlightPostKeywords)) {
+                            localStorage.setItem('ns-filter-highlight-post-keywords', JSON.stringify(config.filterData.highlightPostKeywords));
+                            highlightPostImportCount = config.filterData.highlightPostKeywords.length;
+                        }
+
                         // 导入高亮作者选项
                         if (config.filterData.highlightAuthorEnabled !== undefined) {
                             localStorage.setItem('ns-filter-highlight-author-enabled', JSON.stringify(config.filterData.highlightAuthorEnabled));
@@ -769,15 +782,23 @@
                             whitelistUserCount = config.filterData.whitelistUsers.length;
                         }
 
-                        if (filterImportCount > 0 || highlightImportCount > 0 || whitelistUserCount > 0) {
+                        if (filterImportCount > 0 || highlightImportCount > 0 || highlightPostImportCount > 0 || whitelistUserCount > 0) {
                             const parts = [];
                             if (filterImportCount > 0) parts.push(`${filterImportCount}个屏蔽词`);
                             if (highlightImportCount > 0) parts.push(`${highlightImportCount}个高亮词`);
+                            if (highlightPostImportCount > 0) parts.push(`${highlightPostImportCount}个帖内高亮词`);
                             if (whitelistUserCount > 0) parts.push(`${whitelistUserCount}个不屏蔽用户`);
                             applied.push(`关键词过滤(${parts.join('、')})`);
                         } else {
                             applied.push("关键词过滤");
                         }
+
+                        // 重新应用帖子内容高亮（仅在帖子详情页有效）
+                        try {
+                            if (window.NodeSeekFilter && typeof window.NodeSeekFilter.highlightPostContent === 'function') {
+                                window.NodeSeekFilter.highlightPostContent();
+                            }
+                        } catch (e) { }
                     } catch (error) {
                         console.error('应用关键词过滤数据失败:', error);
                         applied.push("关键词过滤(失败)");
