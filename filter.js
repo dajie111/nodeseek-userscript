@@ -3104,7 +3104,7 @@ function renderHighlightStatsToContainer() {
     container.innerHTML = ''; // 清空容器
 
     if (stats.length === 0) {
-        container.innerHTML = '<div style="text-align:center;padding:5px;color:#999;">无高亮记录</div>';
+        container.innerHTML = '<div style="text-align:center;padding:5px;font-size:12px;color:#999;">无高亮记录</div>';
         return;
     }
 
