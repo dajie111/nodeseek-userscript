@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NodeSeek 综合插件
 // @namespace    http://tampermonkey.net/
-// @version      2025.11.14
+// @version      2025.12.03
 // @description  NodeSeek 论坛黑名单，拉黑后红色高亮并可备注，增加域名检测控制按钮显隐，支持折叠功能，显示用户详细信息，快捷回复功能
 // @author       YourName
 // @match        https://www.nodeseek.com/*
