@@ -3096,6 +3096,88 @@ function scrollToFloor(targetFloor) {
     }
 }
 
+function scrollToHighlight(targetFloor, keyword) {
+    // Initialize indices cache if not exists
+    if (!scrollToHighlight.indices) {
+        scrollToHighlight.indices = {};
+    }
+
+    const spans = document.querySelectorAll('span.ns-post-highlight');
+    const matches = [];
+    const normalize = typeof normalizeText === 'function' ? normalizeText : (x) => (x || '').toLowerCase();
+    const normalizedKeyword = normalize(keyword);
+
+    for (const span of spans) {
+        if (normalize(span.textContent) !== normalizedKeyword) continue;
+        let floor = -1;
+        const contentEl = span.closest('.post-content');
+        if (contentEl) {
+            const metaInfo = contentEl.previousElementSibling;
+            if (metaInfo && metaInfo.classList.contains('nsk-content-meta-info')) {
+                const floorLink = metaInfo.querySelector('.floor-link');
+                if (floorLink) {
+                    const num = parseInt(floorLink.textContent.trim().replace('#', ''), 10);
+                    if (!isNaN(num)) floor = num;
+                }
+            }
+        } else {
+            const authorEl = span.closest('.author-name');
+            if (authorEl) {
+                const metaInfo = authorEl.closest('.nsk-content-meta-info');
+                if (metaInfo) {
+                    const floorLink = metaInfo.querySelector('.floor-link');
+                    if (floorLink) {
+                        const num = parseInt(floorLink.textContent.trim().replace('#', ''), 10);
+                        if (!isNaN(num)) floor = num;
+                    }
+                }
+            }
+        }
+        if (floor === targetFloor) {
+            matches.push(span);
+        }
+    }
+
+    if (matches.length === 0) {
+        if (window.addLog) window.addLog(`未定位到 #${targetFloor} 的“${keyword}”，可能不在当前分页`);
+        return;
+    }
+
+    const key = `${targetFloor}_${keyword}`;
+    let currentIndex = scrollToHighlight.indices[key];
+
+    // Calculate next index
+    if (typeof currentIndex !== 'number') {
+        currentIndex = 0;
+    } else {
+        currentIndex = (currentIndex + 1) % matches.length;
+    }
+
+    // Update stored index
+    scrollToHighlight.indices[key] = currentIndex;
+
+    const target = matches[currentIndex];
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    if (matches.length > 1 && window.addLog) {
+         window.addLog(`定位到 #${targetFloor} “${keyword}” (第 ${currentIndex + 1}/${matches.length} 处)`);
+    }
+
+    // 清除可能存在的旧动画状态（如果用户快速点击切换）
+    if (target.dataset.animating === 'true') {
+        const oldId = target.dataset.animTimer;
+        if (oldId) clearInterval(parseInt(oldId));
+        delete target.dataset.animating;
+        delete target.dataset.animTimer;
+        // 移除临时样式
+        target.style.removeProperty('transform');
+        target.style.removeProperty('transition');
+        target.style.removeProperty('display');
+        target.style.removeProperty('position');
+        target.style.removeProperty('zIndex');
+    }
+}
+
 // 渲染高亮统计到指定容器
 function renderHighlightStatsToContainer() {
     const container = document.getElementById('ns-highlight-stats-container');
@@ -3120,14 +3202,19 @@ function renderHighlightStatsToContainer() {
         const floorSpan = document.createElement('span');
         floorSpan.style.cssText = 'color:#2196F3;flex-shrink:0;margin-right:2px;cursor:pointer;text-decoration:underline;';
         floorSpan.textContent = `#${item.floor}`;
-        floorSpan.title = '点击跳转到该楼层';
+        floorSpan.title = '点击定位到该楼层的高亮词';
         floorSpan.onclick = function () {
-            scrollToFloor(item.floor);
+            scrollToHighlight(item.floor, item.keyword);
         };
 
         const keywordSpan = document.createElement('span');
         keywordSpan.style.cssText = 'font-weight:bold;color:#2563eb;background:#eff6ff;padding:1px 4px;border-radius:4px;word-break:break-all;flex:1;white-space:normal;min-width:0;width:0;';
         keywordSpan.textContent = item.keyword;
+        keywordSpan.style.cursor = 'pointer';
+        keywordSpan.title = '点击定位到高亮词';
+        keywordSpan.onclick = function () {
+            scrollToHighlight(item.floor, item.keyword);
+        };
 
         li.appendChild(floorSpan);
         li.appendChild(keywordSpan);
@@ -3196,5 +3283,6 @@ window.NodeSeekFilter = {
     // 统计功能
     updateStatsUI,
     getHighlightStats,
-    renderHighlightStatsToContainer
+    renderHighlightStatsToContainer,
+    scrollToHighlight
 };
