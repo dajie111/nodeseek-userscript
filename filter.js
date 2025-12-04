@@ -2925,7 +2925,7 @@ function highlightPostContent() {
                                 return NodeFilter.FILTER_REJECT;
                             }
                             const parentTag = node.parentNode.tagName;
-                            if (['SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT', 'SELECT', 'OPTION', 'BUTTON', 'NOSCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'CODE', 'PRE'].includes(parentTag)) {
+                            if (['SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT', 'SELECT', 'OPTION', 'BUTTON', 'NOSCRIPT', 'IFRAME', 'OBJECT', 'EMBED'].includes(parentTag)) {
                                 return NodeFilter.FILTER_REJECT;
                             }
                             if (node.parentNode.isContentEditable) {
@@ -2939,6 +2939,7 @@ function highlightPostContent() {
 
                 const nodesToHighlight = [];
                 while (walker.nextNode()) {
+                    try { regex.lastIndex = 0; } catch (e) {}
                     if (regex.test(walker.currentNode.nodeValue)) {
                         nodesToHighlight.push(walker.currentNode);
                     }
