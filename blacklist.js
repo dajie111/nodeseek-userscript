@@ -289,7 +289,7 @@
         dialog.style.padding = '18px 20px 12px 20px';
         // 移除固定minWidth设置，在PC设备上保留
         if (window.innerWidth > 767) {
-            dialog.style.minWidth = '490px';  // 只在PC设备上设置
+            dialog.style.minWidth = '435px';  // 只在PC设备上设置
         }
         dialog.style.maxHeight = '60vh';
         dialog.style.overflowY = 'auto';
@@ -367,7 +367,7 @@
         table.style.borderCollapse = 'collapse';
         // 设置所有表格单元格垂直对齐方式为底部对齐
         table.style.verticalAlign = 'bottom';
-        table.innerHTML = '<thead><tr><th style="text-align:left;font-size:13px;vertical-align:bottom;">用户名</th><th style="text-align:left;font-size:13px;padding-left:5px;min-width:180px;vertical-align:bottom;">备注</th><th style="text-align:left;font-size:13px;padding-left:8px;vertical-align:bottom;">拉黑时间</th><th style="text-align:left;font-size:13px;padding-left:5px;vertical-align:bottom;">页面</th><th style="vertical-align:bottom;"></th></tr></thead>';
+        table.innerHTML = '<thead><tr><th style="text-align:left;font-size:13px;vertical-align:bottom;">用户名</th><th style="text-align:left;font-size:13px;padding-left:5px;min-width:135px;vertical-align:bottom;">备注</th><th style="text-align:left;font-size:13px;padding-left:0;position:relative;left:-2px;vertical-align:bottom;">拉黑时间</th><th style="text-align:left;font-size:13px;padding-left:5px;vertical-align:bottom;">页面</th><th style="vertical-align:bottom;"></th></tr></thead>';
         const tbody = document.createElement('tbody');
         // 使用排序后的数组遍历黑名单
         entriesList.forEach(entry => {
@@ -453,8 +453,8 @@
                 // PC端显示方式 - 增加备注显示空间，即使为空也保持固定宽度
                 tdRemark.textContent = info.remark || '　';  // 使用全角空格保持宽度
                 tdRemark.style.fontSize = '12px';
-                tdRemark.style.minWidth = '180px';  // 最小宽度确保空白时也占位
-                tdRemark.style.maxWidth = '180px';  // 最大宽度限制
+                tdRemark.style.minWidth = '135px';  // 最小宽度确保空白时也占位
+                tdRemark.style.maxWidth = '135px';  // 最大宽度限制
                 tdRemark.style.overflow = 'hidden';
                 tdRemark.style.textOverflow = 'ellipsis';
                 tdRemark.style.whiteSpace = 'nowrap';
@@ -598,7 +598,9 @@
             tdTime.style.fontSize = '11px';
             tdTime.style.whiteSpace = 'nowrap'; // 确保时间不换行
             tdTime.style.textAlign = 'left'; // 左对齐，与表头对齐
-            tdTime.style.paddingLeft = '8px'; // 减少左边距
+            tdTime.style.paddingLeft = '0'; // 去除左边距
+            tdTime.style.position = 'relative';
+            tdTime.style.left = '-2px';
             tr.appendChild(tdTime);
             // 拉黑页面
             const tdUrl = document.createElement('td');
