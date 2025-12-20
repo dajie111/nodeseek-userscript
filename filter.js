@@ -287,6 +287,14 @@ function updateStatsUI() {
     const sorter = document.querySelector('div.sorter');
     if (!sorter) return;
 
+    const container = sorter.parentElement;
+    if (!container) return;
+
+    const containerComputedStyle = window.getComputedStyle(container);
+    if (containerComputedStyle.position === 'static') {
+        container.style.position = 'relative';
+    }
+
     // 移除可能存在的旧样式注入（如果用户之前加载过旧版本）
     const oldStyle = document.getElementById('ns-reset-sorter-bg');
     if (oldStyle) oldStyle.remove();
@@ -296,8 +304,7 @@ function updateStatsUI() {
         statsSpan = document.createElement('span');
         statsSpan.id = 'ns-filter-stats';
         statsSpan.style.marginLeft = '0';
-        statsSpan.style.position = 'relative';
-        statsSpan.style.left = '-135px';
+        statsSpan.style.position = 'absolute';
         statsSpan.style.whiteSpace = 'nowrap';
         statsSpan.style.zIndex = '1';
         statsSpan.style.fontSize = '13px';
@@ -313,24 +320,41 @@ function updateStatsUI() {
         statsSpan.style.gap = '0px';
         statsSpan.style.fontWeight = '500';
         statsSpan.style.verticalAlign = 'middle';
-
-        // 将统计元素插入到 sorter 后面，而不是里面，避免影响 sorter 的样式
-        if (sorter.parentNode) {
-            sorter.parentNode.insertBefore(statsSpan, sorter.nextSibling);
+        container.appendChild(statsSpan);
+    } else {
+        statsSpan.style.marginLeft = '0';
+        statsSpan.style.position = 'absolute';
+        if (statsSpan.parentNode !== container) {
+            container.appendChild(statsSpan);
         }
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const sorterRect = sorter.getBoundingClientRect();
+    const isMobile = window.matchMedia && window.matchMedia('(max-width: 767px)').matches;
+    if (isMobile) {
+        statsSpan.style.left = 'auto';
+        statsSpan.style.right = '0px';
+        statsSpan.style.top = `${Math.round(sorterRect.bottom - containerRect.top + 6)}px`;
+        statsSpan.style.transform = 'none';
+    } else {
+        statsSpan.style.right = 'auto';
+        statsSpan.style.left = `${Math.round(sorterRect.right - containerRect.left + 8)}px`;
+        statsSpan.style.top = `${Math.round(sorterRect.top - containerRect.top + sorterRect.height / 2)}px`;
+        statsSpan.style.transform = 'translateY(-50%)';
     }
 
     // 动态更新容器间距，确保新样式生效
     statsSpan.style.gap = '8px';
 
     // 标签基础样式 - 采用圆角胶囊风格
-    const tagBaseStyle = 'display:inline-flex; align-items:center; padding: 4px 10px; border-radius: 12px; font-size: 12px; line-height: 1; transition: all 0.3s; box-shadow: 0 1px 2px rgba(0,0,0,0.05);';
+    const tagBaseStyle = 'display:inline-flex; align-items:center; padding: 4px 10px; border-radius: 12px; font-size: 12px; line-height: 1; transition: all 0.3s;';
     
     // 屏蔽标签样式 (柔和红)
     let blockedTagStyle = tagBaseStyle + 'background: #fff2f0; border: 1px solid #ffccc7; color: #cf1322;';
     // 如果处于“仅显示屏蔽”模式
     if (isShowingOnlyBlocked) {
-        blockedTagStyle = tagBaseStyle + 'background: #ffccc7; border: 1px solid #ff7875; color: #a8071a; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);';
+        blockedTagStyle = tagBaseStyle + 'background: #ffccc7; border: 1px solid #ff7875; color: #a8071a;';
     }
     blockedTagStyle += 'cursor: pointer;';
 
@@ -339,7 +363,7 @@ function updateStatsUI() {
     
     // 如果处于“仅显示高亮”模式，加深背景色或边框以示激活
     if (isShowingOnlyHighlighted) {
-        highlightedTagStyle = tagBaseStyle + 'background: #ffe58f; border: 1px solid #ffc53d; color: #d48806; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);';
+        highlightedTagStyle = tagBaseStyle + 'background: #ffe58f; border: 1px solid #ffc53d; color: #d48806;';
     }
     highlightedTagStyle += 'cursor: pointer;'; // 添加手型光标
 
@@ -2272,10 +2296,11 @@ function applyKeywordHighlightImmediate() {
     // 分离两类关键词：高亮关键词 与 显示关键词（用于过滤）
     const highlightKeywords = (getHighlightKeywords() || []).map(k => k && k.trim()).filter(Boolean);
     const displayKeywords = (getKeywords() || []).map(k => k && k.trim()).filter(Boolean);
+    const blacklistKeywords = (getCustomKeywords() || []).map(k => k && k.trim()).filter(Boolean);
     const highlightTitleMode = getHighlightTitleMode();
 
     // 当两类关键词均为空时，清除所有高亮
-    if (highlightKeywords.length === 0 && displayKeywords.length === 0) {
+    if (highlightKeywords.length === 0 && displayKeywords.length === 0 && !(isShowingOnlyBlocked && blacklistKeywords.length > 0)) {
         clearKeywordHighlight();
         currentHighlightedCount = 0;
         updateStatsUI();
@@ -2321,6 +2346,10 @@ function applyKeywordHighlightImmediate() {
         original: keyword,
         normalized: normalizeText(keyword)
     })).filter(item => item.normalized);
+    const normalizedBlacklistKeywords = blacklistKeywords.map(keyword => ({
+        original: keyword,
+        normalized: normalizeText(keyword)
+    })).filter(item => item.normalized);
 
     // 使用更高效的批量处理
     const processItem = (item) => {
@@ -2330,8 +2359,8 @@ function applyKeywordHighlightImmediate() {
 
         // 处理标题高亮（显示关键词使用显示颜色；高亮关键词使用高亮颜色）
         // 仅在模式为 'all' 或 'title' 时执行
-        if ((highlightTitleMode === 'all' || highlightTitleMode === 'title') &&
-            (normalizedHighlightKeywords.length > 0 || normalizedDisplayKeywords.length > 0)) {
+        if ((highlightTitleMode === 'all' || highlightTitleMode === 'title' || (isShowingOnlyBlocked && normalizedBlacklistKeywords.length > 0)) &&
+            (normalizedHighlightKeywords.length > 0 || normalizedDisplayKeywords.length > 0 || (isShowingOnlyBlocked && normalizedBlacklistKeywords.length > 0))) {
             // 尝试多种方式获取帖子标题
             let titleEl = item.querySelector('.post-title a');
             let title = titleEl ? titleEl.textContent.trim() : '';
@@ -2371,17 +2400,23 @@ function applyKeywordHighlightImmediate() {
                 const matchedHighlight = normalizedHighlightKeywords.filter(item =>
                     normalizedTitle.includes(item.normalized)
                 ).map(item => item.original);
+                const matchedBlocked = (isShowingOnlyBlocked && item.style.display !== 'none')
+                    ? normalizedBlacklistKeywords.filter(item => normalizedTitle.includes(item.normalized)).map(item => item.original)
+                    : [];
 
-                if (matchedDisplay.length > 0 || matchedHighlight.length > 0) {
+                const groups = [];
+                if (matchedDisplay.length > 0) {
+                    groups.push({ keywords: matchedDisplay, color: getDisplayHighlightColor() });
+                }
+                if (matchedHighlight.length > 0) {
+                    groups.push({ keywords: matchedHighlight, color: getHighlightColor() });
+                }
+                if (matchedBlocked.length > 0) {
+                    groups.push({ keywords: matchedBlocked, color: '#FF9800' });
+                }
+
+                if (groups.length > 0) {
                     if (matchedHighlight.length > 0) isItemHighlighted = true;
-                    const groups = [];
-                    if (matchedDisplay.length > 0) {
-                        groups.push({ keywords: matchedDisplay, color: getDisplayHighlightColor() });
-                    }
-                    if (matchedHighlight.length > 0) {
-                        groups.push({ keywords: matchedHighlight, color: getHighlightColor() });
-                    }
-                    // 统一一次性渲染，避免相互覆盖
                     highlightTitleKeywordsMulti(titleEl, title, groups);
                 }
             }
