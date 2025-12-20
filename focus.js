@@ -1370,6 +1370,7 @@
 
                 // 找到需要更新的元素
                 const titleElement = dialog.querySelector('div[style*="font-weight: bold"][style*="color: #FF5722"]');
+                const statsDiv = dialog.querySelector('#hot-topics-stats') || dialog.querySelector('div[style*="background: #f5f5f5"]');
                 const listContainer = dialog.querySelector('div[style*="max-height: 50vh"][style*="overflow-y: auto"]');
                 // 查找包含"暂无热点数据"文本的空状态div
                 const emptyDiv = Array.from(dialog.querySelectorAll('div')).find(div =>
@@ -1379,6 +1380,28 @@
             if (titleElement) {
                 titleElement.textContent = `NodeSeek热点统计`;
             }
+
+                if (statsDiv) {
+                    const historyStats = this.getHistoryStats();
+                    const formatTime = (timestamp) => {
+                        if (!timestamp) return '未知';
+                        const date = new Date(timestamp);
+                        return date.getFullYear() + '/' +
+                               String(date.getMonth() + 1).padStart(2, '0') + '/' +
+                               String(date.getDate()).padStart(2, '0') + ' ' +
+                               String(date.getHours()).padStart(2, '0') + ':' +
+                               String(date.getMinutes()).padStart(2, '0') + ':' +
+                               String(date.getSeconds()).padStart(2, '0');
+                    };
+
+                    statsDiv.innerHTML = `
+                        数据来源：服务器7天RSS数据<br>
+                        文章总数：${historyStats.totalTitles} 篇<br>
+                        热门词汇：${wordFrequency.length} 个（≥3次）<br>
+                        上次采集：${formatTime(this.lastCollectTime)}<br>
+                        <span style="color: #28a745;">点击立即采集获取数据，关闭弹窗会自动清理数据。</span>
+                    `;
+                }
 
                 // 更新词频列表
                 if (wordFrequency.length > 0) {
@@ -1690,6 +1713,7 @@
 
             // 统计信息
             const statsDiv = document.createElement('div');
+            statsDiv.id = 'hot-topics-stats';
             statsDiv.style.cssText = `
                 background: #f5f5f5;
                 padding: 10px;
