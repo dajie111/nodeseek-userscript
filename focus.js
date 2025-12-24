@@ -1395,7 +1395,7 @@
                     };
 
                     statsDiv.innerHTML = `
-                        数据来源：服务器7天RSS数据<br>
+                        数据来源：服务器7天RSS数据（不包含内板帖子）<br>
                         文章总数：${historyStats.totalTitles} 篇<br>
                         热门词汇：${wordFrequency.length} 个（≥3次）<br>
                         上次采集：${formatTime(this.lastCollectTime)}<br>
@@ -1527,6 +1527,7 @@
             // 检查弹窗是否已存在
             const existingDialog = document.getElementById('hot-topics-dialog');
             if (existingDialog) {
+                try { this.clearAllData(false); } catch (e) { }
                 existingDialog.remove();
                 return;
             }
@@ -1741,7 +1742,7 @@
                 const historyStats = this.getHistoryStats();
 
                 statsDiv.innerHTML = `
-                    数据来源：服务器7天RSS数据<br>
+                    数据来源：服务器7天RSS数据（不包含内板帖子）<br>
                     文章总数：${historyStats.totalTitles} 篇<br>
                     热门词汇：${wordFrequency.length} 个（≥3次）<br>
                     上次采集：${formatTime(this.lastCollectTime)}<br>
@@ -1987,6 +1988,7 @@
             dialog.appendChild(buttonGroup);
 
             document.body.appendChild(dialog);
+            try { this.bindDialogDisappearCleanup(dialog); } catch (e) { }
 
             // 添加拖拽功能
             if (window.makeDraggable) {
@@ -1994,6 +1996,62 @@
             }
 
 
+        },
+
+        bindDialogDisappearCleanup(dialog) {
+            if (!dialog || dialog.__nsFocusDisappearCleanupBound) return;
+            dialog.__nsFocusDisappearCleanupBound = true;
+
+            let finished = false;
+            const cleanupOnce = () => {
+                if (finished) return;
+                finished = true;
+                try {
+                    if (!this.dataCleared) this.clearAllData(false);
+                } catch (e) { }
+                try { detach(); } catch (e) { }
+            };
+
+            const onLinkNavigate = (ev) => {
+                try {
+                    const t = ev && ev.target;
+                    const a = t && t.closest ? t.closest('a[href]') : null;
+                    if (!a) return;
+                    const target = String(a.getAttribute('target') || '').toLowerCase();
+                    const openNewTab = target === '_blank' || !!(ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey)) || (typeof ev.button === 'number' && ev.button === 1);
+                    if (openNewTab) return;
+                    cleanupOnce();
+                } catch (e) { }
+            };
+
+            const onLeave = () => {
+                cleanupOnce();
+            };
+
+            const observer = new MutationObserver(() => {
+                if (!dialog.isConnected) cleanupOnce();
+            });
+            try { observer.observe(document.body, { childList: true, subtree: true }); } catch (e) { }
+
+            const intervalId = setInterval(() => {
+                try {
+                    if (!dialog.isConnected) cleanupOnce();
+                } catch (e) { }
+            }, 500);
+
+            const detach = () => {
+                try { observer.disconnect(); } catch (e) { }
+                try { clearInterval(intervalId); } catch (e) { }
+                try { dialog.removeEventListener('click', onLinkNavigate, true); } catch (e) { }
+                try { dialog.removeEventListener('auxclick', onLinkNavigate, true); } catch (e) { }
+                try { window.removeEventListener('pagehide', onLeave, true); } catch (e) { }
+                try { window.removeEventListener('beforeunload', onLeave, true); } catch (e) { }
+            };
+
+            dialog.addEventListener('click', onLinkNavigate, true);
+            dialog.addEventListener('auxclick', onLinkNavigate, true);
+            window.addEventListener('pagehide', onLeave, true);
+            window.addEventListener('beforeunload', onLeave, true);
         },
 
         // 生成最近7天的日期列表
