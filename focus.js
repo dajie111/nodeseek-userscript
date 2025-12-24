@@ -1,3478 +1,3560 @@
-// ========== 论坛热点统计 ==========
+// ========== 账号同步 ==========
 
-(function() {
+(function () {
     'use strict';
 
-    // 热点统计模块
-    const NodeSeekFocus = {
-        // 调试模式控制
-        isDebug: false,
+    // 配置
+    const CONFIG = {
+        SERVER_URL: 'https://hb.396663.xyz',
+        STORAGE_KEY: 'nodeseek_login_token',
+        USER_KEY: 'nodeseek_login_user'
+    };
 
-        // 内部日志方法
-        log(...args) {
-            // 已禁用所有日志输出
-        },
-        // RSS数据缓存
-        rssCache: null,
-        rssCacheTime: 0,
-        cacheExpireTime: 10 * 60 * 1000, // 10分钟缓存
-        dataCleared: false, // 标记数据是否被手动清理
+    // 全局变量
+    let currentUser = null;
+    let authToken = null;
 
-        // 历史数据存储
-        historyData: null,
-        historyStorageKey: 'nodeseek_rss_history',
+    // 工具函数
+    const Utils = {
+        // 显示消息
+        showMessage: function (message, type = 'info', showToast = true) {
+            // 记录日志（去除模块前缀）
+            if (typeof window.addLog === 'function') {
+                window.addLog(message);
+            } else {
+                console.log(message);
+            }
 
-        // 热词历史存储
-        hotWordsHistory: null,
-        hotWordsStorageKey: 'nodeseek_hot_words_history',
-
-        // 发帖时间分布统计存储
-        timeDistributionHistory: null,
-        timeDistributionStorageKey: 'nodeseek_time_distribution_history',
-
-        // 发帖用户统计存储
-        userStatsHistory: null,
-        userStatsStorageKey: 'nodeseek_user_stats_history',
-
-        // 自动采集定时器
-        autoCollectTimer: null,
-        // autoCollectInterval: 30 * 60 * 1000, // 自动采集已废弃
-
-        // 采集时间记录
-        lastCollectTime: 0,
-        // nextCollectTime: 0, // 已废弃
-
-        // 数据保留期限
-        dataRetentionDays: 7,
-
-        // 多窗口协调相关
-        globalStateKey: 'nodeseek_focus_global_state',
-        windowId: null,
-        isMainWindow: false,
-        heartbeatInterval: null,
-        heartbeatFrequency: 3000, // 3秒心跳
-
-        // 冷却状态管理
-        cooldownStorageKey: 'nodeseek_focus_cooldown',
-        cooldownDuration: 9000, // 9秒冷却
-
-        // 常用停止词列表（中文）
-        stopWords: new Set([
-            '的', '话说这个有人收吗', '在', '可以不转发落地直', '帖在', '是', '我', '有', '和', '就', '不', '人', '都', '一', '一个', '这IP', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有', '看', '好', '自己', '这', '但是', '那', '只', '下', '把', '还', '多', '没', '为', '又', '可', '家', '学', '只是', '过', '时间', '很多', '来', '两', '用', '她', '国', '动', '进', '成', '回', '什', '边', '作', '对', '开', '而', '已', '些', '现', '山', '民', '候', '经', '发', '工', '向', '事', '命', '给', '长', '水', '几', '义', '三', '声', '于', '高', '手', '知', '理', '眼', '志', '点', '心', '战', '二', '问', '但', '体', '方', '实', '吃', '做', '叫', '当', '住', '听', '革', '打', '呢', '真', '全', '才', '四', '已经', '从', '达', '听到', '头', '风', '今', '如果', '总', '合', '技', '化', '报', '叫', '教', '记', '或', '特', '数', '各', '结', '此', '白', '深', '近', '论', '美', '计', '等', '集', '任', '认', '千', '万', '关', '信', '听', '决', '选', '约', '话', '意', '情', '究', '入', '整', '联', '才能', '导', '争', '运', '世', '被', '加', '脑', '保', '则', '哪', '觉', '元', '请', '切', '由', '钱', '那么', '定', '每', '希', '术', '领', '位', '所', '它', '此外', '将', '感', '期', '神', '导致', '除', '年', '最', '后', '能', '主', '立', '机', '分', '门', '如何', '因为', '可以', '这个', '那个', '他', '她', '它们', '他们', '我们', '时候', '地方', '可能', '应该', '能够', '以及', '因此', '所以', '然后', '不过', '如此', '其实', '当然', '确实', '虽然', '尽管', '无论', '不管', '只要', '即使', '哪怕', '既然', '由于', '除了', '根据', '按照', '为了', '通过', '利用', '关于', '针对', '依据', '基于', 'pro', 'vps', '的码', '趁人多20', '趁人多2', '趁人多', '机器', '多20', '趁人', '月2', '了吗', '人多20', '到期', '人多2', '人多', '多2'
-        ]),
-
-        // 数字和符号正则
-        numberSymbolRegex: /^[\d\[\]()【】（）\-\+\*\/=<>≤≥！!？?。，、：；"'""''…\s]+$/,
-
-                // 初始化模块
-        init() {
-            // console.log('热点统计模块初始化完成'); // 已删除此日志输出
-
-            // 生成唯一窗口ID
-            this.windowId = 'window_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            // console.log('窗口ID:', this.windowId); // 已删除此日志输出
-
-            this.loadHistoryData();
-            this.loadHotWordsHistory();
-            this.loadTimeDistributionHistory();
-            this.loadUserStatsHistory();
-            this.initMultiWindowCoordination();
-            this.cleanOldData();
-            this.cleanOldHotWords();
-            this.cleanOldTimeDistribution();
-            this.cleanOldUserStats();
-        },
-
-        // 加载历史数据
-        loadHistoryData() {
-            try {
-                const stored = localStorage.getItem(this.historyStorageKey);
-                if (stored) {
-                    this.historyData = JSON.parse(stored);
-                    // console.log(`加载历史数据成功，共 ${this.historyData.length} 条记录`); // 已删除此日志输出
-                } else {
-                    this.historyData = [];
-                    // console.log('初始化历史数据存储'); // 已删除此日志输出
-                }
-            } catch (error) {
-                console.error('加载历史数据失败:', error);
-                this.historyData = [];
+            // 显示界面提示
+            if (showToast) {
+                this.showToast(message, type);
             }
         },
 
-        // 保存历史数据
-        saveHistoryData() {
-            try {
-                localStorage.setItem(this.historyStorageKey, JSON.stringify(this.historyData));
-                // console.log(`保存历史数据成功，共 ${this.historyData.length} 条记录`); // 已删除此日志输出
-            } catch (error) {
-                console.error('保存历史数据失败:', error);
-            }
-        },
-
-        // 加载热词历史数据
-        loadHotWordsHistory() {
-            try {
-                const stored = localStorage.getItem(this.hotWordsStorageKey);
-                if (stored) {
-                    this.hotWordsHistory = JSON.parse(stored);
-                    // console.log(`加载热词历史成功，共 ${this.hotWordsHistory.length} 天记录`); // 已删除此日志输出
-                } else {
-                    this.hotWordsHistory = [];
-                    // console.log('初始化热词历史存储'); // 已删除此日志输出
-                }
-            } catch (error) {
-                console.error('加载热词历史失败:', error);
-                this.hotWordsHistory = [];
-            }
-        },
-
-        // 保存热词历史数据
-        saveHotWordsHistory() {
-            try {
-                localStorage.setItem(this.hotWordsStorageKey, JSON.stringify(this.hotWordsHistory));
-                // console.log(`保存热词历史成功，共 ${this.hotWordsHistory.length} 天记录`); // 已删除此日志输出
-            } catch (error) {
-                console.error('保存热词历史失败:', error);
-            }
-        },
-
-        // 清理7天前的热词历史
-        cleanOldHotWords() {
-            if (!this.hotWordsHistory || this.hotWordsHistory.length === 0) return;
-
-            const cutoffTime = Date.now() - (7 * 24 * 60 * 60 * 1000);
-            const originalLength = this.hotWordsHistory.length;
-
-            this.hotWordsHistory = this.hotWordsHistory.filter(record => record.date >= cutoffTime);
-
-            if (this.hotWordsHistory.length !== originalLength) {
-                this.saveHotWordsHistory();
-                // console.log(`清理旧热词：删除 ${originalLength - this.hotWordsHistory.length} 条超过7天的记录`); // 已删除此日志输出
-            }
-        },
-
-        // 计算两个文章列表之间的重复数量（基于发帖时间+发帖人+标题相似度）
-        countDuplicateArticles(recordArticles, currentArticles) {
-            let duplicateCount = 0;
-
-            currentArticles.forEach(currentArticle => {
-                const isDuplicate = recordArticles.some(recordArticle => {
-                    return this.isArticleDuplicate(recordArticle, currentArticle);
-                });
-
-                if (isDuplicate) {
-                    duplicateCount++;
-                }
-            });
-
-            return duplicateCount;
-        },
-
-        // 判断两篇文章是否为重复（基于发帖时间+发帖人+标题相似度）
-        isArticleDuplicate(article1, article2) {
-            // 如果两篇文章都有发帖时间和发帖人，优先使用这个组合判断
-            if (article1.pubDate && article2.pubDate && article1.author && article2.author) {
-                // 时间相同（误差在5分钟内）且发帖人相同
-                const timeDiff = Math.abs(article1.pubDate - article2.pubDate);
-                const isSameTime = timeDiff < (5 * 60 * 1000); // 5分钟误差
-                const isSameAuthor = this.normalizeAuthor(article1.author) === this.normalizeAuthor(article2.author);
-
-                if (isSameTime && isSameAuthor) {
-                    // 时间和作者都匹配，检查标题相似度
-                    const titleSimilarity = this.calculateTitleSimilarity(article1.title, article2.title);
-                    // 标题相似度大于60%就认为是同一篇文章（可能标题有小修改）
-                    return titleSimilarity > 0.6;
-                }
+        // 显示临时提示框
+        showToast: function (message, type = 'info') {
+            // 移除现有的提示框
+            const existingToast = document.getElementById('nodeseek-login-toast');
+            if (existingToast) {
+                existingToast.remove();
             }
 
-            // 如果没有完整的时间和作者信息，使用GUID或链接判断
-            if (article1.guid && article2.guid && article1.guid === article2.guid) {
-                return true;
+            // 创建提示框
+            const toast = document.createElement('div');
+            toast.id = 'nodeseek-login-toast';
+            toast.textContent = message;
+
+            // 根据类型设置样式
+            let backgroundColor = '#2196F3'; // 默认蓝色
+            let textColor = '#fff';
+
+            if (type === 'error') {
+                backgroundColor = '#f44336'; // 红色
+            } else if (type === 'success') {
+                backgroundColor = '#4CAF50'; // 绿色
+            } else if (type === 'warning') {
+                backgroundColor = '#ff9800'; // 橙色
             }
 
-            if (article1.link && article2.link && article1.link === article2.link) {
-                return true;
-            }
-
-            // 最后使用标题完全匹配判断
-            const title1 = this.normalizeTitle(article1.title);
-            const title2 = this.normalizeTitle(article2.title);
-            return title1 === title2;
-        },
-
-        // 标准化作者名称（去除空格、统一大小写）
-        normalizeAuthor(author) {
-            if (!author) return '';
-            return author.trim().toLowerCase().replace(/\s+/g, ' ');
-        },
-
-        // 标准化标题（去除特殊字符、统一大小写）
-        normalizeTitle(title) {
-            if (!title) return '';
-            return title.trim().toLowerCase()
-                .replace(/[【】\[\]()（）]/g, '') // 去除括号
-                .replace(/[^\u4e00-\u9fff\w\s]/g, ' ') // 去除特殊符号，保留中文、字母、数字
-                .replace(/\s+/g, ' ') // 统一空格
-                .trim();
-        },
-
-        // 计算两个标题的相似度（使用简单的词汇重叠度）
-        calculateTitleSimilarity(title1, title2) {
-            if (!title1 || !title2) return 0;
-
-            const normalized1 = this.normalizeTitle(title1);
-            const normalized2 = this.normalizeTitle(title2);
-
-            // 如果标准化后完全相同，返回100%相似度
-            if (normalized1 === normalized2) return 1.0;
-
-            // 分词并计算词汇重叠度
-            const words1 = this.segmentChinese(normalized1);
-            const words2 = this.segmentChinese(normalized2);
-
-            if (words1.length === 0 && words2.length === 0) return 1.0;
-            if (words1.length === 0 || words2.length === 0) return 0;
-
-            // 计算词汇交集
-            const set1 = new Set(words1.map(w => w.toLowerCase()));
-            const set2 = new Set(words2.map(w => w.toLowerCase()));
-            const intersection = new Set([...set1].filter(x => set2.has(x)));
-
-            // 使用Jaccard相似度: |交集| / |并集|
-            const union = new Set([...set1, ...set2]);
-            const similarity = intersection.size / union.size;
-
-            return similarity;
-        },
-
-        // 清理所有数据（供手动清理和弹窗关闭时调用）
-        clearAllData(showConfirm = false) {
-            if (showConfirm && !confirm('确定要清理所有数据吗？\n这将清除：\n- 7天历史采集数据\n- 7天热词历史\n- 7天时间分布统计\n- 7天用户统计数据\n- 当前缓存数据\n此操作不可撤销。')) {
-                return false;
-            }
-
-            // 清理历史数据
-            this.historyData = [];
-            this.saveHistoryData();
-
-            // 清理热词历史
-            this.hotWordsHistory = [];
-            this.saveHotWordsHistory();
-
-            // 清理时间分布历史
-            this.timeDistributionHistory = [];
-            this.saveTimeDistributionHistory();
-
-            // 清理用户统计历史
-            this.userStatsHistory = [];
-            this.saveUserStatsHistory();
-
-            // 清理当前缓存
-            this.rssCache = null;
-            this.rssCacheTime = 0;
-            this.dataCleared = true; // 设置清理标记
-
-            this.log('已清理所有数据');
-            return true;
-        },
-
-        // 清理7天前的旧数据
-        cleanOldData() {
-            if (!this.historyData || this.historyData.length === 0) return;
-
-            const cutoffTime = Date.now() - (7 * 24 * 60 * 60 * 1000);
-            const originalLength = this.historyData.length;
-
-            this.historyData = this.historyData.filter(record => record.timestamp >= cutoffTime);
-
-            if (this.historyData.length !== originalLength) {
-                this.saveHistoryData();
-                // console.log(`清理旧数据：删除 ${originalLength - this.historyData.length} 条超过7天的记录`); // 已删除此日志输出
-            }
-        },
-
-        // 获取所有已保存的文章（用于去重）
-        getAllSavedArticles() {
-            const allArticles = [];
-
-            if (this.historyData && this.historyData.length > 0) {
-                this.historyData.forEach(record => {
-                    if (record.articles && Array.isArray(record.articles)) {
-                        // 新格式：包含完整文章信息
-                        allArticles.push(...record.articles);
-                    } else if (record.titles && Array.isArray(record.titles)) {
-                        // 旧格式：只有标题，转换为文章对象
-                        const articlesFromTitles = record.titles.map(title => ({
-                            title: title,
-                            pubDate: null,
-                            author: '',
-                            link: '',
-                            guid: '',
-                            timestamp: record.timestamp // 使用采集时间作为参考
-                        }));
-                        allArticles.push(...articlesFromTitles);
-                    }
-                });
-            }
-
-            return allArticles;
-        },
-
-        // 直接返回所有文章，不进行去重处理
-        filterNewArticles(currentArticles) {
-            // 直接返回服务器拉取的所有文章，不进行任何去重处理
-            if (this.isDebug) console.log(`直接使用服务器数据：${currentArticles.length} 篇文章`);
-            return currentArticles;
-        },
-
-        // 对当前批次文章进行内部去重
-        deduplicateCurrentBatch(articles) {
-            const seenArticles = new Map();
-            const uniqueArticles = [];
-
-            articles.forEach(article => {
-                // 基于发帖时间+发帖人+标题创建唯一标识符
-                let articleKey = '';
-                if (article.pubDate && article.author) {
-                    const dateStr = new Date(article.pubDate).toDateString();
-                    const authorKey = this.normalizeAuthor(article.author);
-                    const titleKey = this.normalizeTitle(article.title);
-                    articleKey = `${dateStr}_${authorKey}_${titleKey}`;
-                } else {
-                    // 降级方案：使用标准化标题作为标识
-                    articleKey = this.normalizeTitle(article.title);
-                }
-
-                if (articleKey && articleKey.length > 2) {
-                    if (!seenArticles.has(articleKey)) {
-                        seenArticles.set(articleKey, article);
-                        uniqueArticles.push(article);
-                    }
-                } else {
-                    // 如果无法生成有效的标识符，仍然保留文章
-                    uniqueArticles.push(article);
-                }
-            });
-
-            return uniqueArticles;
-        },
-
-        // 初始化多窗口协调
-        initMultiWindowCoordination() {
-            // 加载全局状态
-            this.loadGlobalState();
-
-            // 尝试成为主窗口
-            this.tryBecomeMainWindow();
-
-            // 监听storage变化（窗口间通信）
-            window.addEventListener('storage', (e) => {
-                if (e.key === this.globalStateKey) {
-                    this.handleGlobalStateChange();
-                }
-            });
-
-            // 监听页面卸载
-            window.addEventListener('beforeunload', () => {
-                this.onWindowUnload();
-            });
-
-            // console.log(`窗口 ${this.windowId} 初始化完成，主窗口状态: ${this.isMainWindow}`); // 已删除此日志输出
-        },
-
-        // 加载全局状态
-        loadGlobalState(silent = false) {
-            try {
-                const stored = localStorage.getItem(this.globalStateKey);
-                if (stored) {
-                    const globalState = JSON.parse(stored);
-
-                    // 恢复采集时间信息
-                    this.lastCollectTime = globalState.lastCollectTime || Date.now();
-                    // this.nextCollectTime = ... // 已移除自动采集
-
-                    if (!silent) {
-                        // console.log('加载全局状态成功'); // 已删除此日志输出
-                    }
-                } else {
-                    // 初始化全局状态
-                    this.lastCollectTime = Date.now();
-                    // this.nextCollectTime = ... // 已移除自动采集
-                    this.saveGlobalState();
-                    if (!silent) {
-                        if (this.isDebug) console.log('初始化全局状态');
-                    }
-                }
-            } catch (error) {
-                if (!silent) {
-                    console.error('加载全局状态失败:', error);
-                }
-                this.lastCollectTime = Date.now();
-                // this.nextCollectTime = ... // 已移除自动采集
-            }
-        },
-
-        // 保存全局状态
-        saveGlobalState() {
-            try {
-                const globalState = {
-                    lastCollectTime: this.lastCollectTime,
-                    // nextCollectTime: this.nextCollectTime, // 已移除自动采集
-                    mainWindowId: this.isMainWindow ? this.windowId : null,
-                    mainWindowHeartbeat: this.isMainWindow ? Date.now() : null,
-                    version: Date.now()
-                };
-                localStorage.setItem(this.globalStateKey, JSON.stringify(globalState));
-            } catch (error) {
-                console.error('保存全局状态失败:', error);
-            }
-        },
-
-        // 尝试成为主窗口
-        tryBecomeMainWindow() {
-            try {
-                const stored = localStorage.getItem(this.globalStateKey);
-                let shouldBecomeMain = false;
-
-                if (!stored) {
-                    // 没有全局状态，成为主窗口
-                    shouldBecomeMain = true;
-                } else {
-                    const globalState = JSON.parse(stored);
-                    const now = Date.now();
-
-                    // 检查主窗口心跳是否超时（10秒无心跳认为主窗口已关闭）
-                    if (!globalState.mainWindowHeartbeat ||
-                        (now - globalState.mainWindowHeartbeat) > 10000) {
-                        shouldBecomeMain = true;
-                        // console.log('检测到主窗口心跳超时，接管主窗口角色'); // 已删除此日志输出
-                    }
-                }
-
-                if (shouldBecomeMain) {
-                    this.becomeMainWindow();
-                } else {
-                    this.becomeSlaveWindow();
-                }
-            } catch (error) {
-                console.error('尝试成为主窗口失败:', error);
-                this.becomeMainWindow(); // 异常情况下成为主窗口
-            }
-        },
-
-        // 成为主窗口
-        becomeMainWindow() {
-            this.isMainWindow = true;
-            this.saveGlobalState();
-            // this.startAutoCollect(); // 移除自动采集启动
-            this.startHeartbeat();
-            // console.log(`窗口 ${this.windowId} 成为主窗口`); // 已删除此日志输出
-        },
-
-        // 成为从窗口
-        becomeSlaveWindow() {
-            this.isMainWindow = false;
-            this.stopAutoCollect();
-            this.stopHeartbeat();
-                            if (this.isDebug) console.log(`窗口 ${this.windowId} 成为从窗口`);
-        },
-
-        // 开始心跳
-        startHeartbeat() {
-            if (this.heartbeatInterval) {
-                clearInterval(this.heartbeatInterval);
-            }
-
-            this.heartbeatInterval = setInterval(() => {
-                if (this.isMainWindow) {
-                    this.saveGlobalState(); // 更新心跳时间
-                }
-            }, this.heartbeatFrequency);
-        },
-
-        // 停止心跳
-        stopHeartbeat() {
-            if (this.heartbeatInterval) {
-                clearInterval(this.heartbeatInterval);
-                this.heartbeatInterval = null;
-            }
-        },
-
-        // 处理全局状态变化
-        handleGlobalStateChange() {
-            try {
-                const stored = localStorage.getItem(this.globalStateKey);
-                if (!stored) return;
-
-                const globalState = JSON.parse(stored);
-
-                // 更新采集时间
-                if (globalState.lastCollectTime) {
-                    this.lastCollectTime = globalState.lastCollectTime;
-                }
-                // if (globalState.nextCollectTime) {
-                //    this.nextCollectTime = globalState.nextCollectTime;
-                // }
-
-                // 检查主窗口变化
-                const now = Date.now();
-                const isMainWindowActive = globalState.mainWindowId &&
-                    globalState.mainWindowHeartbeat &&
-                    (now - globalState.mainWindowHeartbeat) < 10000;
-
-                if (!isMainWindowActive && !this.isMainWindow) {
-                    // 主窗口失效且当前不是主窗口，尝试接管
-                    this.log('检测到主窗口失效，尝试接管');
-                    this.tryBecomeMainWindow();
-                } else if (isMainWindowActive && this.isMainWindow &&
-                          globalState.mainWindowId !== this.windowId) {
-                    // 有其他主窗口，退为从窗口
-                    this.log('检测到其他主窗口，退为从窗口');
-                    this.becomeSlaveWindow();
-                }
-            } catch (error) {
-                console.error('处理全局状态变化失败:', error);
-            }
-        },
-
-        // 窗口卸载处理
-        onWindowUnload() {
-            if (this.isMainWindow) {
-                // 清除主窗口标记，让其他窗口接管
-                try {
-                    const stored = localStorage.getItem(this.globalStateKey);
-                    if (stored) {
-                        const globalState = JSON.parse(stored);
-                        globalState.mainWindowId = null;
-                        globalState.mainWindowHeartbeat = null;
-                        localStorage.setItem(this.globalStateKey, JSON.stringify(globalState));
-                    }
-                } catch (error) {
-                    console.error('窗口卸载处理失败:', error);
-                }
-            }
-            this.stopHeartbeat();
-        },
-
-                // 开始自动采集 (已废弃，仅保留空函数防止报错)
-        startAutoCollect() {
-            // 自动采集功能已移除
-        },
-
-        // 停止自动采集 (已废弃，仅保留空函数防止报错)
-        stopAutoCollect() {
-            if (this.autoCollectTimer) {
-                clearInterval(this.autoCollectTimer);
-                this.autoCollectTimer = null;
-            }
-        },
-
-                // 执行手动采集
-        async performCollect() {
-            const maxRetries = 3;
-            const retryDelay = 60 * 1000; // 1分钟
-
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                try {
-                    this.log(`执行手动采集RSS数据${attempt > 1 ? `(第${attempt}次重试)` : ''}...`);
-
-                    // 1. 完全清除旧数据 (复用清理逻辑)
-                    this.clearAllData(false);
-                    
-                    // 2. 重置清理标记，准备接收新数据
-                    this.dataCleared = false;
-
-                    // 3. 更新采集时间记录
-                    const currentTime = Date.now();
-                    this.lastCollectTime = currentTime;
-                    // this.nextCollectTime = ... // 已移除自动采集下次时间
-
-                    // 保存全局状态（同步到其他窗口）
-                    this.saveGlobalState();
-
-                    const articles = await this.fetchRSSData();
-
-                    // 直接使用服务器返回的7天数据，不进行去重处理
-                    // 保存到历史数据
-                    const historyRecord = {
-                        timestamp: currentTime,
-                        articles: articles, // 直接保存服务器返回的所有文章
-                        titles: articles.map(a => a.title), // 向后兼容，保留titles字段
-                        count: articles.length,
-                        source: 'manual',
-                        totalFetched: articles.length, // 记录本次总共抓取的文章数
-                        duplicateCount: 0 // 不进行去重处理
-                    };
-
-                    this.historyData.push(historyRecord);
-                    this.saveHistoryData();
-
-                    this.log(`手动采集完成：获取服务器7天数据 ${articles.length} 篇文章（不进行去重）`);
-
-                    // 自动保存每日热词和统计（基于服务器返回的7天数据进行统计）
-                    this.saveDailyHotWords();
-                    this.saveDailyTimeDistribution();
-                    this.saveDailyUserStats();
-
-                    // 通知弹窗更新
-                    this.notifyDialogUpdate();
-
-                    // 记录到日志（仅在控制台输出，不保存到操作日志）
-                    this.log(`[${new Date(currentTime).toLocaleString()}] 热点统计手动采集：获取${articles.length}篇服务器数据（不去重）`);
-
-                    // 采集成功，退出重试循环
-                    return;
-
-                } catch (error) {
-                    // 如果是最后一次尝试，记录到操作日志
-                    if (attempt === maxRetries) {
-                        if (window.addLog) {
-                            window.addLog(`热点统计手动采集失败，已重试${maxRetries}次: ` + error.message);
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background-color: ${backgroundColor};
+                color: ${textColor};
+                padding: 12px 20px;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: 500;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                z-index: 10001;
+                max-width: 300px;
+                word-wrap: break-word;
+                opacity: 0;
+                transform: translateX(100%);
+                transition: all 0.3s ease;
+                pointer-events: auto;
+            `;
+
+            document.body.appendChild(toast);
+
+            // 显示动画
+            setTimeout(() => {
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateX(0)';
+            }, 10);
+
+            // 3秒后自动隐藏
+            setTimeout(() => {
+                if (toast && toast.parentNode) {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateX(100%)';
+                    setTimeout(() => {
+                        if (toast && toast.parentNode) {
+                            toast.remove();
                         }
-                        return;
-                    }
-
-                    // 不是最后一次尝试，等待后重试
-                    this.log(`第${attempt}次采集失败，${retryDelay / 1000}秒后重试: ${error.message}`);
-                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    }, 300);
                 }
-            }
-        },
+            }, 3000);
 
-        // 获取历史数据统计信息
-        getHistoryStats() {
-            if (!this.historyData || this.historyData.length === 0) {
-                return {
-                    totalCollections: 0,
-                    totalTitles: 0,
-                    totalArticles: 0,
-                    totalFetched: 0,
-                    totalDuplicates: 0,
-                    dateRange: null,
-                    avgTitlesPerCollection: 0
-                };
-            }
-
-            // 统计保存的新文章数量
-            const totalTitles = this.historyData.reduce((sum, record) => sum + record.count, 0);
-            const totalArticles = this.historyData.reduce((sum, record) => {
-                return sum + (record.articles ? record.articles.length : record.count);
-            }, 0);
-
-            // 统计总抓取数量和重复数量
-            const totalFetched = this.historyData.reduce((sum, record) => {
-                return sum + (record.totalFetched || record.count);
-            }, 0);
-            const totalDuplicates = this.historyData.reduce((sum, record) => {
-                return sum + (record.duplicateCount || 0);
-            }, 0);
-
-            const oldestTime = Math.min(...this.historyData.map(r => r.timestamp));
-            const newestTime = Math.max(...this.historyData.map(r => r.timestamp));
-
-            return {
-                totalCollections: this.historyData.length,
-                totalTitles: totalTitles, // 保存的新文章总数
-                totalArticles: totalArticles, // 实际文章总数（与totalTitles相同）
-                totalFetched: totalFetched, // 总抓取数量
-                totalDuplicates: totalDuplicates, // 总重复数量
-                dateRange: {
-                    oldest: new Date(oldestTime),
-                    newest: new Date(newestTime)
-                },
-                avgTitlesPerCollection: Math.round(totalTitles / this.historyData.length)
+            // 点击隐藏
+            toast.onclick = () => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                setTimeout(() => {
+                    if (toast && toast.parentNode) {
+                        toast.remove();
+                    }
+                }, 300);
             };
         },
 
-        // 抓取RSS数据（带重试机制）
-        async fetchRSSData() {
-            const now = Date.now();
+        // HTTP请求（带重试机制）
+        request: async function (url, options = {}) {
+            // 检测是否为同步操作，使用更长的超时和重试
+            const isSyncOperation = url.includes('/api/sync');
 
-            // 检查缓存
-            if (this.rssCache && (now - this.rssCacheTime) < this.cacheExpireTime) {
-                this.log('使用缓存的RSS数据');
-                return this.rssCache;
+            const defaultOptions = {
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                timeout: isSyncOperation ? 60000 : 15000, // 同步操作60秒，其他15秒
+                retries: isSyncOperation ? 5 : 2, // 同步操作更多重试次数
+                retryDelay: isSyncOperation ? 2000 : 1000, // 同步操作更长延迟
+            };
+
+            if (authToken) {
+                defaultOptions.headers['Authorization'] = `Bearer ${authToken}`;
             }
 
-            // 新版：直接从服务器API拉取JSON（新域名 hb.396663.xyz）
-            const apiUrl = 'https://hb.396663.xyz/api/articles?days=7';
+            const finalOptions = {
+                ...defaultOptions,
+                ...options,
+                headers: {
+                    ...defaultOptions.headers,
+                    ...options.headers
+                }
+            };
+
+            const maxRetries = finalOptions.retries || 0;
+            let lastError;
+
+            for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                // 添加超时控制
+                const controller = new AbortController();
+                const timeout = finalOptions.timeout || 15000;
+                const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+                const requestOptions = {
+                    ...finalOptions,
+                    signal: controller.signal
+                };
+
+                // 移除自定义选项
+                delete requestOptions.timeout;
+                delete requestOptions.retries;
+                delete requestOptions.retryDelay;
+
+                try {
+                    const response = await fetch(url, requestOptions);
+                    clearTimeout(timeoutId);
+
+                    // 检查响应是否成功
+                    if (!response.ok) {
+                        let errorMessage;
+                        try {
+                            const errorData = await response.json();
+                            errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+                        } catch {
+                            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                        }
+
+                        // 对于某些状态码，不需要重试
+                        if (response.status === 401 || response.status === 403 || response.status === 404 || response.status === 429) {
+                            throw new Error(errorMessage);
+                        }
+
+                        lastError = new Error(errorMessage);
+                        if (attempt === maxRetries) throw lastError;
+
+                        // 等待后重试
+                        await new Promise(resolve => setTimeout(resolve, finalOptions.retryDelay || 1000));
+                        continue;
+                    }
+
+                    // 解析JSON响应
+                    const data = await response.json();
+                    return data;
+                } catch (error) {
+                    clearTimeout(timeoutId);
+
+                    // 处理不同类型的错误
+                    if (error.name === 'AbortError') {
+                        lastError = new Error('请求超时，请检查网络连接');
+                    } else if (error instanceof TypeError && error.message.includes('fetch')) {
+                        lastError = new Error('网络连接失败，请检查网络或服务器状态');
+                    } else if (error.message.includes('JSON')) {
+                        lastError = new Error('服务器响应格式错误');
+                    } else {
+                        lastError = error;
+                    }
+
+                    // 对于网络错误，尝试重试
+                    if (attempt < maxRetries && (error.name === 'AbortError' || error instanceof TypeError)) {
+                        const retryDelay = finalOptions.retryDelay || 1000;
+                        console.log(`请求失败，${retryDelay}ms后进行第${attempt + 1}次重试...`);
+
+                        // 同步操作显示重试提示
+                        if (isSyncOperation) {
+                            if (typeof Utils.showMessage === 'function') {
+                                const errorType = error.name === 'AbortError' ? '请求超时' : '网络连接失败';
+                                // 同步重试仅记录日志，不显示弹窗
+                                Utils.showMessage(`${errorType}，正在重试... (${attempt + 1}/${maxRetries})`, 'warning', false);
+                            }
+                        }
+
+                        await new Promise(resolve => setTimeout(resolve, retryDelay));
+                        continue;
+                    }
+
+                    console.error('Request failed after all retries:', lastError);
+                    throw lastError;
+                }
+            }
+
+            throw lastError;
+        },
+
+        // 获取所有配置数据
+        getAllConfig: function (selectedItems) {
+            const config = {};
+
+            // 如果没有选择特定项目，默认获取所有配置
+            if (!selectedItems || selectedItems.length === 0) {
+                // 移除热点统计数据，不参与服务器同步备份
+                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'filterData', 'notesData'];
+            }
+
+            // 获取黑名单数据
+            if (selectedItems.includes('blacklist')) {
+                config.blacklist = JSON.parse(localStorage.getItem('nodeseek_blacklist') || '{}');
+            }
+
+            // 获取好友数据
+            if (selectedItems.includes('friends')) {
+                try {
+                    if (window.NodeSeekFriends && typeof window.NodeSeekFriends.getFriends === 'function') {
+                        config.friends = window.NodeSeekFriends.getFriends();
+                    } else {
+                        config.friends = JSON.parse(localStorage.getItem('nodeseek_friends') || '{}');
+                    }
+                } catch (e) {
+                    config.friends = {};
+                }
+            }
+
+            if (selectedItems.includes('favorites')) {
+                config.favorites = JSON.parse(localStorage.getItem('nodeseek_favorites') || '[]');
+                config.favoriteCategories = JSON.parse(localStorage.getItem('nodeseek_favorites_categories') || '[]');
+            } else if (selectedItems.includes('favoriteCategories')) {
+                config.favorites = JSON.parse(localStorage.getItem('nodeseek_favorites') || '[]');
+                config.favoriteCategories = JSON.parse(localStorage.getItem('nodeseek_favorites_categories') || '[]');
+            }
+
+            // 获取操作日志
+            if (selectedItems.includes('logs')) {
+                try {
+                    const logsArray = JSON.parse(localStorage.getItem('nodeseek_sign_logs') || '[]');
+                    const payload = { entries: Array.isArray(logsArray) ? logsArray : [] };
+                    // 将签到设置嵌入到允许的键内，避免顶级不允许的键
+                    const signEnabledRaw = localStorage.getItem('nodeseek_sign_enabled');
+                    if (signEnabledRaw !== null) {
+                        try {
+                            const enabled = JSON.parse(signEnabledRaw);
+                            payload.settings = { enabled: !!enabled };
+                        } catch (e) { /* ignore */ }
+                    }
+                    config.logs = payload;
+                } catch (e) {
+                    config.logs = { entries: [] };
+                }
+            }
+
+            // 获取浏览历史
+            if (selectedItems.includes('browseHistory')) {
+                config.browseHistory = JSON.parse(localStorage.getItem('nodeseek_browse_history') || '[]');
+            }
+
+            // 获取快捷回复数据
+            if (selectedItems.includes('quickReplies')) {
+                try {
+                    if (window.NodeSeekQuickReply && typeof window.NodeSeekQuickReply.getQuickReplies === 'function') {
+                        config.quickReplies = window.NodeSeekQuickReply.getQuickReplies();
+                    } else {
+                        const quickReplyData = JSON.parse(localStorage.getItem('nodeseek_quick_reply') || '{}');
+                        // 确保数据包含categoryOrder
+                        if (quickReplyData && typeof quickReplyData === 'object' && !quickReplyData.categoryOrder) {
+                            quickReplyData.categoryOrder = Object.keys(quickReplyData).filter(key => key !== 'categoryOrder');
+                        }
+                        config.quickReplies = quickReplyData;
+                    }
+                } catch (error) {
+                    config.quickReplies = {};
+                }
+                // 将快捷回复设置作为元信息嵌入，避免顶级不允许的键
+                try {
+                    const autoSubmitRaw = localStorage.getItem('nodeseek_quick_reply_auto_submit');
+                    const autoSubmit = autoSubmitRaw ? JSON.parse(autoSubmitRaw) : false;
+                    if (!config.quickReplies || typeof config.quickReplies !== 'object') {
+                        config.quickReplies = {};
+                    }
+                    // 使用特殊字段，应用时会清理，避免污染分类
+                    config.quickReplies.__meta__ = { autoSubmit: !!autoSubmit };
+                } catch (e) {
+                    /* ignore parse errors */
+                }
+            }
+
+            // 获取常用表情数据（emojis.js 本地收藏）
+            if (selectedItems.includes('emojiFavorites')) {
+                try {
+                    const ef = JSON.parse(localStorage.getItem('ns_emoji_favorites') || '[]');
+                    config.emojiFavorites = Array.isArray(ef) ? ef : [];
+                } catch (error) {
+                    config.emojiFavorites = [];
+                }
+            }
+
+            // 获取鸡腿统计数据
+            if (selectedItems.includes('chickenLegStats')) {
+                try {
+                    if (window.NodeSeekRegister && typeof window.NodeSeekRegister.getChickenLegStats === 'function') {
+                        config.chickenLegStats = window.NodeSeekRegister.getChickenLegStats();
+                    } else {
+                        // 如果模块未加载，尝试直接从localStorage获取
+                        const lastFetch = localStorage.getItem('nodeseek_chicken_leg_last_fetch');
+                        const nextAllow = localStorage.getItem('nodeseek_chicken_leg_next_allow');
+                        const lastHtml = localStorage.getItem('nodeseek_chicken_leg_last_html');
+                        const history = localStorage.getItem('nodeseek_chicken_leg_history');
+
+                        if (lastFetch || nextAllow || lastHtml || history) {
+                            config.chickenLegStats = {
+                                lastFetch: lastFetch,
+                                nextAllow: nextAllow,
+                                lastHtml: lastHtml,
+                                history: history ? JSON.parse(history) : []
+                            };
+                        }
+                    }
+                } catch (error) {
+                    console.error('获取鸡腿统计数据失败:', error);
+                }
+            }
+
+            // 获取热点统计数据
+            if (selectedItems.includes('hotTopicsData')) {
+                const hotTopicsData = {};
+                try {
+                    // RSS历史采集数据
+                    const rssHistory = localStorage.getItem('nodeseek_rss_history');
+                    if (rssHistory) {
+                        hotTopicsData.rssHistory = JSON.parse(rssHistory);
+                    }
+
+                    // 热词历史数据
+                    const hotWordsHistory = localStorage.getItem('nodeseek_hot_words_history');
+                    if (hotWordsHistory) {
+                        hotTopicsData.hotWordsHistory = JSON.parse(hotWordsHistory);
+                    }
+
+                    // 时间分布统计数据
+                    const timeDistributionHistory = localStorage.getItem('nodeseek_time_distribution_history');
+                    if (timeDistributionHistory) {
+                        hotTopicsData.timeDistributionHistory = JSON.parse(timeDistributionHistory);
+                    }
+
+                    // 用户统计数据
+                    const userStatsHistory = localStorage.getItem('nodeseek_user_stats_history');
+                    if (userStatsHistory) {
+                        hotTopicsData.userStatsHistory = JSON.parse(userStatsHistory);
+                    }
+
+                    // 全局状态数据
+                    const globalState = localStorage.getItem('nodeseek_focus_global_state');
+                    if (globalState) {
+                        hotTopicsData.globalState = JSON.parse(globalState);
+                    }
+
+                    // 只在有数据时才添加到配置中
+                    if (Object.keys(hotTopicsData).length > 0) {
+                        config.hotTopicsData = hotTopicsData;
+                    }
+                } catch (error) {
+                    console.error('获取热点统计数据失败:', error);
+                }
+            }
+
+            // 获取关键词过滤数据
+            if (selectedItems.includes('filterData')) {
+                const filterData = {};
+                try {
+                    // 屏蔽关键词
+                    const customKeywords = localStorage.getItem('ns-filter-custom-keywords');
+                    if (customKeywords) {
+                        filterData.customKeywords = JSON.parse(customKeywords);
+                    }
+
+                    // 显示关键词
+                    const displayKeywords = localStorage.getItem('ns-filter-keywords');
+                    if (displayKeywords) {
+                        filterData.displayKeywords = JSON.parse(displayKeywords);
+                    }
+
+                    // 高亮关键词
+                    const highlightKeywords = localStorage.getItem('ns-filter-highlight-keywords');
+                    if (highlightKeywords) {
+                        filterData.highlightKeywords = JSON.parse(highlightKeywords);
+                    }
+
+                    // 帖子内容高亮关键词
+                    const highlightPostKeywords = localStorage.getItem('ns-filter-highlight-post-keywords');
+                    if (highlightPostKeywords) {
+                        filterData.highlightPostKeywords = JSON.parse(highlightPostKeywords);
+                    }
+
+                    // 高亮作者选项
+                    const highlightAuthorEnabled = localStorage.getItem('ns-filter-highlight-author-enabled');
+                    if (highlightAuthorEnabled) {
+                        filterData.highlightAuthorEnabled = JSON.parse(highlightAuthorEnabled);
+                    }
+
+                    // 高亮颜色
+                    const highlightColor = localStorage.getItem('ns-filter-highlight-color');
+                    if (highlightColor) {
+                        filterData.highlightColor = highlightColor;
+                    }
+
+                    // 弹窗位置
+                    const dialogPosition = localStorage.getItem('ns-filter-dialog-position');
+                    if (dialogPosition) {
+                        filterData.dialogPosition = JSON.parse(dialogPosition);
+                    }
+
+                    // 不屏蔽用户
+                    const whitelistUsers = localStorage.getItem('ns-filter-whitelist-users');
+                    if (whitelistUsers) {
+                        filterData.whitelistUsers = JSON.parse(whitelistUsers);
+                    }
+
+                    // 只在有数据时才添加到配置中
+                    if (Object.keys(filterData).length > 0) {
+                        config.filterData = filterData;
+                    }
+                } catch (error) {
+                    console.error('获取关键词过滤数据失败:', error);
+                }
+            }
+
+            // 获取笔记数据
+            if (selectedItems.includes('notesData')) {
+                try {
+                    if (window.NodeSeekNotes && typeof window.NodeSeekNotes.exportNotesData === 'function') {
+                        config.notesData = window.NodeSeekNotes.exportNotesData();
+                    } else {
+                        // 如果模块未加载，尝试直接从localStorage获取
+                        const categories = localStorage.getItem('nodeseek_notes_categories');
+                        const notes = localStorage.getItem('nodeseek_notes_data');
+                        const fontColors = localStorage.getItem('nodeseek_notes_font_colors');
+                        const bgColors = localStorage.getItem('nodeseek_notes_bg_colors');
+                        const lastSelectedNote = localStorage.getItem('nodeseek_notes_last_selected');
+
+                        if (categories || notes || fontColors || bgColors || lastSelectedNote) {
+                            config.notesData = {
+                                categories: categories ? JSON.parse(categories) : [],
+                                notes: notes ? JSON.parse(notes) : {},
+                                fontColors: fontColors ? JSON.parse(fontColors) : [],
+                                bgColors: bgColors ? JSON.parse(bgColors) : [],
+                                lastSelectedNote: lastSelectedNote ? JSON.parse(lastSelectedNote) : null
+                            };
+                        }
+                    }
+                } catch (error) {
+                    console.error('获取笔记数据失败:', error);
+                }
+            }
+
             try {
-                this.log('开始从服务器API拉取热点数据...');
-                const response = await fetch(apiUrl);
-                if (!response.ok) {
-                    throw new Error(`API HTTP错误! 状态码: ${response.status}`);
+                const enabledRaw = localStorage.getItem('nodeseek_auto_sync_enabled');
+                const itemsRaw = localStorage.getItem('nodeseek_auto_sync_items');
+                const lastRaw = localStorage.getItem('nodeseek_auto_sync_last_time');
+                const enabled = enabledRaw ? JSON.parse(enabledRaw) : false;
+                const items = itemsRaw ? JSON.parse(itemsRaw) : [];
+                const last = lastRaw ? parseInt(lastRaw) : 0;
+                config.autoSync = {
+                    enabled: !!enabled,
+                    items: Array.isArray(items) ? items : [],
+                    intervalMs: 24 * 60 * 60 * 1000,
+                    lastTime: isNaN(last) ? 0 : last
+                };
+            } catch (e) {
+                config.autoSync = { enabled: false, items: [], intervalMs: 24 * 60 * 60 * 1000, lastTime: 0 };
+            }
+            config.timestamp = new Date().toISOString();
+            return config;
+        },
+
+        // 应用配置数据
+        applyConfig: function (config, selectedItems) {
+            let applied = [];
+
+            // 如果没有选择特定项目，默认应用所有配置
+            if (!selectedItems || selectedItems.length === 0) {
+                // 移除热点统计数据，不参与服务器同步应用
+                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats'];
+            }
+
+            try {
+                // 应用黑名单数据
+                if (selectedItems.includes('blacklist') && config.blacklist) {
+                    localStorage.setItem('nodeseek_blacklist', JSON.stringify(config.blacklist));
+                    applied.push("黑名单");
                 }
-                const articles = await response.json();
-                this.log('API数据拉取成功，数量:', articles.length);
-                // 缓存数据
-                this.rssCache = articles;
-                this.rssCacheTime = now;
-                return articles;
+
+                // 应用好友数据
+                if (selectedItems.includes('friends') && config.friends) {
+                    if (window.NodeSeekFriends && typeof window.NodeSeekFriends.setFriends === 'function') {
+                        window.NodeSeekFriends.setFriends(config.friends);
+                    } else {
+                        localStorage.setItem('nodeseek_friends', JSON.stringify(config.friends));
+                    }
+                    applied.push("好友");
+                }
+
+                if (config.autoSync && typeof config.autoSync === 'object') {
+                    try {
+                        const enabled = !!config.autoSync.enabled;
+                        localStorage.setItem('nodeseek_auto_sync_enabled', JSON.stringify(enabled));
+                        if (Array.isArray(config.autoSync.items)) {
+                            localStorage.setItem('nodeseek_auto_sync_items', JSON.stringify(config.autoSync.items));
+                        }
+                        const last = typeof config.autoSync.lastTime === 'number' ? config.autoSync.lastTime : 0;
+                        const nowTs = ((last && !isNaN(last)) ? last : Date.now()).toString();
+                        localStorage.setItem('nodeseek_auto_sync_last_time', nowTs);
+                        localStorage.setItem('nodeseek_auto_sync_last_attempt_time', nowTs);
+                        if (!enabled) {
+                            localStorage.removeItem('nodeseek_auto_sync_lock_until');
+                        }
+                        applied.push(`自动上传设置(${enabled ? '开启' : '关闭'})`);
+                        try { Sync.initAutoSync(); } catch (e) { }
+                    } catch (e) { }
+                }
+
+                if ((selectedItems.includes('favorites') || selectedItems.includes('favoriteCategories'))) {
+                    if (config.favorites && Array.isArray(config.favorites)) {
+                        localStorage.setItem('nodeseek_favorites', JSON.stringify(config.favorites));
+                        if (!applied.includes("收藏")) applied.push("收藏");
+                    }
+                    if (config.favoriteCategories && Array.isArray(config.favoriteCategories)) {
+                        localStorage.setItem('nodeseek_favorites_categories', JSON.stringify(config.favoriteCategories));
+                    }
+                }
+
+                // 应用操作日志
+                if (selectedItems.includes('logs') && config.logs) {
+                    try {
+                        if (Array.isArray(config.logs)) {
+                            localStorage.setItem('nodeseek_sign_logs', JSON.stringify(config.logs));
+                            applied.push("操作日志");
+                            // 兼容顶级签到设置（历史数据）
+                            let enabled;
+                            if (config.signSettings && typeof config.signSettings === 'object') {
+                                enabled = config.signSettings.enabled;
+                            } else if (typeof config.signEnabled !== 'undefined') {
+                                enabled = config.signEnabled;
+                            }
+                            if (typeof enabled !== 'undefined') {
+                                localStorage.setItem('nodeseek_sign_enabled', JSON.stringify(!!enabled));
+                                applied.push(`签到设置(${enabled ? '开启' : '关闭'})`);
+                            }
+                        } else if (typeof config.logs === 'object') {
+                            const entries = Array.isArray(config.logs.entries) ? config.logs.entries : [];
+                            localStorage.setItem('nodeseek_sign_logs', JSON.stringify(entries));
+                            applied.push(`操作日志(${entries.length}条)`);
+                            const enabled = config.logs.settings ? config.logs.settings.enabled : undefined;
+                            if (typeof enabled !== 'undefined') {
+                                localStorage.setItem('nodeseek_sign_enabled', JSON.stringify(!!enabled));
+                                applied.push(`签到设置(${enabled ? '开启' : '关闭'})`);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('应用操作日志失败:', e);
+                        applied.push("操作日志(失败)");
+                    }
+                }
+
+                // 应用浏览历史
+                if (selectedItems.includes('browseHistory') && config.browseHistory && Array.isArray(config.browseHistory)) {
+                    localStorage.setItem('nodeseek_browse_history', JSON.stringify(config.browseHistory));
+                    applied.push("浏览历史");
+                }
+
+                // 应用快捷回复数据
+                if (selectedItems.includes('quickReplies') && config.quickReplies && typeof config.quickReplies === 'object') {
+                    // 先提取并清理元信息，避免污染分类结构
+                    let metaAutoSubmit;
+                    try {
+                        if (config.quickReplies.__meta__ && typeof config.quickReplies.__meta__ === 'object') {
+                            metaAutoSubmit = config.quickReplies.__meta__.autoSubmit;
+                            delete config.quickReplies.__meta__;
+                        }
+                    } catch (e) { /* ignore */ }
+
+                    // 确保数据包含categoryOrder
+                    if (!config.quickReplies.categoryOrder) {
+                        config.quickReplies.categoryOrder = Object.keys(config.quickReplies).filter(key => key !== 'categoryOrder');
+                    }
+
+                    const cleanedQuickReplies = config.quickReplies;
+                    if (window.NodeSeekQuickReply && typeof window.NodeSeekQuickReply.setQuickReplies === 'function') {
+                        window.NodeSeekQuickReply.setQuickReplies(cleanedQuickReplies);
+                    } else {
+                        localStorage.setItem('nodeseek_quick_reply', JSON.stringify(cleanedQuickReplies));
+                    }
+                    const categoriesCount = cleanedQuickReplies.categoryOrder ? cleanedQuickReplies.categoryOrder.length : Object.keys(cleanedQuickReplies).filter(key => key !== 'categoryOrder').length;
+                    applied.push(`快捷回复(${categoriesCount}个分类)`);
+                    // 应用快捷回复设置（优先使用元信息，其次兼容旧字段）
+                    try {
+                        let autoSubmit = typeof metaAutoSubmit !== 'undefined' ? metaAutoSubmit : undefined;
+                        if (typeof autoSubmit === 'undefined') {
+                            if (config.quickReplySettings && typeof config.quickReplySettings === 'object') {
+                                autoSubmit = config.quickReplySettings.autoSubmit;
+                            } else if (typeof config.quickReplyAutoSubmit !== 'undefined') {
+                                autoSubmit = config.quickReplyAutoSubmit;
+                            }
+                        }
+                        if (typeof autoSubmit !== 'undefined') {
+                            localStorage.setItem('nodeseek_quick_reply_auto_submit', JSON.stringify(!!autoSubmit));
+                            applied.push(`快捷回复设置(自动发布:${autoSubmit ? '开启' : '关闭'})`);
+                        }
+                    } catch (e) { /* ignore */ }
+                }
+
+                // 应用常用表情数据
+                if (selectedItems.includes('emojiFavorites') && Array.isArray(config.emojiFavorites)) {
+                    localStorage.setItem('ns_emoji_favorites', JSON.stringify(config.emojiFavorites));
+                    const favCount = config.emojiFavorites.length || 0;
+                    applied.push(`常用表情(${favCount}个)`);
+                }
+
+                // 应用鸡腿统计数据
+                if (selectedItems.includes('chickenLegStats') && config.chickenLegStats && typeof config.chickenLegStats === 'object') {
+                    try {
+                        if (window.NodeSeekRegister && typeof window.NodeSeekRegister.setChickenLegStats === 'function') {
+                            window.NodeSeekRegister.setChickenLegStats(config.chickenLegStats);
+                            const historyCount = config.chickenLegStats.history ? config.chickenLegStats.history.length : 0;
+                            applied.push(`鸡腿统计(${historyCount}条记录)`);
+                        } else {
+                            // 如果模块未加载，直接保存到localStorage的相应键中
+                            let importedCount = 0;
+
+                            if (config.chickenLegStats.lastFetch) {
+                                localStorage.setItem('nodeseek_chicken_leg_last_fetch', config.chickenLegStats.lastFetch);
+                                importedCount++;
+                            }
+
+                            if (config.chickenLegStats.nextAllow) {
+                                localStorage.setItem('nodeseek_chicken_leg_next_allow', config.chickenLegStats.nextAllow);
+                                importedCount++;
+                            }
+
+                            if (config.chickenLegStats.lastHtml) {
+                                localStorage.setItem('nodeseek_chicken_leg_last_html', config.chickenLegStats.lastHtml);
+                                importedCount++;
+                            }
+
+                            if (config.chickenLegStats.history && Array.isArray(config.chickenLegStats.history)) {
+                                localStorage.setItem('nodeseek_chicken_leg_history', JSON.stringify(config.chickenLegStats.history));
+                                applied.push(`鸡腿统计(${config.chickenLegStats.history.length}条记录)`);
+                            } else {
+                                applied.push("鸡腿统计");
+                            }
+                        }
+                    } catch (error) {
+                        console.error('应用鸡腿统计数据失败:', error);
+                        applied.push("鸡腿统计(失败)");
+                    }
+                }
+
+                // 应用热点统计数据
+                if (selectedItems.includes('hotTopicsData') && config.hotTopicsData && typeof config.hotTopicsData === 'object') {
+                    try {
+                        const hotData = config.hotTopicsData;
+                        let hotImportCount = 0;
+
+                        // 导入RSS历史数据
+                        if (hotData.rssHistory && Array.isArray(hotData.rssHistory)) {
+                            localStorage.setItem('nodeseek_rss_history', JSON.stringify(hotData.rssHistory));
+                            hotImportCount++;
+                        }
+
+                        // 导入热词历史数据
+                        if (hotData.hotWordsHistory && Array.isArray(hotData.hotWordsHistory)) {
+                            localStorage.setItem('nodeseek_hot_words_history', JSON.stringify(hotData.hotWordsHistory));
+                            hotImportCount++;
+                        }
+
+                        // 导入时间分布数据
+                        if (hotData.timeDistributionHistory && Array.isArray(hotData.timeDistributionHistory)) {
+                            localStorage.setItem('nodeseek_time_distribution_history', JSON.stringify(hotData.timeDistributionHistory));
+                            hotImportCount++;
+                        }
+
+                        // 导入用户统计数据
+                        if (hotData.userStatsHistory && Array.isArray(hotData.userStatsHistory)) {
+                            localStorage.setItem('nodeseek_user_stats_history', JSON.stringify(hotData.userStatsHistory));
+                            hotImportCount++;
+                        }
+
+                        // 导入全局状态数据
+                        if (hotData.globalState && typeof hotData.globalState === 'object') {
+                            localStorage.setItem('nodeseek_focus_global_state', JSON.stringify(hotData.globalState));
+                            hotImportCount++;
+                        }
+
+                        if (hotImportCount > 0) {
+                            applied.push(`热点统计(${hotImportCount}项)`);
+                        }
+                    } catch (error) {
+                        console.error('应用热点统计数据失败:', error);
+                        applied.push("热点统计(失败)");
+                    }
+                }
+
+                // 应用关键词过滤数据
+                if (selectedItems.includes('filterData') && config.filterData && typeof config.filterData === 'object') {
+                    try {
+                        let filterImportCount = 0;
+
+                        // 导入屏蔽关键词
+                        if (config.filterData.customKeywords && Array.isArray(config.filterData.customKeywords)) {
+                            localStorage.setItem('ns-filter-custom-keywords', JSON.stringify(config.filterData.customKeywords));
+                            filterImportCount += config.filterData.customKeywords.length;
+                        }
+
+                        // 导入显示关键词
+                        if (config.filterData.displayKeywords && Array.isArray(config.filterData.displayKeywords)) {
+                            localStorage.setItem('ns-filter-keywords', JSON.stringify(config.filterData.displayKeywords));
+                        }
+
+                        // 导入高亮关键词
+                        let highlightImportCount = 0;
+                        if (config.filterData.highlightKeywords && Array.isArray(config.filterData.highlightKeywords)) {
+                            localStorage.setItem('ns-filter-highlight-keywords', JSON.stringify(config.filterData.highlightKeywords));
+                            highlightImportCount = config.filterData.highlightKeywords.length;
+                        }
+
+                        // 导入帖子内容高亮关键词
+                        let highlightPostImportCount = 0;
+                        if (config.filterData.highlightPostKeywords && Array.isArray(config.filterData.highlightPostKeywords)) {
+                            localStorage.setItem('ns-filter-highlight-post-keywords', JSON.stringify(config.filterData.highlightPostKeywords));
+                            highlightPostImportCount = config.filterData.highlightPostKeywords.length;
+                        }
+
+                        // 导入高亮作者选项
+                        if (config.filterData.highlightAuthorEnabled !== undefined) {
+                            localStorage.setItem('ns-filter-highlight-author-enabled', JSON.stringify(config.filterData.highlightAuthorEnabled));
+                        }
+
+                        // 导入高亮颜色
+                        if (config.filterData.highlightColor) {
+                            localStorage.setItem('ns-filter-highlight-color', config.filterData.highlightColor);
+                        }
+
+                        // 导入弹窗位置
+                        if (config.filterData.dialogPosition && typeof config.filterData.dialogPosition === 'object') {
+                            localStorage.setItem('ns-filter-dialog-position', JSON.stringify(config.filterData.dialogPosition));
+                        }
+
+                        // 导入不屏蔽用户
+                        let whitelistUserCount = 0;
+                        if (config.filterData.whitelistUsers && Array.isArray(config.filterData.whitelistUsers)) {
+                            localStorage.setItem('ns-filter-whitelist-users', JSON.stringify(config.filterData.whitelistUsers));
+                            whitelistUserCount = config.filterData.whitelistUsers.length;
+                        }
+
+                        if (filterImportCount > 0 || highlightImportCount > 0 || highlightPostImportCount > 0 || whitelistUserCount > 0) {
+                            const parts = [];
+                            if (filterImportCount > 0) parts.push(`${filterImportCount}个屏蔽词`);
+                            if (highlightImportCount > 0) parts.push(`${highlightImportCount}个高亮词`);
+                            if (highlightPostImportCount > 0) parts.push(`${highlightPostImportCount}个帖内高亮词`);
+                            if (whitelistUserCount > 0) parts.push(`${whitelistUserCount}个不屏蔽用户`);
+                            applied.push(`关键词过滤(${parts.join('、')})`);
+                        } else {
+                            applied.push("关键词过滤");
+                        }
+
+                        // 重新应用帖子内容高亮（仅在帖子详情页有效）
+                        try {
+                            if (window.NodeSeekFilter && typeof window.NodeSeekFilter.highlightPostContent === 'function') {
+                                window.NodeSeekFilter.highlightPostContent();
+                            }
+                        } catch (e) { }
+                    } catch (error) {
+                        console.error('应用关键词过滤数据失败:', error);
+                        applied.push("关键词过滤(失败)");
+                    }
+                }
+
+                // 应用笔记数据
+                if (selectedItems.includes('notesData') && config.notesData && typeof config.notesData === 'object') {
+                    try {
+                        if (window.NodeSeekNotes && typeof window.NodeSeekNotes.importNotesData === 'function') {
+                            const success = window.NodeSeekNotes.importNotesData(config.notesData);
+                            if (success) {
+                                applied.push("笔记");
+                            } else {
+                                applied.push("笔记(失败)");
+                            }
+                        } else {
+                            // 如果模块未加载，直接操作localStorage
+                            const notesData = config.notesData;
+                            if (notesData.categories && Array.isArray(notesData.categories)) {
+                                localStorage.setItem('nodeseek_notes_categories', JSON.stringify(notesData.categories));
+                            }
+                            if (notesData.notes && typeof notesData.notes === 'object') {
+                                localStorage.setItem('nodeseek_notes_data', JSON.stringify(notesData.notes));
+                            }
+                            if (notesData.fontColors && Array.isArray(notesData.fontColors)) {
+                                localStorage.setItem('nodeseek_notes_font_colors', JSON.stringify(notesData.fontColors));
+                            }
+                            if (notesData.bgColors && Array.isArray(notesData.bgColors)) {
+                                localStorage.setItem('nodeseek_notes_bg_colors', JSON.stringify(notesData.bgColors));
+                            }
+                            if (notesData.lastSelectedNote) {
+                                localStorage.setItem('nodeseek_notes_last_selected', JSON.stringify(notesData.lastSelectedNote));
+                            }
+                            applied.push("笔记");
+                        }
+                    } catch (error) {
+                        console.error('应用笔记数据失败:', error);
+                        applied.push("笔记(失败)");
+                    }
+                }
+
+                return applied;
             } catch (error) {
-                // 如果有缓存数据，即使过期也返回
-                if (this.rssCache) {
-                    this.log('使用过期的缓存数据作为备用');
-                    return this.rssCache;
+                console.error('应用配置失败:', error);
+                throw error;
+            }
+        }
+    };
+
+    // 认证管理
+    const Auth = {
+        // 初始化
+        init: function () {
+            // 从localStorage加载token和用户信息
+            authToken = localStorage.getItem(CONFIG.STORAGE_KEY);
+            const userStr = localStorage.getItem(CONFIG.USER_KEY);
+            if (userStr) {
+                try {
+                    currentUser = JSON.parse(userStr);
+                } catch (e) {
+                    currentUser = null;
                 }
-                // 直接抛出错误，让上层重试机制处理
+            }
+        },
+
+        // 保存认证信息
+        saveAuth: function (token, user) {
+            authToken = token;
+            currentUser = user;
+            localStorage.setItem(CONFIG.STORAGE_KEY, token);
+            localStorage.setItem(CONFIG.USER_KEY, JSON.stringify(user));
+        },
+
+        // 清除认证信息
+        clearAuth: function () {
+            authToken = null;
+            currentUser = null;
+            localStorage.removeItem(CONFIG.STORAGE_KEY);
+            localStorage.removeItem(CONFIG.USER_KEY);
+        },
+
+        // 检查是否已登录
+        isLoggedIn: function () {
+            return !!(authToken && currentUser);
+        },
+
+        // 获取当前用户
+        getCurrentUser: function () {
+            return currentUser;
+        },
+
+        // 注册
+        register: async function (username, password, securityCode) {
+            try {
+                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/register`, {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password, securityCode })
+                });
+
+                // 注册成功
+                Utils.showMessage(data.message || '注册成功！', 'success');
+                return data;
+            } catch (error) {
+                Utils.showMessage(`注册失败: ${error.message}`, 'error');
                 throw error;
             }
         },
 
-        // 中文分词（简单实现）
-        segmentChinese(text) {
-            const words = [];
-            let currentWord = '';
+        // 找回密码
+        resetPassword: async function (username, securityCode, newPassword) {
+            try {
+                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/reset-password`, {
+                    method: 'POST',
+                    body: JSON.stringify({ username, securityCode, newPassword })
+                });
 
-            // 常见词汇后缀模式（不应该被拆分）
-            const commonSuffixes = ['了', '过', '着', '的', '在', '上', '下', '中', '里', '外'];
-
-            for (let i = 0; i < text.length; i++) {
-                const char = text[i];
-
-                // 中文字符范围
-                if (/[\u4e00-\u9fff]/.test(char)) {
-                    currentWord += char;
-
-                    // 检查是否可以形成更长的有效词汇
-                    let foundLongerWord = false;
-                    for (let len = Math.min(8, text.length - i); len >= 2; len--) {
-                        const candidate = text.substr(i, len);
-
-                        // 检查是否是有效的完整词汇
-                        if (this.isCompleteValidWord(candidate)) {
-                            words.push(candidate);
-                            i += len - 1;
-                            currentWord = '';
-                            foundLongerWord = true;
-                            break;
-                        }
-                    }
-
-                    if (!foundLongerWord && currentWord.length >= 1) {
-                        // 检查当前字符是否为常见后缀
-                        if (currentWord.length === 1) {
-                            // 单个中文字符，但不是停止词的话可以作为词
-                            if (!this.stopWords.has(currentWord)) {
-                            words.push(currentWord);
-                            }
-                            currentWord = '';
-                        }
-                        // 如果是多字符但未找到更长词汇，继续累积
-                    }
-                } else {
-                    // 非中文字符，结束当前词
-                    if (currentWord && currentWord.length >= 2) {
-                        // 添加累积的中文词汇
-                        words.push(currentWord);
-                    } else if (currentWord.length === 1 && !this.stopWords.has(currentWord)) {
-                        // 单个中文字符，如果不是停止词则保留
-                        words.push(currentWord);
-                    }
-                    currentWord = '';
-
-                    // 处理英文单词和数字
-                    if (/[a-zA-Z0-9]/.test(char)) {
-                        let word = char;
-                        while (i + 1 < text.length && /[a-zA-Z0-9]/.test(text[i + 1])) {
-                            i++;
-                            word += text[i];
-                        }
-                        if (word.length >= 1) {
-                            words.push(word);
-                        }
-                    }
-                }
+                Utils.showMessage(data.message || '密码重置成功！', 'success');
+                return data;
+            } catch (error) {
+                Utils.showMessage(`密码重置失败: ${error.message}`, 'error');
+                throw error;
             }
-
-            // 添加剩余的词
-            if (currentWord) {
-                if (currentWord.length >= 2) {
-                    words.push(currentWord);
-                } else if (currentWord.length === 1 && !this.stopWords.has(currentWord)) {
-                words.push(currentWord);
-                }
-            }
-
-            return words;
         },
 
-        // 判断是否为完整的有效词汇（用于分词时的词汇识别）
-        isCompleteValidWord(word) {
-            if (!word || word.length < 2) return false;
+        // 修改密码
+        changePassword: async function (currentPassword, newPassword) {
+            try {
+                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/change-password`, {
+                    method: 'POST',
+                    body: JSON.stringify({ currentPassword, newPassword })
+                });
 
-            // 检查是否是停止词
-            if (this.stopWords.has(this.getWordKey(word))) return false;
+                Utils.showMessage(data.message || '密码修改成功！', 'success');
+                return data;
+            } catch (error) {
+                Utils.showMessage(`密码修改失败: ${error.message}`, 'error');
+                throw error;
+            }
+        },
 
-            // 检查是否为纯数字或符号
-            if (this.numberSymbolRegex.test(word)) return false;
+        // 登录
+        login: async function (username, password) {
+            try {
+                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/login`, {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password })
+                });
 
-            // 常见的有效词汇模式
-            const validPatterns = [
-                /^[\u4e00-\u9fff]{2,}$/, // 纯中文词汇（2个字符及以上）
-                /^[a-zA-Z]{3,}$/, // 英文词汇
-                /^[\u4e00-\u9fff]+[a-zA-Z0-9]+$/, // 中文+英文数字
-                /^[a-zA-Z0-9]+[\u4e00-\u9fff]+$/, // 英文数字+中文
-                /^\d{2,}$/ // 纯数字（年份等）
-            ];
+                if (data.success) {
+                    this.saveAuth(data.token, { username: data.username });
+                    Utils.showMessage(`登录成功，欢迎 ${data.username}`, 'success');
+                }
 
-            const isValidPattern = validPatterns.some(pattern => pattern.test(word));
+                return data;
+            } catch (error) {
+                Utils.showMessage(`登录失败: ${error.message}`, 'error');
+                throw error;
+            }
+        },
 
-            // 额外检查：常见的动词+了、过、着等后缀组合
-            if (!isValidPattern && word.length >= 3) {
-                const base = word.slice(0, -1);
-                const suffix = word.slice(-1);
-                if (['了', '过', '着'].includes(suffix) && /^[\u4e00-\u9fff]{2,}$/.test(base)) {
-                    // 如果基础词汇是2个字符以上的中文，且后缀是常见的，则认为是有效词汇
+        // 退出登录
+        logout: async function () {
+            try {
+                if (authToken) {
+                    await Utils.request(`${CONFIG.SERVER_URL}/api/logout`, {
+                        method: 'POST'
+                    });
+                }
+            } catch (error) {
+                console.error('退出登录请求失败:', error);
+            } finally {
+                this.clearAuth();
+                Utils.showMessage('已退出登录');
+            }
+        },
+
+        // 验证token（增强错误处理）
+        validateToken: async function () {
+            if (!authToken) return false;
+
+            try {
+                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/user`, {
+                    method: 'GET',
+                    retries: 1 // 减少重试次数，因为token验证失败通常不是网络问题
+                });
+
+                if (data.success) {
+                    currentUser = data.user;
+                    localStorage.setItem(CONFIG.USER_KEY, JSON.stringify(currentUser));
                     return true;
                 }
-            }
-
-            return isValidPattern;
-        },
-
-        // 判断哪种大小写形式更优先
-        isPreferredCase(newWord, existingWord) {
-            // 优先级规则：
-            // 1. 首字母大写的形式 (如 GitHub > github)
-            // 2. 全大写的形式 (如 API > api)
-            // 3. 有更多大写字母的形式
-            // 4. 字母顺序较前的形式
-
-            const newUpperCount = (newWord.match(/[A-Z]/g) || []).length;
-            const existingUpperCount = (existingWord.match(/[A-Z]/g) || []).length;
-
-            // 首字母大写优先
-            const newFirstUpper = /^[A-Z]/.test(newWord);
-            const existingFirstUpper = /^[A-Z]/.test(existingWord);
-
-            if (newFirstUpper && !existingFirstUpper) return true;
-            if (!newFirstUpper && existingFirstUpper) return false;
-
-            // 大写字母多的优先
-            if (newUpperCount > existingUpperCount) return true;
-            if (newUpperCount < existingUpperCount) return false;
-
-            // 字母顺序优先
-            return newWord < existingWord;
-        },
-
-        // 标准化数字（将中文数字转换为阿拉伯数字）
-        normalizeNumbers(word) {
-            const chineseToArabic = {
-                '一': '1', '二': '2', '三': '3', '四': '4', '五': '5',
-                '六': '6', '七': '7', '八': '8', '九': '9', '十': '10',
-                '零': '0', '○': '0'
-            };
-
-            let normalized = word;
-
-            // 替换单个中文数字
-            for (const [chinese, arabic] of Object.entries(chineseToArabic)) {
-                normalized = normalized.replace(new RegExp(chinese, 'g'), arabic);
-            }
-
-            // 处理特殊组合（如：十一 -> 11, 二十 -> 20）
-            normalized = normalized
-                .replace(/10([1-9])/g, '1$1')  // 十一 -> 11
-                .replace(/([2-9])10/g, '$10')  // 二十 -> 20
-                .replace(/([2-9])10([1-9])/g, '$1$2'); // 二十一 -> 21
-
-            return normalized;
-        },
-
-        // 获取词汇的标准化键值（用于统计）
-        getWordKey(word) {
-            // 先转小写，再标准化数字
-            return this.normalizeNumbers(word.toLowerCase());
-        },
-
-        // 词频统计（基于本地保存的7天标题数据）
-        analyzeWordFrequency(useLocalData = true) {
-            const wordCount = new Map();
-            let allTitles = [];
-
-            this.log('开始分析词频...');
-
-            if (useLocalData && this.historyData && this.historyData.length > 0) {
-                // 使用本地保存的7天历史数据进行分析，不进行去重处理
-                this.historyData.forEach(record => {
-                    // 支持新旧数据格式
-                    const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
-
-                    articles.forEach(article => {
-                        // 直接添加所有标题，不进行去重
-                        allTitles.push(article.title);
-                    });
-                });
-
-                this.log(`📚 使用本地7天数据进行分析，直接统计所有标题共 ${allTitles.length} 条`);
-                this.log(`原始历史记录：${this.historyData.length} 次采集，${this.historyData.reduce((sum, r) => sum + (r.articles ? r.articles.length : r.titles?.length || 0), 0)} 条原始标题`);
-            } else {
-                this.log('⚠️ 没有本地历史数据，无法进行分析');
-                return [];
-            }
-
-            // 如果没有任何数据，直接返回空数组
-            if (allTitles.length === 0) {
-                this.log('没有数据可供分析，返回空结果');
-                return [];
-            }
-
-            // 用于记录每个词的原始大小写形式（完全匹配模式）
-            const exactWordCount = new Map(); // key为小写形式，value为{word: 原始形式, count: 计数}
-
-            // 用于调试：记录每个词汇的来源标题
-            const wordSourceMap = new Map();
-            
-            // 用于记录标题中已统计过的词汇，确保每个标题中的相同词汇只统计一次
-            const processedWordsInTitle = new Map();
-
-            allTitles.forEach(title => {
-                // 预处理：移除特殊字符，但保留中文、英文、数字
-                const cleanTitle = title.replace(/[^\u4e00-\u9fff\w\s]/g, ' ');
-                
-                // 当前标题中已处理的词汇集合
-                const titleProcessedWords = new Set();
-
-                // 分词
-                const words = this.segmentChinese(cleanTitle);
-
-                words.forEach(word => {
-                    // 特别追踪"alist"和英文词汇的处理过程
-                    const isTargetWord = word.toLowerCase().includes('alist');
-                    const isEnglishWord = /^[a-zA-Z]+$/.test(word);
-                    // 新增：追踪"放货"相关词汇
-                    const isCargoWord = word.includes('放货');
-                    // 新增：追踪"hgc"相关词汇
-                    const isHgcWord = word.toLowerCase().includes('hgc');
-                    // 新增：追踪"包push"相关词汇
-                    const isPushWord = word.includes('包push') || word.includes('push');
-                    // 新增：追踪"PHX"相关词汇
-                    const isPhxWord = word.toLowerCase().includes('phx');
-
-                    if (isTargetWord || (isEnglishWord && word.length >= 4) || isCargoWord || isHgcWord || isPushWord || isPhxWord) {
-                        this.log(`🔍 追踪词汇 "${word}" (${isPhxWord ? 'PHX目标' : isTargetWord ? 'alist目标' : isEnglishWord ? '英文词汇' : isCargoWord ? '放货相关' : isHgcWord ? 'hgc相关' : 'push相关'}):`);
-                        this.log(`  - 来源标题: "${title}"`);
-                        this.log(`  - 长度: ${word.length}`);
-                        this.log(`  - 停止词检查: ${this.stopWords.has(word.toLowerCase())}`);
-                        this.log(`  - 数字符号检查: ${this.numberSymbolRegex.test(word)}`);
-                        this.log(`  - 有效性检查: ${this.isValidWord(word)}`);
-                        this.log(`  - 完全匹配键值: "${word.toLowerCase()}"`);
-                    }
-
-                    if (this.isValidWord(word)) {
-                        // 使用完全匹配模式：只按小写进行分组，不进行其他标准化
-                        const exactKey = word.toLowerCase();
-                        
-                        // 确保每个标题中的相同词汇只统计一次
-                        if (titleProcessedWords.has(exactKey)) {
-                            return; // 跳过已处理的词汇
-                        }
-                        
-                        // 标记该词在当前标题中已处理
-                        titleProcessedWords.add(exactKey);
-
-                        if (!exactWordCount.has(exactKey)) {
-                            exactWordCount.set(exactKey, {word: word, count: 0});
-                            wordSourceMap.set(exactKey, []);
-                        }
-
-                        // 增加计数
-                        exactWordCount.get(exactKey).count++;
-
-                        // 记录来源
-                        wordSourceMap.get(exactKey).push(title);
-
-                        // 更新显示形式（优先保存更"标准"的形式）
-                        const current = exactWordCount.get(exactKey);
-                        if (this.isPreferredCase(word, current.word)) {
-                            current.word = word;
-                        }
-
-                        if (isPhxWord || isTargetWord || (isEnglishWord && word.length >= 4) || isCargoWord || isHgcWord || isPushWord) {
-                            this.log(`  ✅ "${word}" 被统计，当前计数: ${current.count}`);
-                            this.log(`  - 完全匹配键值: "${exactKey}"`);
-                            this.log(`  - 累计来源: ${wordSourceMap.get(exactKey).length} 个标题`);
-                        }
-                    } else if (isPhxWord || isTargetWord || (isEnglishWord && word.length >= 4) || isCargoWord || isHgcWord || isPushWord) {
-                        this.log(`  ❌ "${word}" 被过滤掉`);
-                    }
-                });
-            });
-
-            // 转换为数组并排序，只保留≥3次的热词
-            const sortedWords = Array.from(exactWordCount.entries())
-                .map(([exactKey, data]) => [data.word, data.count])
-                .filter(([word, count]) => count >= 3)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 50); // 取前50个
-
-            this.log(`词频分析完成，共找到 ${exactWordCount.size} 个不同词汇（完全匹配模式）`);
-
-            // 调试：输出高频词汇的详细信息
-            if (sortedWords.length > 0) {
-                this.log('=== 热词统计调试信息（完全匹配模式）===');
-                sortedWords.slice(0, 10).forEach(([word, count], index) => {
-                    const exactKey = word.toLowerCase();
-                    this.log(`#${index + 1}: "${word}" (完全匹配键值: "${exactKey}") = ${count}次`);
-
-                    // 特别显示hgc、alist、放货等关键词的来源
-                    if (word.toLowerCase().includes('hgc') || word.toLowerCase().includes('alist') || word.includes('放货') || word.includes('包push') || word.includes('push')) {
-                        const sources = wordSourceMap.get(exactKey) || [];
-                        this.log(`  🎯 关键词 "${word}" 的所有来源标题:`);
-                        sources.forEach((source, idx) => {
-                            this.log(`    ${idx + 1}. "${source}"`);
-                        });
-                        this.log(`  📊 总计: ${sources.length} 个来源标题，完全匹配统计为 ${count} 次`);
-                    }
-                });
-                this.log('========================');
-
-                // 特别检查alist是否在结果中
-                const alistResult = sortedWords.find(([word, count]) =>
-                    word.toLowerCase().includes('alist'));
-                if (alistResult) {
-                    this.log(`🎯 找到alist相关词汇: "${alistResult[0]}" = ${alistResult[1]}次`);
-                } else {
-                    this.log(`⚠️ 未在最终结果中找到alist相关词汇`);
-                    // 检查是否在wordCount中但被过滤了
-                    const allWords = Array.from(exactWordCount.entries());
-                    const alistInCount = allWords.find(([key, data]) =>
-                        key.includes('alist') || data.word.toLowerCase().includes('alist'));
-                    if (alistInCount) {
-                        this.log(`  但在统计中找到: "${alistInCount[1].word}" = ${alistInCount[1].count}次`);
-                        if (alistInCount[1].count < 2) {
-                            this.log(`  ↳ 因为出现次数 < 2 被过滤`);
-                        }
-                    } else {
-                        this.log(`  在统计中也未找到alist相关词汇`);
-                    }
-                }
-
-                // 特别检查hgc是否在结果中
-                const hgcResult = sortedWords.find(([word, count]) =>
-                    word.toLowerCase().includes('hgc'));
-                if (hgcResult) {
-                    this.log(`🎯 找到hgc相关词汇: "${hgcResult[0]}" = ${hgcResult[1]}次`);
-                    const exactKey = hgcResult[0].toLowerCase();
-                    const sources = wordSourceMap.get(exactKey) || [];
-                    this.log(`  📝 hgc的所有来源标题:`);
-                    sources.forEach((source, idx) => {
-                        this.log(`    ${idx + 1}. "${source}"`);
-                    });
-                } else {
-                    this.log(`⚠️ 未在最终结果中找到hgc相关词汇`);
-                    // 检查是否在wordCount中但被过滤了
-                    const allWords = Array.from(exactWordCount.entries());
-                    const hgcInCount = allWords.find(([key, data]) =>
-                        key.includes('hgc') || data.word.toLowerCase().includes('hgc'));
-                    if (hgcInCount) {
-                        this.log(`  但在统计中找到: "${hgcInCount[1].word}" = ${hgcInCount[1].count}次`);
-                        const exactKey = hgcInCount[0];
-                        const sources = wordSourceMap.get(exactKey) || [];
-                        this.log(`  📝 hgc在统计中的所有来源标题:`);
-                        sources.forEach((source, idx) => {
-                            this.log(`    ${idx + 1}. "${source}"`);
-                        });
-                        if (hgcInCount[1].count < 2) {
-                            this.log(`  ↳ 因为出现次数 < 2 被过滤`);
-                        }
-                    } else {
-                        this.log(`  在统计中也未找到hgc相关词汇`);
-                    }
-                }
-
-                // 特别检查push相关词汇是否在结果中
-                const pushResult = sortedWords.find(([word, count]) =>
-                    word.includes('包push') || word.includes('push'));
-                if (pushResult) {
-                    this.log(`🎯 找到push相关词汇: "${pushResult[0]}" = ${pushResult[1]}次`);
-                    const exactKey = pushResult[0].toLowerCase();
-                    const sources = wordSourceMap.get(exactKey) || [];
-                    this.log(`  📝 push相关词汇的所有来源标题:`);
-                    sources.forEach((source, idx) => {
-                        this.log(`    ${idx + 1}. "${source}"`);
-                    });
-                } else {
-                    this.log(`⚠️ 未在最终结果中找到push相关词汇`);
-                    // 检查是否在wordCount中但被过滤了
-                    const allWords = Array.from(exactWordCount.entries());
-                    const pushInCount = allWords.find(([key, data]) =>
-                        key.includes('push') || data.word.includes('push'));
-                    if (pushInCount) {
-                        this.log(`  但在统计中找到: "${pushInCount[1].word}" = ${pushInCount[1].count}次`);
-                        const exactKey = pushInCount[0];
-                        const sources = wordSourceMap.get(exactKey) || [];
-                        this.log(`  📝 push在统计中的所有来源标题:`);
-                        sources.forEach((source, idx) => {
-                            this.log(`    ${idx + 1}. "${source}"`);
-                        });
-                        if (pushInCount[1].count < 2) {
-                            this.log(`  ↳ 因为出现次数 < 2 被过滤`);
-                        }
-                    } else {
-                        this.log(`  在统计中也未找到push相关词汇`);
-                    }
-                }
-            }
-
-            return sortedWords;
-        },
-
-        // 分析指定日期的词频统计
-        analyzeWordFrequencyByDate(targetDateStr) {
-            const wordCount = new Map();
-            let allTitles = [];
-
-            this.log(`开始分析 ${targetDateStr} 的词频...`);
-
-            if (!this.historyData || this.historyData.length === 0) {
-                this.log('没有历史数据可供分析');
-                return [];
-            }
-
-            // 转换目标日期为Date对象，用于比较
-            const targetDate = new Date(targetDateStr);
-            const targetDateStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
-            const targetDateEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1);
-
-            // 使用本地保存的历史数据进行分析，但只分析指定日期的文章，不进行去重
-            this.historyData.forEach(record => {
-                // 支持新旧数据格式
-                const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
-
-                articles.forEach(article => {
-                    // 检查文章的发帖日期是否匹配目标日期
-                    let isTargetDate = false;
-                    if (article.pubDate) {
-                        const articleDate = new Date(article.pubDate);
-                        isTargetDate = articleDate >= targetDateStart && articleDate < targetDateEnd;
-                    } else {
-                        // 如果没有发帖时间，跳过此文章
-                        return;
-                    }
-
-                    if (!isTargetDate) {
-                        return; // 不是目标日期的文章，跳过
-                    }
-
-                    // 直接添加所有标题，不进行去重
-                    allTitles.push(article.title);
-                });
-            });
-
-            this.log(`📚 ${targetDateStr} 数据分析，直接统计所有标题共 ${allTitles.length} 条`);
-
-            // 如果没有任何数据，直接返回空数组
-            if (allTitles.length === 0) {
-                this.log(`${targetDateStr} 没有数据可供分析，返回空结果`);
-                return [];
-            }
-
-            // 用于记录每个词的原始大小写形式（完全匹配模式）
-            const exactWordCount = new Map(); // key为小写形式，value为{word: 原始形式, count: 计数}
-            
-            // 用于调试：记录每个词汇的来源标题
-            const wordSourceMap = new Map();
-
-            allTitles.forEach(title => {
-                // 预处理：移除特殊字符，但保留中文、英文、数字
-                const cleanTitle = title.replace(/[^\u4e00-\u9fff\w\s]/g, ' ');
-                
-                // 当前标题中已处理的词汇集合
-                const titleProcessedWords = new Set();
-
-                // 分词
-                const words = this.segmentChinese(cleanTitle);
-
-                words.forEach(word => {
-                    if (this.isValidWord(word)) {
-                        // 使用完全匹配模式：只按小写进行分组，不进行其他标准化
-                        const exactKey = word.toLowerCase();
-                        
-                        // 确保每个标题中的相同词汇只统计一次
-                        if (titleProcessedWords.has(exactKey)) {
-                            return; // 跳过已处理的词汇
-                        }
-                        
-                        // 标记该词在当前标题中已处理
-                        titleProcessedWords.add(exactKey);
-
-                        if (!exactWordCount.has(exactKey)) {
-                            exactWordCount.set(exactKey, {word: word, count: 0});
-                            wordSourceMap.set(exactKey, []);
-                        }
-
-                        // 增加计数
-                        exactWordCount.get(exactKey).count++;
-                        
-                        // 记录来源
-                        wordSourceMap.get(exactKey).push(title);
-
-                        // 更新显示形式（优先保存更"标准"的形式）
-                        const current = exactWordCount.get(exactKey);
-                        if (this.isPreferredCase(word, current.word)) {
-                            current.word = word;
-                        }
-                    }
-                });
-            });
-
-            // 转换为数组并排序，只保留≥3次的热词
-            const sortedWords = Array.from(exactWordCount.entries())
-                .map(([exactKey, data]) => [data.word, data.count])
-                .filter(([word, count]) => count >= 3)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 50); // 取前50个
-
-            this.log(`${targetDateStr} 词频分析完成，共找到 ${exactWordCount.size} 个不同词汇（完全匹配模式）`);
-
-            return sortedWords;
-        },
-
-        // 保存每日热词
-        saveDailyHotWords() {
-            // 获取最近7天的日期列表
-            const recentDates = this.getRecentDates(7);
-            let hasUpdatedData = false;
-
-            // 为每个日期分别保存热词数据
-            recentDates.forEach(dateInfo => {
-                const dateStr = dateInfo.dateStr;
-
-                // 分析该日期的热词（≥3次的才记录）
-                const wordFrequency = this.analyzeWordFrequencyByDate(dateStr);
-                const filteredWords = wordFrequency.filter(([word, count]) => count >= 3);
-
-                // 检查该日期是否已有记录
-                const existingIndex = this.hotWordsHistory.findIndex(record => record.dateStr === dateStr);
-
-                if (filteredWords.length > 0) {
-                    if (existingIndex >= 0) {
-                        // 更新该日期记录
-                        this.hotWordsHistory[existingIndex] = {
-                            date: dateInfo.date.getTime(),
-                            dateStr: dateStr,
-                            words: filteredWords,
-                            totalTitles: filteredWords.reduce((sum, [word, count]) => sum + count, 0)
-                        };
-                        this.log(`更新 ${dateStr} 热词记录，共 ${filteredWords.length} 个热词`);
-                        hasUpdatedData = true;
-                    } else {
-                        // 新增该日期记录
-                        this.hotWordsHistory.push({
-                            date: dateInfo.date.getTime(),
-                            dateStr: dateStr,
-                            words: filteredWords,
-                            totalTitles: filteredWords.reduce((sum, [word, count]) => sum + count, 0)
-                        });
-                        this.log(`新增 ${dateStr} 热词记录，共 ${filteredWords.length} 个热词`);
-                        hasUpdatedData = true;
-                    }
-                } else {
-                    // 如果该日期没有热词，删除可能存在的记录
-                    if (existingIndex >= 0) {
-                        this.hotWordsHistory.splice(existingIndex, 1);
-                        this.log(`删除 ${dateStr} 的空热词记录`);
-                        hasUpdatedData = true;
-                    }
-                }
-            });
-
-            if (hasUpdatedData) {
-                // 按日期降序排序（最新的在前面）
-                this.hotWordsHistory.sort((a, b) => b.date - a.date);
-
-                // 保存到本地存储
-                this.saveHotWordsHistory();
-            }
-
-            // 同时保存时间分布和用户统计
-            this.saveDailyTimeDistribution();
-            this.saveDailyUserStats();
-        },
-
-        // 获取指定日期的热词统计
-        getHotWordsByDate(dateStr) {
-            // 优先从原始数据直接计算，确保数据准确性
-            return this.analyzeWordFrequencyByDate(dateStr).filter(([word, count]) => count >= 3);
-        },
-
-        // 获取指定天数的热词统计
-        getHotWordsByDays(days = 7) {
-            if (!this.hotWordsHistory || this.hotWordsHistory.length === 0) {
-                return [];
-            }
-
-            const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
-            const recentRecords = this.hotWordsHistory.filter(record => record.date >= cutoffTime);
-
-            // 合并所有词汇（使用标准化键值）
-            const allWords = new Map();
-            const originalFormMap = new Map();
-
-            recentRecords.forEach(record => {
-                record.words.forEach(([word, count]) => {
-                    const wordKey = this.getWordKey(word);
-                    const currentCount = allWords.get(wordKey) || 0;
-                    allWords.set(wordKey, currentCount + count);
-
-                    // 记录更优的显示形式
-                    if (!originalFormMap.has(wordKey) || this.isPreferredCase(word, originalFormMap.get(wordKey))) {
-                        originalFormMap.set(wordKey, word);
-                    }
-                });
-            });
-
-            // 转换为数组并排序，只保留≥3次的，恢复原始形式
-            const sortedWords = Array.from(allWords.entries())
-                .map(([wordKey, count]) => [originalFormMap.get(wordKey), count])
-                .filter(([word, count]) => count >= 3)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 50);
-
-            return sortedWords;
-        },
-
-        // 通知弹窗更新（自动采集完成后调用）
-        notifyDialogUpdate() {
-            // 检查热点统计弹窗是否打开
-            const hotTopicsDialog = document.getElementById('hot-topics-dialog');
-            if (hotTopicsDialog) {
-                this.log('检测到热点统计弹窗打开，自动更新内容');
-                this.refreshHotTopicsDialog();
-            }
-
-            // 检查历史热词弹窗是否打开
-            const historyDialog = document.getElementById('hot-words-history-dialog');
-            if (historyDialog) {
-                this.log('检测到历史热词弹窗打开，自动更新内容');
-                this.refreshHistoryDialog();
-            }
-        },
-
-        // 刷新热点统计弹窗内容
-        async refreshHotTopicsDialog() {
-            const dialog = document.getElementById('hot-topics-dialog');
-            if (!dialog) return;
-
-            try {
-                this.log('刷新热点统计弹窗，使用本地7天数据分析');
-
-                // 分析词频（基于本地7天数据）
-                let wordFrequency = this.analyzeWordFrequency(true);
-                this.log('refreshHotTopicsDialog - 分析结果（过滤前）:', wordFrequency.length, '个词汇');
-                // 过滤出现次数≥3的热词
-                wordFrequency = wordFrequency.filter(([word, count]) => count >= 3);
-                this.log('refreshHotTopicsDialog - 过滤后（≥3次）:', wordFrequency.length, '个热词');
-
-                // 找到需要更新的元素
-                const titleElement = dialog.querySelector('div[style*="font-weight: bold"][style*="color: #FF5722"]');
-                const statsDiv = dialog.querySelector('#hot-topics-stats') || dialog.querySelector('div[style*="background: #f5f5f5"]');
-                const listContainer = dialog.querySelector('div[style*="max-height: 50vh"][style*="overflow-y: auto"]');
-                // 查找包含"暂无热点数据"文本的空状态div
-                const emptyDiv = Array.from(dialog.querySelectorAll('div')).find(div =>
-                    div.innerHTML.includes('📊 暂无热点数据'));
-
-                            // 更新标题
-            if (titleElement) {
-                titleElement.textContent = `NodeSeek热点统计`;
-            }
-
-                if (statsDiv) {
-                    const historyStats = this.getHistoryStats();
-                    const formatTime = (timestamp) => {
-                        if (!timestamp) return '未知';
-                        const date = new Date(timestamp);
-                        return date.getFullYear() + '/' +
-                               String(date.getMonth() + 1).padStart(2, '0') + '/' +
-                               String(date.getDate()).padStart(2, '0') + ' ' +
-                               String(date.getHours()).padStart(2, '0') + ':' +
-                               String(date.getMinutes()).padStart(2, '0') + ':' +
-                               String(date.getSeconds()).padStart(2, '0');
-                    };
-
-                    statsDiv.innerHTML = `
-                        数据来源：服务器7天RSS数据<br>
-                        文章总数：${historyStats.totalTitles} 篇<br>
-                        热门词汇：${wordFrequency.length} 个（≥3次）<br>
-                        上次采集：${formatTime(this.lastCollectTime)}<br>
-                        <span style="color: #28a745;">点击立即采集获取数据，关闭弹窗会自动清理数据。</span>
-                    `;
-                }
-
-                // 更新词频列表
-                if (wordFrequency.length > 0) {
-                    this.log('发现热词数据，数量:', wordFrequency.length);
-                    // 如果有空状态div，移除它
-                    if (emptyDiv) {
-                        this.log('找到空状态div，正在移除...');
-                        emptyDiv.remove();
-                    } else {
-                        this.log('未找到空状态div');
-                    }
-
-                    // 创建新的列表容器或更新现有的
-                    let newListContainer;
-                    if (!listContainer) {
-                        newListContainer = document.createElement('div');
-                        newListContainer.style.cssText = `
-                            max-height: 50vh;
-                            overflow-y: auto;
-                            border: 1px solid #eee;
-                            border-radius: 5px;
-                        `;
-                        // 插入到按钮组前面
-                        const buttonGroup = dialog.querySelector('div[style*="margin-top: 15px"][style*="display: flex"]');
-                        if (buttonGroup) {
-                            dialog.insertBefore(newListContainer, buttonGroup);
-                        }
-                    } else {
-                        newListContainer = listContainer;
-                        newListContainer.innerHTML = ''; // 清空现有内容
-                    }
-
-                    // 重新生成词频列表
-                    wordFrequency.forEach((item, index) => {
-                        const [word, count] = item;
-                        const itemDiv = document.createElement('div');
-                        itemDiv.style.cssText = `
-                            display: flex;
-                            justify-content: space-between;
-                            align-items: center;
-                            padding: 8px 12px;
-                            border-bottom: 1px solid #f0f0f0;
-                            background: ${index < 3 ? '#fff3e0' : '#fff'};
-                        `;
-
-                        // 排名标记
-                        let rankMark = '';
-                        if (index === 0) rankMark = '🥇';
-                        else if (index === 1) rankMark = '🥈';
-                        else if (index === 2) rankMark = '🥉';
-                        else rankMark = `#${index + 1}`;
-
-                        // 热度条
-                        const maxCount = wordFrequency[0][1];
-                        const percentage = (count / maxCount) * 100;
-
-                        itemDiv.innerHTML = `
-                            <div style="display: flex; align-items: center; flex: 1;">
-                                <span style="margin-right: 8px; font-size: 14px; min-width: 30px;">${rankMark}</span>
-                                <span style="font-weight: ${index < 5 ? 'bold' : 'normal'}; color: ${index < 3 ? '#FF5722' : '#333'};">${word}</span>
-                            </div>
-                            <div style="display: flex; align-items: center;">
-                                <div style="width: 60px; height: 8px; background: #f0f0f0; border-radius: 4px; margin-right: 8px; overflow: hidden;">
-                                    <div style="width: ${percentage}%; height: 100%; background: ${index < 3 ? '#FF5722' : '#2196F3'}; border-radius: 4px;"></div>
-                                </div>
-                                <span style="font-size: 12px; color: #666; min-width: 25px; text-align: right;">${count}</span>
-                            </div>
-                        `;
-
-                        newListContainer.appendChild(itemDiv);
-                    });
-                } else {
-                    // 没有热词，显示空状态
-                    if (listContainer) {
-                        listContainer.remove();
-                    }
-
-                    if (!emptyDiv) {
-                        const newEmptyDiv = document.createElement('div');
-                        newEmptyDiv.style.cssText = `
-                            text-align: center;
-                            color: #888;
-                            margin: 20px 0;
-                            padding: 40px 20px;
-                            background: #f9f9f9;
-                            border: 1px solid #eee;
-                            border-radius: 5px;
-                        `;
-                        newEmptyDiv.innerHTML = `
-                            <div style="font-size: 14px; margin-bottom: 8px;">📊 暂无热点数据</div>
-                        `;
-
-                        // 插入到按钮组前面
-                        const buttonGroup = dialog.querySelector('div[style*="margin-top: 15px"][style*="display: flex"]');
-                        if (buttonGroup) {
-                            dialog.insertBefore(newEmptyDiv, buttonGroup);
-                        }
-                    }
-                }
-
-                this.log('热点统计弹窗内容已自动更新');
-
             } catch (error) {
-                console.error('刷新热点统计弹窗失败:', error);
+                console.error('Token验证失败:', error);
+                // 如果是认证错误，清除本地存储的认证信息
+                if (error.message.includes('401') || error.message.includes('403')) {
+                    this.clearAuth();
+                    Utils.showMessage('登录已过期，请重新登录', 'warning');
+                } else {
+                    // 网络错误时不清除认证信息，保持登录状态
+                    console.warn('网络错误，保持当前登录状态');
+                }
             }
-        },
+            return false;
+        }
+    };
 
-        // 刷新历史热词弹窗内容
-        refreshHistoryDialog() {
-            const dialog = document.getElementById('hot-words-history-dialog');
-            if (!dialog) return;
-
-            // 触发当前选中天数的更新
-            const activeButton = dialog.querySelector('button[style*="background: #6f42c1"]');
-            if (activeButton) {
-                activeButton.click();
-                this.log('历史热词弹窗内容已自动更新');
-            }
-        },
-
-        // 显示热点统计弹窗
-        async showHotTopicsDialog() {
-            // 检查弹窗是否已存在
-            const existingDialog = document.getElementById('hot-topics-dialog');
+    // 配置同步
+    const Sync = {
+        _autoSyncTimerId: null,
+        // 显示配置选择对话框
+        // onCancel: 可选，当用户关闭/取消对话框且未执行同步时触发
+        showConfigSelectionDialog: function (mode, callback, onCancel) {
+            // 移除已存在的对话框
+            const existingDialog = document.getElementById('config-selection-dialog');
             if (existingDialog) {
                 existingDialog.remove();
-                return;
             }
 
-            // 创建加载提示
-            const loadingDialog = this.createLoadingDialog();
-            document.body.appendChild(loadingDialog);
-
-            try {
-                let wordFrequency = [];
-
-                // 检查是否已手动清理数据
-                if (this.dataCleared) {
-                    this.log('数据已被手动清理，显示空状态');
-                    wordFrequency = [];
-                } else {
-                    // 直接基于本地数据分析，不重新采集（避免重置采集时间）
-                    this.log('🔄 基于本地7天数据分析热词...');
-
-                    // 分析词频（基于本地7天数据）
-                    wordFrequency = this.analyzeWordFrequency(true);
-                    this.log('showHotTopicsDialog - 分析结果（过滤前）:', wordFrequency.length, '个词汇');
-                    // 过滤出现次数≥3的热词
-                    wordFrequency = wordFrequency.filter(([word, count]) => count >= 3);
-                    this.log('showHotTopicsDialog - 过滤后（≥3次）:', wordFrequency.length, '个热词');
-                }
-
-                // 移除加载提示
-                loadingDialog.remove();
-
-                // 显示结果弹窗（传递RSS数据统计）
-                this.createResultDialog(wordFrequency);
-
-            } catch (error) {
-                loadingDialog.remove();
-
-                // 显示错误信息
-                this.createErrorDialog(error.message);
-
-                // 记录到日志
-                if (window.addLog) {
-                    window.addLog('热点统计失败: ' + error.message);
-                }
-            }
-        },
-
-        // 创建加载对话框
-        createLoadingDialog() {
             const dialog = document.createElement('div');
-            dialog.id = 'hot-topics-loading';
+            dialog.id = 'config-selection-dialog';
+            const isMobile = window.innerWidth <= 768;
+
             dialog.style.cssText = `
                 position: fixed;
                 top: 50%;
                 left: 50%;
                 transform: translate(-50%, -50%);
-                z-index: 10000;
-                background: #fff;
-                border: 1px solid #ccc;
-                border-radius: 8px;
-                box-shadow: 0 2px 12px rgba(0,0,0,0.15);
-                padding: 30px;
-                text-align: center;
-                min-width: 200px;
-            `;
-
-            dialog.innerHTML = `
-                <div style="font-size: 16px; margin-bottom: 15px;">正在分析热点数据...</div>
-                <div style="font-size: 12px; color: #666;">基于本地7天RSS标题数据</div>
-            `;
-
-            return dialog;
-        },
-
-        // 创建错误对话框
-        createErrorDialog(errorMessage) {
-            const dialog = document.createElement('div');
-            dialog.id = 'hot-topics-error';
-            dialog.style.cssText = `
-                position: fixed;
-                top: 60px;
-                right: 16px;
-                z-index: 10000;
+                width: ${isMobile ? '90vw' : '480px'};
+                max-width: ${isMobile ? '90vw' : '480px'};
+                z-index: 10001;
                 background: #fff;
                 border: 1px solid #ccc;
                 border-radius: 8px;
                 box-shadow: 0 2px 12px rgba(0,0,0,0.15);
                 padding: 20px;
-                max-width: 400px;
-            `;
-
-            dialog.innerHTML = `
-                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                    <div style="font-weight: bold; font-size: 16px; color: #f44336;">热点统计失败</div>
-                    <span onclick="this.parentElement.parentElement.remove()" style="cursor: pointer; font-size: 20px; color: #999;">&times;</span>
-                </div>
-                <div style="color: #666; font-size: 14px;">${errorMessage}</div>
-                <div style="margin-top: 10px;">
-                    <button onclick="this.parentElement.parentElement.remove()" style="padding: 5px 10px; background: #f44336; color: white; border: none; border-radius: 3px; cursor: pointer;">关闭</button>
-                </div>
-            `;
-
-            document.body.appendChild(dialog);
-
-            // 5秒后自动关闭
-            setTimeout(() => {
-                if (dialog.parentElement) {
-                    dialog.remove();
-                }
-            }, 5000);
-        },
-
-        // 创建结果对话框
-        createResultDialog(wordFrequency) {
-            const dialog = document.createElement('div');
-            dialog.id = 'hot-topics-dialog';
-            dialog.style.cssText = `
-                position: fixed;
-                top: 60px;
-                right: 16px;
-                z-index: 10000;
-                background: #fff;
-                border: 1px solid #ccc;
-                border-radius: 8px;
-                box-shadow: 0 2px 12px rgba(0,0,0,0.15);
-                padding: 18px 20px 12px 20px;
                 max-height: 80vh;
                 overflow-y: auto;
-                user-select: text;
-                -webkit-user-select: text;
-                -moz-user-select: text;
-                -ms-user-select: text;
+                box-sizing: border-box;
             `;
 
-            // 移动端适配
-            if (window.innerWidth <= 767) {
-                dialog.style.cssText += `
-                    position: fixed !important;
-                    width: 95% !important;
-                    left: 2.5% !important;
-                    right: 2.5% !important;
-                    top: 5px !important;
-                    max-height: 95vh !important;
-                    padding: 15px 15px 10px 15px !important;
-                `;
-            } else {
-                dialog.style.width = '500px';
-            }
-
-            // 标题和关闭按钮
-            const header = document.createElement('div');
-            header.style.cssText = `
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 15px;
-                position: relative;
+            // 添加左上角拖拽区域
+            const dragHandle = document.createElement('div');
+            dragHandle.className = 'dialog-title-draggable'; // 添加可拖拽标识
+            dragHandle.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 30px;
+                height: 30px;
+                cursor: move;
+                background: transparent;
+                z-index: 1;
+                user-select: none;
             `;
 
+            // 标题
             const title = document.createElement('div');
-            title.textContent = `NodeSeek热点统计`;
+            title.textContent = `选择要${mode === 'upload' ? '上传' : '下载'}的配置`;
             title.style.cssText = `
                 font-weight: bold;
                 font-size: 16px;
-                color: #FF5722;
+                margin-bottom: 15px;
+                text-align: center;
             `;
 
+            // 关闭按钮
             const closeBtn = document.createElement('span');
             closeBtn.textContent = '×';
-            closeBtn.style.position = 'absolute';
-            closeBtn.style.right = '12px';
-            closeBtn.style.top = '8px';
-            closeBtn.style.cursor = 'pointer';
-            closeBtn.style.fontSize = '20px';
-            closeBtn.style.color = '#333';
-            closeBtn.className = 'close-btn';
+            closeBtn.style.cssText = `
+                position: absolute;
+                right: 12px;
+                top: 8px;
+                cursor: pointer;
+                font-size: 20px;
+            `;
             closeBtn.onclick = () => {
-                // 关闭弹窗时自动清理所有数据
-                this.clearAllData(false);
-                dialog.remove();
-            };
-
-            header.appendChild(title);
-            header.appendChild(closeBtn);
-            dialog.appendChild(header);
-
-            // 统计信息
-            const statsDiv = document.createElement('div');
-            statsDiv.id = 'hot-topics-stats';
-            statsDiv.style.cssText = `
-                background: #f5f5f5;
-                padding: 10px;
-                border-radius: 5px;
-                margin-bottom: 15px;
-                font-size: 12px;
-                color: #666;
-            `;
-
-
-
-            // 格式化时间函数
-            const formatTime = (timestamp) => {
-                if (!timestamp) return '未知';
-                const date = new Date(timestamp);
-                return date.getFullYear() + '/' +
-                       String(date.getMonth() + 1).padStart(2, '0') + '/' +
-                       String(date.getDate()).padStart(2, '0') + ' ' +
-                       String(date.getHours()).padStart(2, '0') + ':' +
-                       String(date.getMinutes()).padStart(2, '0') + ':' +
-                       String(date.getSeconds()).padStart(2, '0');
-            };
-
-            const updateStatsContent = () => {
-                const historyStats = this.getHistoryStats();
-
-                statsDiv.innerHTML = `
-                    数据来源：服务器7天RSS数据<br>
-                    文章总数：${historyStats.totalTitles} 篇<br>
-                    热门词汇：${wordFrequency.length} 个（≥3次）<br>
-                    上次采集：${formatTime(this.lastCollectTime)}<br>
-                    <span style="color: #28a745;">点击立即采集获取数据，关闭弹窗会自动清理数据。</span>
-                `;
-            };
-
-            // 初始化显示
-            updateStatsContent();
-
-            // 移除倒计时定时器
-            // const countdownTimer = ...
-
-            dialog.appendChild(statsDiv);
-
-            // 词频列表
-            this.log('createResultDialog: 热词数量:', wordFrequency.length);
-            if (wordFrequency.length > 0) {
-                const listContainer = document.createElement('div');
-                listContainer.style.cssText = `
-                    max-height: 50vh;
-                    overflow-y: auto;
-                    border: 1px solid #eee;
-                    border-radius: 5px;
-                `;
-
-                wordFrequency.forEach((item, index) => {
-                    const [word, count] = item;
-                    const itemDiv = document.createElement('div');
-                    itemDiv.style.cssText = `
-                        display: flex;
-                        justify-content: space-between;
-                        align-items: center;
-                        padding: 8px 12px;
-                        border-bottom: 1px solid #f0f0f0;
-                        background: ${index < 3 ? '#fff3e0' : '#fff'};
-                    `;
-
-                    // 排名标记
-                    let rankMark = '';
-                    if (index === 0) rankMark = '🥇';
-                    else if (index === 1) rankMark = '🥈';
-                    else if (index === 2) rankMark = '🥉';
-                    else rankMark = `#${index + 1}`;
-
-                    // 热度条
-                    const maxCount = wordFrequency[0][1];
-                    const percentage = (count / maxCount) * 100;
-
-                    itemDiv.innerHTML = `
-                        <div style="display: flex; align-items: center; flex: 1;">
-                            <span style="margin-right: 8px; font-size: 14px; min-width: 30px;">${rankMark}</span>
-                            <span style="font-weight: ${index < 5 ? 'bold' : 'normal'}; color: ${index < 3 ? '#FF5722' : '#333'};">${word}</span>
-                        </div>
-                        <div style="display: flex; align-items: center;">
-                            <div style="width: 60px; height: 8px; background: #f0f0f0; border-radius: 4px; margin-right: 8px; overflow: hidden;">
-                                <div style="width: ${percentage}%; height: 100%; background: ${index < 3 ? '#FF5722' : '#2196F3'}; border-radius: 4px;"></div>
-                            </div>
-                            <span style="font-size: 12px; color: #666; min-width: 25px; text-align: right;">${count}</span>
-                        </div>
-                    `;
-
-                    listContainer.appendChild(itemDiv);
-                });
-
-                dialog.appendChild(listContainer);
-            } else {
-                const emptyDiv = document.createElement('div');
-                emptyDiv.style.cssText = `
-                    text-align: center;
-                    color: #888;
-                    margin: 20px 0;
-                    padding: 40px 20px;
-                    background: #f9f9f9;
-                    border: 1px solid #eee;
-                    border-radius: 5px;
-                `;
-                const historyStats = this.getHistoryStats();
-                    emptyDiv.innerHTML = `
-                        <div style="font-size: 14px; margin-bottom: 8px;">📊 暂无热点数据</div>
-                    `;
-                dialog.appendChild(emptyDiv);
-            }
-
-            // 按钮组
-            const buttonGroup = document.createElement('div');
-            buttonGroup.style.cssText = `
-                margin-top: 15px;
-                display: flex;
-                gap: 10px;
-                flex-wrap: wrap;
-            `;
-
-            // 立即采集按钮
-            const collectBtn = document.createElement('button');
-            collectBtn.textContent = '立即采集';
-            collectBtn.style.cssText = `
-                padding: 5px 15px;
-                background: #28a745;
-                color: white;
-                border: none;
-                border-radius: 3px;
-                cursor: pointer;
-                font-size: 12px;
-                min-width: 90px;
-                width: 90px;
-                white-space: nowrap;
-            `;
-
-            // 检查并恢复冷却状态
-            const cooldownState = this.getCooldownState();
-            if (cooldownState.isInCooldown) {
-                collectBtn.disabled = true;
-                collectBtn.textContent = `冷却中(${cooldownState.remainingSeconds}s)`;
-
-                // 继续冷却倒计时
-                const timer = setInterval(() => {
-                    const currentState = this.getCooldownState();
-                    if (currentState.isInCooldown) {
-                        collectBtn.textContent = `冷却中(${currentState.remainingSeconds}s)`;
-                    } else {
-                        clearInterval(timer);
-                        collectBtn.disabled = false;
-                        collectBtn.textContent = '立即采集';
-                    }
-                }, 1000);
-            }
-
-            collectBtn.onclick = async () => {
-                if (collectBtn.disabled) return; // 防止冷却期间重复点击
-
-                collectBtn.disabled = true;
-                collectBtn.textContent = '采集中...';
+                // 用户主动关闭对话框
                 try {
-                    // 重置清理标记，允许重新获取数据
-                    this.dataCleared = false;
-                    await this.performCollect(); // 执行手动采集
-                    // 直接刷新当前弹窗内容，而不是关闭重开
-                    await this.refreshHotTopicsDialog();
-
-                    // 设置冷却状态
-                    const cooldownStartTime = Date.now();
-                    this.setCooldownState(cooldownStartTime);
-
-                    // 进入9秒冷却
-                    let cooldown = 9;
-                    collectBtn.textContent = `冷却中(${cooldown}s)`;
-                    const timer = setInterval(() => {
-                        const currentState = this.getCooldownState();
-                        if (currentState.isInCooldown) {
-                            collectBtn.textContent = `冷却中(${currentState.remainingSeconds}s)`;
-                        } else {
-                            clearInterval(timer);
-                            collectBtn.disabled = false;
-                            collectBtn.textContent = '立即采集';
-                        }
-                    }, 1000);
-                } catch (error) {
-                    this.clearCooldownState(); // 失败时清除冷却状态
-                    collectBtn.textContent = '采集失败';
-                    setTimeout(() => {
-                        collectBtn.disabled = false;
-                        collectBtn.textContent = '立即采集';
-                    }, 2000);
-                }
-            };
-            buttonGroup.appendChild(collectBtn);
-
-            // 历史热词按钮
-            const historyBtn = document.createElement('button');
-            historyBtn.textContent = '历史热词';
-            historyBtn.style.cssText = `
-                padding: 5px 15px;
-                background: #6f42c1;
-                color: white;
-                border: none;
-                border-radius: 3px;
-                cursor: pointer;
-                font-size: 12px;
-            `;
-            historyBtn.onclick = () => {
-                this.showHotWordsHistoryDialog();
-            };
-            buttonGroup.appendChild(historyBtn);
-
-            // 时间分布按钮
-            const timeDistBtn = document.createElement('button');
-            timeDistBtn.textContent = '时间分布';
-            timeDistBtn.style.cssText = `
-                padding: 5px 15px;
-                background: #17a2b8;
-                color: white;
-                border: none;
-                border-radius: 3px;
-                cursor: pointer;
-                font-size: 12px;
-            `;
-            timeDistBtn.onclick = () => {
-                this.showTimeDistributionDialog();
-            };
-            buttonGroup.appendChild(timeDistBtn);
-
-            // 用户统计按钮
-            const userStatsBtn = document.createElement('button');
-            userStatsBtn.textContent = '用户统计';
-            userStatsBtn.style.cssText = `
-                padding: 5px 15px;
-                background: #28a745;
-                color: white;
-                border: none;
-                border-radius: 3px;
-                cursor: pointer;
-                font-size: 12px;
-            `;
-            userStatsBtn.onclick = () => {
-                this.showUserStatsDialog();
-            };
-            buttonGroup.appendChild(userStatsBtn);
-
-            // 清理数据按钮
-            const clearBtn = document.createElement('button');
-            clearBtn.textContent = '清理数据';
-            clearBtn.style.cssText = `
-                padding: 5px 15px;
-                background: #FF5722;
-                color: white;
-                border: none;
-                border-radius: 3px;
-                cursor: pointer;
-                font-size: 12px;
-            `;
-            clearBtn.onclick = () => {
-                if (this.clearAllData(true)) {
-                    // 清理完毕后立即显示空状态，不重新抓取数据
+                    if (typeof onCancel === 'function') onCancel();
+                } finally {
                     dialog.remove();
-
-                    // 直接显示空结果
-                    this.createResultDialog([]);
-                }
-            };
-            buttonGroup.appendChild(clearBtn);
-
-            dialog.appendChild(buttonGroup);
-
-            document.body.appendChild(dialog);
-
-            // 添加拖拽功能
-            if (window.makeDraggable) {
-                window.makeDraggable(dialog, {width: 50, height: 50});
-            }
-
-
-        },
-
-        // 生成最近7天的日期列表
-        getRecentDates(days = 7) {
-            const dates = [];
-            const today = new Date();
-
-            for (let i = 0; i < days; i++) {
-                const date = new Date(today);
-                date.setDate(today.getDate() - i);
-
-                const dateStr = date.getFullYear() + '-' +
-                              String(date.getMonth() + 1).padStart(2, '0') + '-' +
-                              String(date.getDate()).padStart(2, '0');
-
-                const displayStr = String(date.getMonth() + 1).padStart(2, '0') + '-' +
-                                 String(date.getDate()).padStart(2, '0');
-
-                dates.push({
-                    date: date,
-                    dateStr: dateStr,
-                    displayStr: displayStr,
-                    timestamp: date.getTime()
-                });
-            }
-
-            return dates;
-        },
-
-        // 显示历史热词弹窗
-        showHotWordsHistoryDialog() {
-            // 检查弹窗是否已存在
-            const existingDialog = document.getElementById('hot-words-history-dialog');
-            if (existingDialog) {
-                existingDialog.remove();
-                return;
-            }
-
-            const dialog = document.createElement('div');
-            dialog.id = 'hot-words-history-dialog';
-            dialog.style.cssText = `
-                position: fixed;
-                top: 60px;
-                right: 16px;
-                z-index: 10000;
-                background: #fff;
-                border: 1px solid #ccc;
-                border-radius: 8px;
-                box-shadow: 0 2px 12px rgba(0,0,0,0.15);
-                padding: 18px 20px 12px 20px;
-                max-height: 80vh;
-                overflow-y: auto;
-                user-select: text;
-                -webkit-user-select: text;
-                -moz-user-select: text;
-                -ms-user-select: text;
-            `;
-
-            // 移动端适配
-            if (window.innerWidth <= 767) {
-                dialog.style.cssText += `
-                    position: fixed !important;
-                    width: 95% !important;
-                    left: 2.5% !important;
-                    right: 2.5% !important;
-                    top: 5px !important;
-                    max-height: 95vh !important;
-                    padding: 15px 15px 10px 15px !important;
-                `;
-            } else {
-                dialog.style.width = '600px';
-            }
-
-            // 标题和关闭按钮
-            const header = document.createElement('div');
-            header.style.cssText = `
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 15px;
-                position: relative;
-            `;
-
-            const title = document.createElement('div');
-            title.textContent = `热词历史趋势`;
-            title.style.cssText = `
-                font-weight: bold;
-                font-size: 16px;
-                color: #6f42c1;
-            `;
-
-            const closeBtn = document.createElement('span');
-            closeBtn.textContent = '×';
-            closeBtn.style.position = 'absolute';
-            closeBtn.style.right = '12px';
-            closeBtn.style.top = '8px';
-            closeBtn.style.cursor = 'pointer';
-            closeBtn.style.fontSize = '20px';
-            closeBtn.style.color = '#333';
-            closeBtn.className = 'close-btn';
-            closeBtn.onclick = () => dialog.remove();
-
-            header.appendChild(title);
-            header.appendChild(closeBtn);
-            dialog.appendChild(header);
-
-            // 日期选择按钮组
-            const daySelector = document.createElement('div');
-            daySelector.style.cssText = `
-                margin-bottom: 15px;
-                display: flex;
-                gap: 5px;
-                flex-wrap: wrap;
-            `;
-
-            const dateOptions = this.getRecentDates(7);
-
-            let selectedDates = new Set([dateOptions[0].dateStr]); // 默认选择今天
-            let contentContainer = null;
-
-            // 渲染选择按钮
-            const renderSelectionButtons = () => {
-                daySelector.innerHTML = '';
-
-                // 显示日期按钮，支持多选
-                dateOptions.forEach(dateOption => {
-                    const btn = document.createElement('button');
-                    btn.textContent = dateOption.displayStr;
-                    const isSelected = selectedDates.has(dateOption.dateStr);
-                    btn.style.cssText = `
-                        padding: 4px 8px;
-                        border: 1px solid #ddd;
-                        border-radius: 3px;
-                        cursor: pointer;
-                        font-size: 12px;
-                        background: ${isSelected ? '#6f42c1' : '#f8f9fa'};
-                        color: ${isSelected ? 'white' : '#333'};
-                    `;
-                    btn.onclick = () => {
-                        if (selectedDates.has(dateOption.dateStr)) {
-                            selectedDates.delete(dateOption.dateStr);
-                        } else {
-                            selectedDates.add(dateOption.dateStr);
-                        }
-                        renderSelectionButtons();
-                        updateContentMulti();
-                    };
-                    daySelector.appendChild(btn);
-                });
-            };
-
-            // 多选模式更新内容
-            const updateContentMulti = () => {
-                if (selectedDates.size === 0) {
-                    renderContent([], [], '多选', '未选择日期');
-                    return;
-                }
-
-                // 获取选中日期的热词数据
-                const allWords = new Map();
-                const selectedRecords = [];
-
-                selectedDates.forEach(dateStr => {
-                    // 使用新的按日期查询方法，确保数据准确性
-                    const hotWords = this.getHotWordsByDate(dateStr);
-                    if (hotWords.length > 0) {
-                        // 创建虚拟记录用于显示统计信息
-                        selectedRecords.push({
-                            dateStr: dateStr,
-                            words: hotWords,
-                            totalTitles: hotWords.reduce((sum, [word, count]) => sum + count, 0)
-                        });
-
-                        hotWords.forEach(([word, count]) => {
-                            const currentCount = allWords.get(word) || 0;
-                            allWords.set(word, currentCount + count);
-                        });
-                    }
-                });
-
-                // 转换为排序数组
-                const hotWords = Array.from(allWords.entries())
-                    .filter(([word, count]) => count >= 2)
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 50);
-
-                const selectedDateLabels = Array.from(selectedDates).sort().map(dateStr => {
-                    const date = dateOptions.find(d => d.dateStr === dateStr);
-                    return date ? date.displayStr : dateStr;
-                }).join(', ');
-
-                renderContent(hotWords, selectedRecords, '多选', selectedDateLabels);
-            };
-
-            // 渲染内容
-            const renderContent = (hotWords, historyRecords, modeLabel, periodLabel) => {
-
-                contentContainer.innerHTML = '';
-
-                // 统计信息
-                const statsDiv = document.createElement('div');
-                statsDiv.style.cssText = `
-                    background: #f5f5f5;
-                    padding: 10px;
-                    border-radius: 5px;
-                    margin-bottom: 15px;
-                    font-size: 12px;
-                    color: #666;
-                `;
-
-                                 // 格式化时间函数
-                 const formatTime = (timestamp) => {
-                     if (!timestamp) return '未知';
-                     const date = new Date(timestamp);
-                     return date.getFullYear() + '/' +
-                            String(date.getMonth() + 1).padStart(2, '0') + '/' +
-                            String(date.getDate()).padStart(2, '0') + ' ' +
-                            String(date.getHours()).padStart(2, '0') + ':' +
-                            String(date.getMinutes()).padStart(2, '0') + ':' +
-                            String(date.getSeconds()).padStart(2, '0');
-                 };
-
-                 // 计算下次采集倒计时
-                 const getCountdown = () => {
-                     if (!this.nextCollectTime) return '未知';
-                     const now = Date.now();
-                     const remaining = Math.max(0, this.nextCollectTime - now);
-                     const minutes = Math.floor(remaining / (1000 * 60));
-                     const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
-                     return `${minutes}分${seconds}秒`;
-                 };
-
-                const updateHistoryStats = () => {
-                    statsDiv.innerHTML = `
-                        查看模式：${modeLabel}（${periodLabel}）<br>
-                        数据记录：${historyRecords.length > 0 ? '有' : '无'}<br>
-                        热门词汇：${hotWords.length} 个（≥3次）<br>
-                    `;
-                };
-
-                 // 初始化显示
-                 updateHistoryStats();
-
-                contentContainer.appendChild(statsDiv);
-                
-
-                // 热词列表
-                if (hotWords.length > 0) {
-                    const listContainer = document.createElement('div');
-                    listContainer.style.cssText = `
-                        max-height: 50vh;
-                        overflow-y: auto;
-                        border: 1px solid #eee;
-                        border-radius: 5px;
-                    `;
-
-                    hotWords.forEach((item, index) => {
-                        const [word, count] = item;
-                        const itemDiv = document.createElement('div');
-                        itemDiv.style.cssText = `
-                            display: flex;
-                            justify-content: space-between;
-                            align-items: center;
-                            padding: 8px 12px;
-                            border-bottom: 1px solid #f0f0f0;
-                            background: ${index < 3 ? '#f8f5ff' : '#fff'};
-                        `;
-
-                        // 排名标记
-                        let rankMark = '';
-                        if (index === 0) rankMark = '🥇';
-                        else if (index === 1) rankMark = '🥈';
-                        else if (index === 2) rankMark = '🥉';
-                        else rankMark = `#${index + 1}`;
-
-                        // 热度条
-                        const maxCount = hotWords[0][1];
-                        const percentage = (count / maxCount) * 100;
-
-                        itemDiv.innerHTML = `
-                            <div style="display: flex; align-items: center; flex: 1;">
-                                <span style="margin-right: 8px; font-size: 14px; min-width: 30px;">${rankMark}</span>
-                                <span style="font-weight: ${index < 5 ? 'bold' : 'normal'}; color: ${index < 3 ? '#6f42c1' : '#333'};">${word}</span>
-                            </div>
-                            <div style="display: flex; align-items: center;">
-                                <div style="width: 60px; height: 8px; background: #f0f0f0; border-radius: 4px; margin-right: 8px; overflow: hidden;">
-                                    <div style="width: ${percentage}%; height: 100%; background: ${index < 3 ? '#6f42c1' : '#17a2b8'}; border-radius: 4px;"></div>
-                                </div>
-                                <span style="font-size: 12px; color: #666; min-width: 25px; text-align: right;">${count}</span>
-                            </div>
-                        `;
-
-                        listContainer.appendChild(itemDiv);
-                    });
-
-                    contentContainer.appendChild(listContainer);
-                } else {
-                    const emptyDiv = document.createElement('div');
-                    emptyDiv.style.cssText = `
-                        text-align: center;
-                        color: #888;
-                        margin: 20px 0;
-                        padding: 40px 20px;
-                        background: #f9f9f9;
-                        border: 1px solid #eee;
-                        border-radius: 5px;
-                    `;
-                    emptyDiv.innerHTML = `
-                        <div style="font-size: 14px; margin-bottom: 8px;">📊 ${periodLabel}暂无热词数据</div>
-                        <div style="font-size: 12px; color: #999;">
-                            热词需要出现≥3次才会被记录
-                        </div>
-                    `;
-                    contentContainer.appendChild(emptyDiv);
                 }
             };
 
-            dialog.appendChild(daySelector);
-
-            // 内容容器
-            contentContainer = document.createElement('div');
-            dialog.appendChild(contentContainer);
-
-            // 初始化显示
-            renderSelectionButtons();
-            updateContentMulti();
-
-            document.body.appendChild(dialog);
-
-            // 添加拖拽功能
-            if (window.makeDraggable) {
-                window.makeDraggable(dialog, {width: 50, height: 50});
-            }
-
-
-        },
-
-        // 判断是否为有效词汇（用于最终词频统计）
-        isValidWord(word) {
-            if (!word || word.length < 2) return false;
-            if (this.stopWords.has(word.toLowerCase())) return false; // 停止词检查使用小写比较
-            if (this.numberSymbolRegex.test(word)) return false;
-
-            // 一些常见的有效词汇模式
-            const validPatterns = [
-                /^[\u4e00-\u9fff]{2,}$/, // 纯中文词汇
-                /^[a-zA-Z]{3,}$/, // 英文词汇
-                /^[\u4e00-\u9fff]+[a-zA-Z0-9]+$/, // 中文+英文数字
-                /^[a-zA-Z0-9]+[\u4e00-\u9fff]+$/, // 英文数字+中文
-                /^\d{2,}$/ // 纯数字（年份等）
+            // 配置选项
+            const configOptions = [
+                { key: 'blacklist', label: '黑名单' },
+                { key: 'friends', label: '好友' },
+                { key: 'favorites', label: '收藏' },
+                { key: 'logs', label: '操作日志' },
+                { key: 'browseHistory', label: '浏览历史' },
+                { key: 'quickReplies', label: '快捷回复' },
+                { key: 'emojiFavorites', label: '常用表情' },
+                { key: 'chickenLegStats', label: '鸡腿统计' },
+                { key: 'filterData', label: '关键词过滤' },
+                { key: 'notesData', label: '笔记' }
             ];
 
-            return validPatterns.some(pattern => pattern.test(word));
-        },
+            // 全选/取消全选
+            const selectAllContainer = document.createElement('div');
+            selectAllContainer.style.cssText = `
+                margin-bottom: 15px;
+                padding-bottom: 10px;
+                border-bottom: 1px solid #eee;
+                display: grid;
+                grid-template-columns: ${isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)'};
+                gap: ${isMobile ? '6px' : '8px'};
+                align-items: center;
+            `;
 
-        // 设置冷却状态
-        setCooldownState(startTime) {
-            try {
-                localStorage.setItem(this.cooldownStorageKey, JSON.stringify({
-                    startTime: startTime,
-                    duration: this.cooldownDuration
-                }));
-            } catch (error) {
-                console.error('保存冷却状态失败:', error);
+            const selectAllCheckbox = document.createElement('input');
+            selectAllCheckbox.type = 'checkbox';
+            selectAllCheckbox.id = 'select-all-config';
+            selectAllCheckbox.checked = true;
+            selectAllCheckbox.style.marginRight = '0px';
+            selectAllCheckbox.onclick = (e) => { e.stopPropagation(); };
+
+            const selectAllLabel = document.createElement('label');
+            selectAllLabel.htmlFor = 'select-all-config';
+            selectAllLabel.textContent = '全选';
+            selectAllLabel.style.cssText = `
+                cursor: pointer;
+                font-weight: bold;
+                color: #1890ff;
+            `;
+            selectAllLabel.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                selectAllGroup.onclick();
+            };
+
+            const selectAllGroup = document.createElement('div');
+            selectAllGroup.style.cssText = `
+                min-width: 0;
+                padding: ${isMobile ? '6px 8px' : '8px 12px'};
+                background: #f8f9fa;
+                border-radius: 4px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                cursor: pointer;
+                white-space: nowrap;
+            `;
+            selectAllGroup.appendChild(selectAllCheckbox);
+            selectAllGroup.appendChild(selectAllLabel);
+            selectAllContainer.appendChild(selectAllGroup);
+            selectAllGroup.onclick = () => {
+                selectAllCheckbox.checked = !selectAllCheckbox.checked;
+                selectAllCheckbox.dispatchEvent(new Event('change'));
+            };
+
+            let autoSyncContainer;
+            let autoSyncCheckbox;
+            if (mode === 'upload') {
+                autoSyncContainer = document.createElement('div');
+                autoSyncContainer.style.cssText = `
+                    min-width: 0;
+                    padding: ${isMobile ? '6px 8px' : '8px 12px'};
+                    background: #f8f9fa;
+                    border-radius: 4px;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    color: #333;
+                    cursor: pointer;
+                    white-space: nowrap;
+                    grid-column: ${isMobile ? 'span 1' : 'span 3'};
+                `;
+                autoSyncCheckbox = document.createElement('input');
+                autoSyncCheckbox.type = 'checkbox';
+                autoSyncCheckbox.id = 'auto-sync-config';
+                try {
+                    autoSyncCheckbox.checked = JSON.parse(localStorage.getItem('nodeseek_auto_sync_enabled') || 'false');
+                } catch (e) {
+                    autoSyncCheckbox.checked = false;
+                }
+                autoSyncCheckbox.onclick = (e) => { e.stopPropagation(); };
+                const autoSyncLabel = document.createElement('label');
+                autoSyncLabel.htmlFor = 'auto-sync-config';
+                autoSyncLabel.textContent = '自动上传（每24小时一次）';
+                autoSyncLabel.style.cssText = `
+                    cursor: pointer;
+                    font-weight: bold;
+                    color: #1890ff;
+                `;
+                autoSyncLabel.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    autoSyncContainer.onclick();
+                };
+                const autoSyncCountdown = document.createElement('span');
+                autoSyncCountdown.style.cssText = `
+                    margin-left: 8px;
+                    font-size: 12px;
+                    color: #888;
+                `;
+                autoSyncCountdown.onclick = (e) => { e.stopPropagation(); };
+                autoSyncContainer.appendChild(autoSyncCheckbox);
+                autoSyncContainer.appendChild(autoSyncLabel);
+                autoSyncContainer.appendChild(autoSyncCountdown);
+                selectAllContainer.appendChild(autoSyncContainer);
+                autoSyncContainer.onclick = () => {
+                    autoSyncCheckbox.checked = !autoSyncCheckbox.checked;
+                    autoSyncCheckbox.dispatchEvent(new Event('change'));
+                };
+
+                autoSyncCheckbox.addEventListener('change', () => {
+                    try {
+                        const enabled = !!autoSyncCheckbox.checked;
+                        localStorage.setItem('nodeseek_auto_sync_enabled', JSON.stringify(enabled));
+                        if (enabled) {
+                            const items = checkboxes.length ? checkboxes.filter(cb => cb.checked).map(cb => cb.value) : [];
+                            localStorage.setItem('nodeseek_auto_sync_items', JSON.stringify(items));
+                            const nowTs = Date.now().toString();
+                            localStorage.setItem('nodeseek_auto_sync_last_time', nowTs);
+                            localStorage.setItem('nodeseek_auto_sync_last_attempt_time', nowTs);
+                            try { Sync.initAutoSync(); } catch (e) { }
+                            Utils.showMessage('自动上传已开启', 'info', false);
+                        } else {
+                            localStorage.removeItem('nodeseek_auto_sync_items');
+                            localStorage.removeItem('nodeseek_auto_sync_lock_until');
+                            Utils.showMessage('自动上传已关闭', 'info', false);
+                        }
+                    } catch (e) { }
+                });
+
             }
-        },
 
-        // 获取冷却状态
-        getCooldownState() {
+            // 配置项列表
+            const configList = document.createElement('div');
+            configList.style.cssText = `
+                margin-bottom: 20px;
+                display: grid;
+                grid-template-columns: ${isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)'};
+                gap: ${isMobile ? '6px' : '8px'};
+                max-height: 200px;
+                overflow-y: auto;
+            `;
+
+            const checkboxes = [];
+
+            configOptions.forEach(option => {
+                const item = document.createElement('div');
+                item.style.cssText = `
+                    min-width: 0;
+                    padding: ${isMobile ? '6px 8px' : '8px 12px'};
+                    background: #f8f9fa;
+                    border-radius: 4px;
+                    display: flex;
+                    align-items: center;
+                    transition: background-color 0.2s ease;
+                    cursor: pointer;
+                    white-space: nowrap;
+                `;
+
+                // 添加hover效果
+                item.onmouseover = () => {
+                    item.style.backgroundColor = '#e9ecef';
+                };
+                item.onmouseout = () => {
+                    item.style.backgroundColor = '#f8f9fa';
+                };
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `config-${option.key}`;
+                checkbox.value = option.key;
+                checkbox.checked = true;
+                checkbox.style.marginRight = isMobile ? '4px' : '6px';
+
+                const label = document.createElement('label');
+                label.htmlFor = `config-${option.key}`;
+                label.style.cssText = `
+                    cursor: pointer;
+                    font-weight: bold;
+                    font-size: ${isMobile ? '12px' : '13px'};
+                    color: #333;
+                    user-select: none;
+                    flex: 1;
+                `;
+                label.textContent = option.label;
+
+                // 统一的点击处理函数
+                const toggleCheckbox = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    checkbox.checked = !checkbox.checked;
+                    // 触发change事件以更新全选状态
+                    checkbox.dispatchEvent(new Event('change'));
+                };
+
+                // 点击整个item区域切换checkbox状态
+                item.onclick = toggleCheckbox;
+
+                // 点击label文本切换checkbox状态
+                label.onclick = toggleCheckbox;
+
+                // 阻止checkbox的默认行为，使用我们的统一处理
+                checkbox.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleCheckbox(e);
+                };
+
+                item.appendChild(checkbox);
+                item.appendChild(label);
+                configList.appendChild(item);
+
+                checkboxes.push(checkbox);
+            });
+
             try {
-                const stored = localStorage.getItem(this.cooldownStorageKey);
-                if (stored) {
-                    const cooldownData = JSON.parse(stored);
+                const savedItemsRaw = localStorage.getItem('nodeseek_auto_sync_items');
+                const savedItems = savedItemsRaw ? JSON.parse(savedItemsRaw) : null;
+                if (Array.isArray(savedItems) && savedItems.length > 0) {
+                    checkboxes.forEach(cb => {
+                        cb.checked = savedItems.includes(cb.value);
+                    });
+                    const allChecked = checkboxes.every(c => c.checked);
+                    const anyChecked = checkboxes.some(c => c.checked);
+                    selectAllCheckbox.checked = allChecked;
+                    selectAllCheckbox.indeterminate = !allChecked && anyChecked;
+                }
+            } catch (e) { }
+
+            const getSelectedItems = () => checkboxes.filter(cb => cb.checked).map(cb => cb.value);
+            const persistAutoSyncItems = () => {
+                try {
+                    if (autoSyncCheckbox && autoSyncCheckbox.checked) {
+                        localStorage.setItem('nodeseek_auto_sync_items', JSON.stringify(getSelectedItems()));
+                    }
+                } catch (e) { }
+            };
+
+            selectAllCheckbox.onchange = function () {
+                checkboxes.forEach(cb => cb.checked = this.checked);
+                persistAutoSyncItems();
+            };
+
+            checkboxes.forEach(cb => {
+                cb.onchange = function () {
+                    const allChecked = checkboxes.every(c => c.checked);
+                    const anyChecked = checkboxes.some(c => c.checked);
+                    selectAllCheckbox.checked = allChecked;
+                    selectAllCheckbox.indeterminate = !allChecked && anyChecked;
+                    persistAutoSyncItems();
+                };
+            });
+
+            // 进度条容器
+            const progressContainer = document.createElement('div');
+            progressContainer.style.cssText = `
+                margin-bottom: 15px;
+                display: none;
+            `;
+
+            // 进度条标签
+            const progressLabel = document.createElement('div');
+            progressLabel.style.cssText = `
+                font-size: 12px;
+                color: #666;
+                margin-bottom: 5px;
+                text-align: center;
+            `;
+
+            // 进度条背景
+            const progressBar = document.createElement('div');
+            progressBar.style.cssText = `
+                width: 100%;
+                height: 8px;
+                background: #f0f0f0;
+                border-radius: 4px;
+                overflow: hidden;
+                box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+            `;
+
+            // 进度条填充
+            const progressFill = document.createElement('div');
+            progressFill.style.cssText = `
+                height: 100%;
+                background: linear-gradient(90deg, #1890ff, #40a9ff);
+                width: 0%;
+                transition: width 0.5s ease;
+                border-radius: 4px;
+                position: relative;
+                box-shadow: 0 1px 2px rgba(24,144,255,0.3);
+                overflow: hidden;
+            `;
+
+            // 添加闪烁效果
+            const progressShine = document.createElement('div');
+            progressShine.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: -100%;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+                animation: shine 2s infinite;
+            `;
+
+            // 添加CSS动画
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes shine {
+                    0% { left: -100%; }
+                    50% { left: 100%; }
+                    100% { left: 100%; }
+                }
+            `;
+
+            if (!document.head.querySelector('style[data-progress-shine]')) {
+                style.setAttribute('data-progress-shine', 'true');
+                document.head.appendChild(style);
+            }
+
+            progressFill.appendChild(progressShine);
+
+            progressBar.appendChild(progressFill);
+            progressContainer.appendChild(progressLabel);
+            progressContainer.appendChild(progressBar);
+
+            // 按钮容器
+            const buttonContainer = document.createElement('div');
+            buttonContainer.style.cssText = `
+                display: flex;
+                gap: 10px;
+                justify-content: center;
+            `;
+
+            // 确认按钮
+            const confirmBtn = document.createElement('button');
+            confirmBtn.textContent = mode === 'upload' ? '上传选中配置' : '下载选中配置';
+            confirmBtn.style.cssText = `
+                flex: 1;
+                padding: 8px 16px;
+                background: #1890ff;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+            `;
+
+            // 取消按钮
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = '取消';
+            cancelBtn.style.cssText = `
+                flex: 1;
+                padding: 8px 16px;
+                background: #f0f0f0;
+                color: #666;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+            `;
+
+            // 事件处理
+            confirmBtn.onclick = async () => {
+                const selectedItems = checkboxes
+                    .filter(cb => cb.checked)
+                    .map(cb => cb.value);
+
+                if (selectedItems.length === 0) {
+                    Utils.showMessage('请至少选择一个配置项', 'warning');
+                    return;
+                }
+
+                // 禁用按钮并显示同步中状态
+                confirmBtn.disabled = true;
+                cancelBtn.disabled = true;
+                const originalText = confirmBtn.textContent;
+                confirmBtn.textContent = mode === 'upload' ? '上传中...' : '下载中...';
+                confirmBtn.style.background = '#ccc';
+
+                // 显示进度条
+                progressContainer.style.display = 'block';
+                progressLabel.textContent = mode === 'upload' ? '准备上传配置...' : '准备下载配置...';
+                progressFill.style.width = '10%';
+
+                let opSuccess = false;
+                try {
+                    // 进度步骤1：数据准备
+                    progressLabel.textContent = mode === 'upload' ? '正在收集配置数据...' : '正在获取服务器配置...';
+                    progressFill.style.width = '30%';
+                    await new Promise(resolve => setTimeout(resolve, 200));
+
+                    // 进度步骤2：执行同步
+                    if (mode === 'upload') {
+                        // 显示配置大小信息
+                        const tempConfig = Utils.getAllConfig(selectedItems);
+                        const tempConfigJson = JSON.stringify({ config: tempConfig });
+                        const tempConfigSize = new Blob([tempConfigJson]).size;
+                        const tempConfigSizeMB = (tempConfigSize / (1024 * 1024)).toFixed(2);
+                        progressLabel.textContent = `正在上传配置 (${tempConfigSizeMB}MB)...`;
+                    } else {
+                        progressLabel.textContent = '正在应用配置...';
+                    }
+                    progressFill.style.width = '70%';
+                    // 通知开始（只在用户真正点击确认后触发）
+                    try { window.dispatchEvent(new CustomEvent('ns-sync-start', { detail: { mode } })); } catch (e) { }
+
+                    // 执行同步操作
+                    opSuccess = await callback(selectedItems);
+
+                    // 进度步骤3：完成
+                    progressLabel.textContent = mode === 'upload' ? '上传完成!' : '下载完成!';
+                    progressFill.style.width = '100%';
+                    progressShine.style.animation = 'none'; // 停止闪烁动画
+
+                    // 等待一下让用户看到完成状态
+                    await new Promise(resolve => setTimeout(resolve, 800));
+
+                } catch (error) {
+                    console.error('同步操作失败:', error);
+                    progressLabel.textContent = '同步失败';
+                    progressFill.style.background = 'linear-gradient(90deg, #f44336, #e57373)';
+                    progressFill.style.width = '100%';
+                    progressShine.style.animation = 'none'; // 停止闪烁动画
+
+                    // 等待一下让用户看到失败状态
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } finally {
+                    try {
+                        if (mode === 'upload') {
+                            const enabled = autoSyncCheckbox && !!autoSyncCheckbox.checked;
+                            localStorage.setItem('nodeseek_auto_sync_enabled', JSON.stringify(enabled));
+                            if (enabled) {
+                                localStorage.setItem('nodeseek_auto_sync_items', JSON.stringify(selectedItems));
+                                if (opSuccess) {
+                                    localStorage.setItem('nodeseek_auto_sync_last_time', Date.now().toString());
+                                }
+                            } else {
+                                localStorage.removeItem('nodeseek_auto_sync_items');
+                            }
+                        }
+                    } catch (e) { }
+                    // 隐藏进度条
+                    progressContainer.style.display = 'none';
+                    progressFill.style.width = '0%';
+                    progressFill.style.background = 'linear-gradient(90deg, #1890ff, #40a9ff)';
+                    progressShine.style.animation = 'shine 2s infinite'; // 恢复闪烁动画
+
+                    // 恢复按钮状态并关闭对话框
+                    confirmBtn.disabled = false;
+                    cancelBtn.disabled = false;
+                    confirmBtn.textContent = originalText;
+                    confirmBtn.style.background = '#1890ff';
+                    // 通知结束
+                    try { window.dispatchEvent(new CustomEvent('ns-sync-end', { detail: { mode, success: !!opSuccess } })); } catch (e) { }
+                    dialog.remove();
+                }
+            };
+
+            cancelBtn.onclick = () => {
+                // 用户点击取消
+                try {
+                    if (typeof onCancel === 'function') onCancel();
+                } finally {
+                    dialog.remove();
+                }
+            };
+
+            // 组装对话框
+            dialog.appendChild(dragHandle);
+            dialog.appendChild(title);
+            dialog.appendChild(closeBtn);
+            dialog.appendChild(selectAllContainer);
+            dialog.appendChild(configList);
+            dialog.appendChild(progressContainer);
+            buttonContainer.appendChild(confirmBtn);
+            buttonContainer.appendChild(cancelBtn);
+            dialog.appendChild(buttonContainer);
+
+            document.body.appendChild(dialog);
+
+            // 使对话框可拖动
+            UI.makeDraggable(dialog);
+
+            if (mode === 'upload') {
+                const pad = (n) => (n < 10 ? '0' + n : '' + n);
+                const fmt = (ms) => {
+                    const s = Math.floor(ms / 1000);
+                    const h = Math.floor(s / 3600);
+                    const m = Math.floor((s % 3600) / 60);
+                    const sec = s % 60;
+                    return `${pad(h)}:${pad(m)}:${pad(sec)}`;
+                };
+                const updateCountdown = () => {
+                    const enabled = !!document.getElementById('auto-sync-config')?.checked;
+                    const el = autoSyncContainer && autoSyncContainer.querySelector('span');
+                    if (!el) return;
+                    if (!enabled) { el.textContent = '已关闭'; return; }
+                    const last = parseInt(localStorage.getItem('nodeseek_auto_sync_last_time') || '0');
                     const now = Date.now();
-                    const elapsed = now - cooldownData.startTime;
-                    const remaining = cooldownData.duration - elapsed;
+                    const intervalMs = 24 * 60 * 60 * 1000;
+                    const lockUntil = parseInt(localStorage.getItem('nodeseek_auto_sync_lock_until') || '0');
+                    if (!last && (!lockUntil || lockUntil <= now)) { el.textContent = '未开始'; return; }
+                    const elapsed = last ? Math.max(0, now - last) : 0;
+                    const remainClient = last ? ((intervalMs - (elapsed % intervalMs)) % intervalMs) : 0;
+                    const remainServer = (lockUntil && lockUntil > now) ? (lockUntil - now) : 0;
+                    const remain = Math.max(remainClient, remainServer);
+                    el.textContent = `下次剩余 ${fmt(remain)}`;
+                };
+                const countdownTimer = setInterval(updateCountdown, 1000);
+                updateCountdown();
 
-                    if (remaining > 0) {
-                        return {
-                            isInCooldown: true,
-                            remaining: remaining,
-                            remainingSeconds: Math.ceil(remaining / 1000)
-                        };
-                    } else {
-                        // 冷却已结束，清除存储
-                        this.clearCooldownState();
-                        return { isInCooldown: false };
-                    }
-                }
-            } catch (error) {
-                console.error('获取冷却状态失败:', error);
-            }
-            return { isInCooldown: false };
-        },
-
-        // 清除冷却状态
-        clearCooldownState() {
-            try {
-                localStorage.removeItem(this.cooldownStorageKey);
-            } catch (error) {
-                console.error('清除冷却状态失败:', error);
+                const originalCancel = cancelBtn.onclick;
+                cancelBtn.onclick = () => { try { clearInterval(countdownTimer); } catch (e) { } originalCancel(); };
+                const originalClose = closeBtn.onclick;
+                closeBtn.onclick = () => { try { clearInterval(countdownTimer); } catch (e) { } originalClose(); };
+                try { window.addEventListener('ns-sync-end', () => { try { clearInterval(countdownTimer); } catch (e) { } }, { once: true }); } catch (e) { }
             }
         },
 
-        // 加载发帖时间分布历史数据
-        loadTimeDistributionHistory() {
-            try {
-                const stored = localStorage.getItem(this.timeDistributionStorageKey);
-                if (stored) {
-                    this.timeDistributionHistory = JSON.parse(stored);
-                    // console.log(`加载时间分布历史成功，共 ${this.timeDistributionHistory.length} 天记录`); // 已删除此日志输出
-                } else {
-                    this.timeDistributionHistory = [];
-                    this.log('初始化时间分布历史存储');
-                }
-            } catch (error) {
-                console.error('加载时间分布历史失败:', error);
-                this.timeDistributionHistory = [];
-            }
-        },
-
-        // 保存发帖时间分布历史数据
-        saveTimeDistributionHistory() {
-            try {
-                localStorage.setItem(this.timeDistributionStorageKey, JSON.stringify(this.timeDistributionHistory));
-                this.log(`保存时间分布历史成功，共 ${this.timeDistributionHistory.length} 天记录`);
-            } catch (error) {
-                console.error('保存时间分布历史失败:', error);
-            }
-        },
-
-        // 清理7天前的时间分布历史
-        cleanOldTimeDistribution() {
-            if (!this.timeDistributionHistory || this.timeDistributionHistory.length === 0) return;
-
-            const cutoffTime = Date.now() - (7 * 24 * 60 * 60 * 1000);
-            const originalLength = this.timeDistributionHistory.length;
-
-            this.timeDistributionHistory = this.timeDistributionHistory.filter(record => record.date >= cutoffTime);
-
-            if (this.timeDistributionHistory.length !== originalLength) {
-                this.saveTimeDistributionHistory();
-                this.log(`清理旧时间分布：删除 ${originalLength - this.timeDistributionHistory.length} 条超过7天的记录`);
-            }
-        },
-
-        // 加载发帖用户统计历史数据
-        loadUserStatsHistory() {
-            try {
-                const stored = localStorage.getItem(this.userStatsStorageKey);
-                if (stored) {
-                    this.userStatsHistory = JSON.parse(stored);
-                    // console.log(`加载用户统计历史成功，共 ${this.userStatsHistory.length} 天记录`); // 已删除此日志输出
-                } else {
-                    this.userStatsHistory = [];
-                    this.log('初始化用户统计历史存储');
-                }
-            } catch (error) {
-                console.error('加载用户统计历史失败:', error);
-                this.userStatsHistory = [];
-            }
-        },
-
-        // 保存发帖用户统计历史数据
-        saveUserStatsHistory() {
-            try {
-                localStorage.setItem(this.userStatsStorageKey, JSON.stringify(this.userStatsHistory));
-                this.log(`保存用户统计历史成功，共 ${this.userStatsHistory.length} 天记录`);
-            } catch (error) {
-                console.error('保存用户统计历史失败:', error);
-            }
-        },
-
-        // 清理7天前的用户统计历史
-        cleanOldUserStats() {
-            if (!this.userStatsHistory || this.userStatsHistory.length === 0) return;
-
-            const cutoffTime = Date.now() - (7 * 24 * 60 * 60 * 1000);
-            const originalLength = this.userStatsHistory.length;
-
-            this.userStatsHistory = this.userStatsHistory.filter(record => record.date >= cutoffTime);
-
-            if (this.userStatsHistory.length !== originalLength) {
-                this.saveUserStatsHistory();
-                this.log(`清理旧用户统计：删除 ${originalLength - this.userStatsHistory.length} 条超过7天的记录`);
-            }
-        },
-
-        // 分析发帖时间分布（基于本地7天数据）
-        analyzeTimeDistribution() {
-            const hourlyStats = new Array(24).fill(0); // 24小时统计
-            const weekdayStats = new Array(7).fill(0); // 一周7天统计
-            let totalPosts = 0;
-            let validTimePosts = 0;
-
-            this.log('开始分析发帖时间分布...');
-
-            if (!this.historyData || this.historyData.length === 0) {
-                this.log('没有历史数据可供分析');
-                return { hourlyStats, weekdayStats, totalPosts, validTimePosts };
+        // 上传配置到服务器
+        upload: async function () {
+            if (!Auth.isLoggedIn()) {
+                Utils.showMessage('请先登录', 'error');
+                return false;
             }
 
-            // 直接统计所有文章，不进行去重处理
-            this.historyData.forEach(record => {
-                const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
+            // 返回一个Promise，等待配置选择对话框完成
+            return new Promise((resolve, reject) => {
+                // 显示配置选择对话框
+                this.showConfigSelectionDialog('upload', async (selectedItems) => {
+                    try {
+                        // 收集配置数据
+                        const config = Utils.getAllConfig(selectedItems);
 
-                articles.forEach(article => {
-                    totalPosts++;
+                        // 计算配置数据大小并动态调整超时时间
+                        const configJson = JSON.stringify({ config, syncMode: 'manual' });
+                        const configSize = new Blob([configJson]).size; // 字节数
+                        const configSizeMB = configSize / (1024 * 1024);
 
-                    // 分析时间分布（只有有效时间的文章）
-                    if (article.pubDate) {
-                        const postDate = new Date(article.pubDate);
-                        const hour = postDate.getHours();
-                        const weekday = postDate.getDay(); // 0=周日, 1=周一, ..., 6=周六
+                        // 根据文件大小动态计算超时时间：基础60秒 + 每MB额外30秒
+                        let dynamicTimeout = 60000; // 基础60秒
+                        if (configSizeMB > 1) {
+                            dynamicTimeout += Math.ceil(configSizeMB - 1) * 30000; // 每MB额外30秒
+                        }
 
-                        hourlyStats[hour]++;
-                        weekdayStats[weekday]++;
-                        validTimePosts++;
-                    }
-                });
-            });
+                        // 最大超时时间限制为5分钟
+                        dynamicTimeout = Math.min(dynamicTimeout, 300000);
 
-            this.log(`时间分布分析完成：总文章 ${totalPosts} 篇，有效时间 ${validTimePosts} 篇`);
-            this.log('小时分布:', hourlyStats);
-            this.log('星期分布:', weekdayStats);
-
-            return { hourlyStats, weekdayStats, totalPosts, validTimePosts };
-        },
-
-        // 分析指定日期的发帖时间分布
-        analyzeTimeDistributionByDate(targetDateStr) {
-            const hourlyStats = new Array(24).fill(0); // 24小时统计
-            const weekdayStats = new Array(7).fill(0); // 一周7天统计
-            let totalPosts = 0;
-            let validTimePosts = 0;
-
-            this.log(`开始分析 ${targetDateStr} 的发帖时间分布...`);
-
-            if (!this.historyData || this.historyData.length === 0) {
-                this.log('没有历史数据可供分析');
-                return { hourlyStats, weekdayStats, totalPosts, validTimePosts };
-            }
-
-            // 转换目标日期为Date对象，用于比较
-            const targetDate = new Date(targetDateStr);
-            const targetDateStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
-            const targetDateEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1);
-
-            // 直接统计所有文章，不进行去重处理
-            this.historyData.forEach(record => {
-                const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
-
-                articles.forEach(article => {
-                    // 检查文章的发帖日期是否匹配目标日期
-                    let isTargetDate = false;
-                    if (article.pubDate) {
-                        const articleDate = new Date(article.pubDate);
-                        isTargetDate = articleDate >= targetDateStart && articleDate < targetDateEnd;
-                    } else {
-                        // 如果没有发帖时间，跳过此文章
-                        return;
-                    }
-
-                    if (!isTargetDate) {
-                        return; // 不是目标日期的文章，跳过
-                    }
-
-                    totalPosts++;
-
-                    // 分析时间分布（只有有效时间的文章）
-                    if (article.pubDate) {
-                        const postDate = new Date(article.pubDate);
-                        const hour = postDate.getHours();
-                        const weekday = postDate.getDay(); // 0=周日, 1=周一, ..., 6=周六
-
-                        hourlyStats[hour]++;
-                        weekdayStats[weekday]++;
-                        validTimePosts++;
-                    }
-                });
-            });
-
-            this.log(`${targetDateStr} 时间分布分析完成：总文章 ${totalPosts} 篇，有效时间 ${validTimePosts} 篇`);
-
-            return { hourlyStats, weekdayStats, totalPosts, validTimePosts };
-        },
-
-        // 分析发帖用户统计（基于本地7天数据，≥2次发帖的用户）
-        analyzeUserStats() {
-            const userPostCount = new Map();
-            let totalPosts = 0;
-
-            this.log('开始分析发帖用户统计...');
-
-            if (!this.historyData || this.historyData.length === 0) {
-                this.log('没有历史数据可供分析');
-                return [];
-            }
-
-            // 直接统计所有文章，不进行去重处理
-            this.historyData.forEach(record => {
-                const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
-
-                articles.forEach(article => {
-                    totalPosts++;
-
-                    // 统计用户发帖数（只统计有作者信息的）
-                    if (article.author && article.author.trim()) {
-                        const normalizedAuthor = this.normalizeAuthor(article.author);
-                        const currentCount = userPostCount.get(normalizedAuthor) || 0;
-                        userPostCount.set(normalizedAuthor, currentCount + 1);
-                    }
-                });
-            });
-
-            // 转换为数组并排序，只保留≥3次发帖的用户
-            const sortedUsers = Array.from(userPostCount.entries())
-                .filter(([user, count]) => count >= 3)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 50); // 取前50个活跃用户
-
-            this.log(`用户统计分析完成：总文章 ${totalPosts} 篇，活跃用户（≥3次发帖）${sortedUsers.length} 个`);
-
-            // 调试：输出前几个活跃用户
-            if (sortedUsers.length > 0) {
-                this.log('=== 活跃用户统计 ===');
-                sortedUsers.slice(0, 10).forEach(([user, count], index) => {
-                    this.log(`#${index + 1}: "${user}" = ${count}次发帖`);
-                });
-                this.log('==================');
-            }
-
-            return sortedUsers;
-        },
-
-        // 分析指定日期的发帖用户统计
-        analyzeUserStatsByDate(targetDateStr) {
-            const userPostCount = new Map();
-            let totalPosts = 0;
-
-            this.log(`开始分析 ${targetDateStr} 的发帖用户统计...`);
-
-            if (!this.historyData || this.historyData.length === 0) {
-                this.log('没有历史数据可供分析');
-                return [];
-            }
-
-            // 转换目标日期为Date对象，用于比较
-            const targetDate = new Date(targetDateStr);
-            const targetDateStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
-            const targetDateEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1);
-
-            // 直接统计所有文章，不进行去重处理
-            this.historyData.forEach(record => {
-                const articles = record.articles || (record.titles ? record.titles.map(title => ({title: title})) : []);
-
-                articles.forEach(article => {
-                    // 检查文章的发帖日期是否匹配目标日期
-                    let isTargetDate = false;
-                    if (article.pubDate) {
-                        const articleDate = new Date(article.pubDate);
-                        isTargetDate = articleDate >= targetDateStart && articleDate < targetDateEnd;
-                    } else {
-                        // 如果没有发帖时间，跳过此文章
-                        return;
-                    }
-
-                    if (!isTargetDate) {
-                        return; // 不是目标日期的文章，跳过
-                    }
-
-                    totalPosts++;
-
-                    // 统计用户发帖数（只统计有作者信息的）
-                    if (article.author && article.author.trim()) {
-                        const normalizedAuthor = this.normalizeAuthor(article.author);
-                        const currentCount = userPostCount.get(normalizedAuthor) || 0;
-                        userPostCount.set(normalizedAuthor, currentCount + 1);
-                    }
-                });
-            });
-
-            // 转换为数组并排序，只保留≥3次发帖的用户
-            const sortedUsers = Array.from(userPostCount.entries())
-                .filter(([user, count]) => count >= 3)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 50); // 取前50个活跃用户
-
-            this.log(`${targetDateStr} 用户统计分析完成：总文章 ${totalPosts} 篇，活跃用户（≥3次发帖）${sortedUsers.length} 个`);
-
-            return sortedUsers;
-        },
-
-        // 保存每日时间分布统计
-        saveDailyTimeDistribution() {
-            // 获取最近7天的日期列表
-            const recentDates = this.getRecentDates(7);
-            let hasUpdatedData = false;
-
-            // 为每个日期分别保存时间分布数据
-            recentDates.forEach(dateInfo => {
-                const dateStr = dateInfo.dateStr;
-
-                // 分析该日期的时间分布
-                const timeDistribution = this.analyzeTimeDistributionByDate(dateStr);
-
-                // 检查该日期是否已有记录
-                const existingIndex = this.timeDistributionHistory.findIndex(record => record.dateStr === dateStr);
-
-                if (timeDistribution.validTimePosts > 0) {
-                    if (existingIndex >= 0) {
-                        // 更新该日期记录
-                        this.timeDistributionHistory[existingIndex] = {
-                            date: dateInfo.date.getTime(),
-                            dateStr: dateStr,
-                            hourlyStats: timeDistribution.hourlyStats,
-                            weekdayStats: timeDistribution.weekdayStats,
-                            totalPosts: timeDistribution.totalPosts,
-                            validTimePosts: timeDistribution.validTimePosts
-                        };
-                        this.log(`更新 ${dateStr} 时间分布记录，有效时间文章 ${timeDistribution.validTimePosts} 篇`);
-                        hasUpdatedData = true;
-                    } else {
-                        // 新增该日期记录
-                        this.timeDistributionHistory.push({
-                            date: dateInfo.date.getTime(),
-                            dateStr: dateStr,
-                            hourlyStats: timeDistribution.hourlyStats,
-                            weekdayStats: timeDistribution.weekdayStats,
-                            totalPosts: timeDistribution.totalPosts,
-                            validTimePosts: timeDistribution.validTimePosts
+                        // 发送到服务器
+                        const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`, {
+                            method: 'POST',
+                            body: configJson,
+                            timeout: dynamicTimeout
                         });
-                        this.log(`新增 ${dateStr} 时间分布记录，有效时间文章 ${timeDistribution.validTimePosts} 篇`);
-                        hasUpdatedData = true;
+
+                        if (data.success) {
+                            // 统一为不含括号细节的模块名称列表
+                            const labels = [];
+                            const include = (key) => Array.isArray(selectedItems) && selectedItems.includes(key);
+                            if (include('blacklist')) labels.push('黑名单');
+                            if (include('friends')) labels.push('好友');
+                            if (include('favorites') || include('favoriteCategories')) labels.push('收藏');
+                            if (include('logs')) labels.push('操作日志');
+                            if (include('browseHistory')) labels.push('浏览历史');
+                            if (include('quickReplies') && config.quickReplies && typeof config.quickReplies === 'object' && Object.keys(config.quickReplies).length > 0) labels.push('快捷回复');
+                            if (include('emojiFavorites') && config.emojiFavorites && Array.isArray(config.emojiFavorites) && config.emojiFavorites.length > 0) labels.push('常用表情');
+                            if (include('chickenLegStats') && config.chickenLegStats && typeof config.chickenLegStats === 'object') labels.push('鸡腿统计');
+                            if (include('filterData') && config.filterData && typeof config.filterData === 'object') labels.push('关键词过滤');
+                            if (include('notesData') && config.notesData && typeof config.notesData === 'object') labels.push('笔记');
+
+                            const syncDesc = `配置已上传到服务器 (${labels.join('、')})`;
+                            // 仅输出到日志，不显示右上角弹窗
+                            Utils.showMessage(syncDesc, 'success', false);
+
+                            // 延迟更新存储空间信息，确保对话框关闭后再更新
+                            setTimeout(() => {
+                                // 查找当前页面上的存储空间信息元素并更新
+                                const currentStorageInfo = document.querySelector('#login-auth-dialog .storage-info-container');
+                                if (currentStorageInfo) {
+                                    UI.loadStorageInfo(currentStorageInfo);
+                                }
+                            }, 500);
+
+                            resolve(true);
+                        } else {
+                            resolve(false);
+                        }
+                    } catch (error) {
+                        // 仅输出到日志，不显示右上角弹窗
+                        Utils.showMessage(`配置同步失败: ${error.message}`, 'error', false);
+                        reject(error); // 重新抛出错误，让进度条能够显示失败状态
                     }
-                } else {
-                    // 如果该日期没有有效数据，删除可能存在的记录
-                    if (existingIndex >= 0) {
-                        this.timeDistributionHistory.splice(existingIndex, 1);
-                        this.log(`删除 ${dateStr} 的空时间分布记录`);
-                        hasUpdatedData = true;
-                    }
-                }
+                }, () => {
+                    // 取消/关闭对话框
+                    try { resolve(false); } catch (e) { /* no-op */ }
+                });
             });
+        },
 
-            if (hasUpdatedData) {
-                // 按日期降序排序
-                this.timeDistributionHistory.sort((a, b) => b.date - a.date);
+        uploadSelected: async function (selectedItems) {
+            if (!Auth.isLoggedIn()) return false;
+            try {
+                const config = Utils.getAllConfig(selectedItems);
+                const configJson = JSON.stringify({ config, syncMode: 'auto' });
+                const size = new Blob([configJson]).size;
+                const mb = size / (1024 * 1024);
+                let dynamicTimeout = 60000;
+                if (mb > 1) dynamicTimeout += Math.ceil(mb - 1) * 30000;
+                dynamicTimeout = Math.min(dynamicTimeout, 300000);
+                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`, {
+                    method: 'POST',
+                    body: configJson,
+                    timeout: dynamicTimeout
+                });
+                if (data && data.success) {
+                    localStorage.setItem('nodeseek_auto_sync_last_time', Date.now().toString());
+                    setTimeout(() => {
+                        const el = document.querySelector('#login-auth-dialog .storage-info-container');
+                        if (el) UI.loadStorageInfo(el);
+                    }, 500);
 
-                // 保存到本地存储
-                this.saveTimeDistributionHistory();
+                    const labels = [];
+                    const include = (key) => Array.isArray(selectedItems) && selectedItems.includes(key);
+                    if (include('blacklist')) labels.push('黑名单');
+                    if (include('friends')) labels.push('好友');
+                    if (include('favorites') || include('favoriteCategories')) labels.push('收藏');
+                    if (include('logs')) labels.push('操作日志');
+                    if (include('browseHistory')) labels.push('浏览历史');
+                    if (include('quickReplies') && config.quickReplies && typeof config.quickReplies === 'object' && Object.keys(config.quickReplies).length > 0) labels.push('快捷回复');
+                    if (include('emojiFavorites') && config.emojiFavorites && Array.isArray(config.emojiFavorites) && config.emojiFavorites.length > 0) labels.push('常用表情');
+                    if (include('chickenLegStats') && config.chickenLegStats && typeof config.chickenLegStats === 'object') labels.push('鸡腿统计');
+                    if (include('filterData') && config.filterData && typeof config.filterData === 'object') labels.push('关键词过滤');
+                    if (include('notesData') && config.notesData && typeof config.notesData === 'object') labels.push('笔记');
+
+                    const syncDesc = `配置已上传到服务器 (${labels.join('、')})`;
+                    Utils.showMessage(syncDesc, 'success', false);
+                    return true;
+                }
+                return false;
+            } catch (e) {
+                Utils.showMessage(`配置同步失败: ${e.message}`, 'error', false);
+                return false;
             }
         },
 
-        // 保存每日用户统计
-        saveDailyUserStats() {
-            // 获取最近7天的日期列表
-            const recentDates = this.getRecentDates(7);
-            let hasUpdatedData = false;
-
-            // 为每个日期分别保存用户统计数据
-            recentDates.forEach(dateInfo => {
-                const dateStr = dateInfo.dateStr;
-
-                // 分析该日期的用户统计（≥3次发帖的用户）
-                const userStats = this.analyzeUserStatsByDate(dateStr);
-
-                // 检查该日期是否已有记录
-                const existingIndex = this.userStatsHistory.findIndex(record => record.dateStr === dateStr);
-
-                if (userStats.length > 0) {
-                    if (existingIndex >= 0) {
-                        // 更新该日期记录
-                        this.userStatsHistory[existingIndex] = {
-                            date: dateInfo.date.getTime(),
-                            dateStr: dateStr,
-                            users: userStats,
-                            totalActiveUsers: userStats.length
+        initAutoSync: function () {
+            try {
+                if (this._autoSyncTimerId) return;
+                this._autoSyncInFlight = false;
+                try {
+                    if (!this._autoSyncBC && typeof BroadcastChannel !== 'undefined') {
+                        this._autoSyncBC = new BroadcastChannel('ns-auto-sync');
+                        this._externalLockUntil = 0;
+                        this._autoSyncBC.onmessage = (ev) => {
+                            const data = ev && ev.data;
+                            if (!data || !data.type) return;
+                            if (data.type === 'start' && typeof data.lockUntil === 'number') {
+                                this._externalLockUntil = data.lockUntil;
+                            } else if (data.type === 'end') {
+                                this._externalLockUntil = 0;
+                            }
                         };
-                        this.log(`更新 ${dateStr} 用户统计记录，活跃用户 ${userStats.length} 个`);
-                        hasUpdatedData = true;
-                    } else {
-                        // 新增该日期记录
-                        this.userStatsHistory.push({
-                            date: dateInfo.date.getTime(),
-                            dateStr: dateStr,
-                            users: userStats,
-                            totalActiveUsers: userStats.length
+                    }
+                } catch (e) { }
+                const tick = () => {
+                    try {
+                        const enabled = JSON.parse(localStorage.getItem('nodeseek_auto_sync_enabled') || 'false');
+                        if (!enabled) return;
+                        if (!Auth.isLoggedIn()) return;
+                        const itemsRaw = localStorage.getItem('nodeseek_auto_sync_items');
+                        const items = itemsRaw ? JSON.parse(itemsRaw) : null;
+                        if (!Array.isArray(items) || items.length === 0) return;
+                        const now = Date.now();
+                        const lockUntil = parseInt(localStorage.getItem('nodeseek_auto_sync_lock_until') || '0');
+                        if (lockUntil && lockUntil > now) return;
+                        if (this._externalLockUntil && this._externalLockUntil > now) return;
+                        if (this._autoSyncInFlight) return;
+                        const lastAttempt = parseInt(localStorage.getItem('nodeseek_auto_sync_last_attempt_time') || '0');
+                        const intervalMs = 24 * 60 * 60 * 1000;
+                        const startAfterMs = intervalMs + 60000;
+                        if (lastAttempt && now - lastAttempt < startAfterMs) return;
+                        const shortLockMs = 60000;
+                        const shortLockUntil = now + shortLockMs;
+                        try { localStorage.setItem('nodeseek_auto_sync_lock_until', shortLockUntil.toString()); } catch (e) { }
+                        try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'start', lockUntil: shortLockUntil }); } catch (e) { }
+                        this._autoSyncInFlight = true;
+                        try { localStorage.setItem('nodeseek_auto_sync_last_attempt_time', now.toString()); } catch (e) { }
+                        this.uploadSelected(items).finally(() => {
+                            this._autoSyncInFlight = false;
+                            try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'end' }); } catch (e) { }
                         });
-                        this.log(`新增 ${dateStr} 用户统计记录，活跃用户 ${userStats.length} 个`);
-                        hasUpdatedData = true;
-                    }
+                    } catch (e) { }
+                };
+                this._autoSyncTimerId = setInterval(tick, 1000);
+                tick();
+            } catch (e) { }
+        },
+
+        // 删除同步数据
+        deleteServerConfig: async function () {
+            if (!Auth.isLoggedIn()) {
+                Utils.showMessage('请先登录', 'error');
+                return false;
+            }
+
+            // 确认删除操作
+            if (!confirm('确定要删除服务器上的所有同步数据吗？\n\n⚠️ 此操作不可恢复！')) {
+                return false;
+            }
+
+            try {
+                // 发送删除请求
+                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`, {
+                    method: 'DELETE',
+                    retries: 1 // 删除操作只重试1次
+                });
+
+                if (data.success) {
+                    Utils.showMessage('服务器同步数据已清除', 'success');
+                    return true;
                 } else {
-                    // 如果该日期没有活跃用户，删除可能存在的记录
-                    if (existingIndex >= 0) {
-                        this.userStatsHistory.splice(existingIndex, 1);
-                        this.log(`删除 ${dateStr} 的空用户统计记录`);
-                        hasUpdatedData = true;
-                    }
+                    Utils.showMessage(data.message || '删除失败', 'error');
+                    return false;
+                }
+            } catch (error) {
+                if (error.message.includes('404')) {
+                    Utils.showMessage('服务器上没有同步数据', 'warning');
+                } else {
+                    Utils.showMessage(`删除失败: ${error.message}`, 'error');
+                }
+                return false;
+            }
+        },
+
+        // 显示删除同步数据确认对话框
+        showDeleteConfigDialog: function () {
+            // 移除已存在的对话框
+            const existingDialog = document.getElementById('delete-config-dialog');
+            if (existingDialog) {
+                existingDialog.remove();
+            }
+
+            const dialog = document.createElement('div');
+            dialog.id = 'delete-config-dialog';
+            const isMobile = window.innerWidth <= 768;
+
+            dialog.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: ${isMobile ? '90vw' : '420px'};
+                max-width: ${isMobile ? '90vw' : '420px'};
+                z-index: 10001;
+                background: #fff;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+                padding: 20px;
+                box-sizing: border-box;
+            `;
+
+            // 添加左上角拖拽区域
+            const dragHandle = document.createElement('div');
+            dragHandle.className = 'dialog-title-draggable';
+            dragHandle.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 30px;
+                height: 30px;
+                cursor: move;
+                background: transparent;
+                z-index: 1;
+                user-select: none;
+            `;
+
+            // 标题
+            const title = document.createElement('div');
+            title.textContent = '清除上传数据';
+            title.style.cssText = `
+                font-weight: bold;
+                font-size: 16px;
+                margin-bottom: 15px;
+                text-align: center;
+                color: #f44336;
+            `;
+
+            // 关闭按钮
+            const closeBtn = document.createElement('span');
+            closeBtn.textContent = '×';
+            closeBtn.style.cssText = `
+                position: absolute;
+                right: 12px;
+                top: 8px;
+                cursor: pointer;
+                font-size: 20px;
+            `;
+            closeBtn.onclick = () => dialog.remove();
+
+            // 警告内容
+            const warningContent = document.createElement('div');
+            warningContent.style.cssText = `
+                background: #fff3cd;
+                border: 1px solid #ffeaa7;
+                border-radius: 6px;
+                padding: 15px;
+                margin-bottom: 20px;
+                color: #856404;
+                line-height: 1.5;
+            `;
+            warningContent.innerHTML = `
+                <div style="font-weight: bold; margin-bottom: 8px; color: #f44336;">⚠️ 危险操作警告</div>
+                <div>此操作将永久删除服务器上存储的所有同步数据，包括：</div>
+                <ul style="margin: 8px 0; padding-left: 20px;">
+                    <li>黑名单、好友列表</li>
+                    <li>收藏、操作日志</li>
+                    <li>浏览历史、快捷回复</li>
+                    <li>常用表情、统计数据</li>
+                    <li>关键词过滤设置</li>
+                </ul>
+                <div style="color: #f44336; font-weight: bold;">该操作不可恢复！</div>
+                <div style="margin-top: 8px; color: #666;">本地数据不会受到影响，仅删除服务器上的备份数据。</div>
+            `;
+
+            // 进度条容器
+            const progressContainer = document.createElement('div');
+            progressContainer.style.cssText = `
+                margin-bottom: 15px;
+                display: none;
+            `;
+
+            // 进度条标签
+            const progressLabel = document.createElement('div');
+            progressLabel.style.cssText = `
+                font-size: 12px;
+                color: #666;
+                margin-bottom: 5px;
+                text-align: center;
+            `;
+
+            // 进度条背景
+            const progressBar = document.createElement('div');
+            progressBar.style.cssText = `
+                width: 100%;
+                height: 8px;
+                background: #f0f0f0;
+                border-radius: 4px;
+                overflow: hidden;
+                box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+            `;
+
+            // 进度条填充
+            const progressFill = document.createElement('div');
+            progressFill.style.cssText = `
+                height: 100%;
+                background: linear-gradient(90deg, #f44336, #e57373);
+                width: 0%;
+                transition: width 0.5s ease;
+                border-radius: 4px;
+            `;
+
+            progressBar.appendChild(progressFill);
+            progressContainer.appendChild(progressLabel);
+            progressContainer.appendChild(progressBar);
+
+            // 确认输入框
+            const confirmContainer = document.createElement('div');
+            confirmContainer.style.cssText = `
+                margin-bottom: 20px;
+            `;
+
+            const confirmLabel = document.createElement('div');
+            confirmLabel.textContent = '请输入 "DELETE" 确认删除操作：';
+            confirmLabel.style.cssText = `
+                font-weight: bold;
+                margin-bottom: 8px;
+                color: #f44336;
+            `;
+
+            const confirmInput = document.createElement('input');
+            confirmInput.type = 'text';
+            confirmInput.placeholder = '请输入 DELETE';
+            confirmInput.style.cssText = `
+                width: 100%;
+                padding: 8px 12px;
+                border: 2px solid #f44336;
+                border-radius: 4px;
+                box-sizing: border-box;
+                font-size: 14px;
+                text-align: center;
+                font-weight: bold;
+            `;
+
+            confirmContainer.appendChild(confirmLabel);
+            confirmContainer.appendChild(confirmInput);
+
+            // 按钮容器
+            const buttonContainer = document.createElement('div');
+            buttonContainer.style.cssText = `
+                display: flex;
+                gap: 10px;
+                justify-content: center;
+            `;
+
+            // 确认删除按钮
+            const confirmBtn = document.createElement('button');
+            confirmBtn.textContent = '确认清除';
+            confirmBtn.disabled = true;
+            confirmBtn.style.cssText = `
+                flex: 1;
+                padding: 8px 16px;
+                background: #ccc;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: not-allowed;
+                font-size: 14px;
+                font-weight: bold;
+            `;
+
+            // 取消按钮
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = '取消';
+            cancelBtn.style.cssText = `
+                flex: 1;
+                padding: 8px 16px;
+                background: #f0f0f0;
+                color: #666;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+            `;
+
+            // 输入验证
+            confirmInput.addEventListener('input', function () {
+                const isValid = this.value.trim() === 'DELETE';
+                confirmBtn.disabled = !isValid;
+                if (isValid) {
+                    confirmBtn.style.background = '#f44336';
+                    confirmBtn.style.cursor = 'pointer';
+                } else {
+                    confirmBtn.style.background = '#ccc';
+                    confirmBtn.style.cursor = 'not-allowed';
                 }
             });
 
-            if (hasUpdatedData) {
-                // 按日期降序排序
-                this.userStatsHistory.sort((a, b) => b.date - a.date);
+            // 事件处理
+            confirmBtn.onclick = async () => {
+                if (confirmInput.value.trim() !== 'DELETE') {
+                    Utils.showMessage('请正确输入 DELETE 确认删除', 'warning');
+                    return;
+                }
 
-                // 保存到本地存储
-                this.saveUserStatsHistory();
-            }
+                // 禁用按钮并显示删除中状态
+                confirmBtn.disabled = true;
+                cancelBtn.disabled = true;
+                const originalText = confirmBtn.textContent;
+                confirmBtn.textContent = '清除中...';
+                confirmBtn.style.background = '#ccc';
+
+                // 显示进度条
+                progressContainer.style.display = 'block';
+                progressLabel.textContent = '正在清除服务器同步数据...';
+                progressFill.style.width = '30%';
+
+                try {
+                    // 进度步骤
+                    progressLabel.textContent = '正在发送删除请求...';
+                    progressFill.style.width = '70%';
+                    await new Promise(resolve => setTimeout(resolve, 200));
+
+                    // 执行删除操作
+                    await Sync.deleteServerConfig();
+
+                    // 完成
+                    progressLabel.textContent = '清除完成!';
+                    progressFill.style.width = '100%';
+
+                    // 等待一下让用户看到完成状态
+                    await new Promise(resolve => setTimeout(resolve, 800));
+
+                } catch (error) {
+                    console.error('删除操作失败:', error);
+                    progressLabel.textContent = '清除失败';
+                    progressFill.style.background = 'linear-gradient(90deg, #f44336, #e57373)';
+                    progressFill.style.width = '100%';
+
+                    // 等待一下让用户看到失败状态
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } finally {
+                    // 恢复按钮状态并关闭对话框
+                    confirmBtn.disabled = false;
+                    cancelBtn.disabled = false;
+                    confirmBtn.textContent = originalText;
+                    confirmBtn.style.background = '#f44336';
+                    dialog.remove();
+                }
+            };
+
+            cancelBtn.onclick = () => dialog.remove();
+
+            // 回车确认
+            confirmInput.onkeydown = (e) => {
+                if (e.key === 'Enter' && !confirmBtn.disabled) {
+                    confirmBtn.click();
+                }
+            };
+
+            // 组装对话框
+            buttonContainer.appendChild(confirmBtn);
+            buttonContainer.appendChild(cancelBtn);
+
+            dialog.appendChild(dragHandle);
+            dialog.appendChild(title);
+            dialog.appendChild(closeBtn);
+            dialog.appendChild(warningContent);
+            dialog.appendChild(confirmContainer);
+            dialog.appendChild(progressContainer);
+            dialog.appendChild(buttonContainer);
+
+            document.body.appendChild(dialog);
+
+            // 使对话框可拖动
+            UI.makeDraggable(dialog);
+
+            // 聚焦输入框
+            confirmInput.focus();
         },
 
-        // 获取指定日期的时间分布统计
-        getTimeDistributionByDate(dateStr) {
-            // 优先从原始数据直接计算，确保数据准确性
-            return this.analyzeTimeDistributionByDate(dateStr);
-        },
-
-        // 获取指定天数的时间分布统计
-        getTimeDistributionByDays(days = 7) {
-            if (!this.timeDistributionHistory || this.timeDistributionHistory.length === 0) {
-                return { hourlyStats: new Array(24).fill(0), weekdayStats: new Array(7).fill(0), totalPosts: 0, validTimePosts: 0 };
+        // 从服务器下载配置
+        download: async function () {
+            if (!Auth.isLoggedIn()) {
+                Utils.showMessage('请先登录', 'error');
+                return false;
             }
 
-            const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
-            const recentRecords = this.timeDistributionHistory.filter(record => record.date >= cutoffTime);
+            // 返回一个Promise，等待配置选择对话框完成
+            return new Promise((resolve, reject) => {
+                // 显示配置选择对话框
+                this.showConfigSelectionDialog('download', async (selectedItems) => {
+                    try {
+                        // 获取服务器配置数据
+                        const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`);
 
-            // 合并所有时间分布数据
-            const mergedHourlyStats = new Array(24).fill(0);
-            const mergedWeekdayStats = new Array(7).fill(0);
-            let totalPosts = 0;
-            let validTimePosts = 0;
+                        if (data.success && data.config) {
+                            // 应用配置
+                            const applied = Utils.applyConfig(data.config, selectedItems);
 
-            recentRecords.forEach(record => {
-                record.hourlyStats.forEach((count, hour) => {
-                    mergedHourlyStats[hour] += count;
+                            if (applied.length > 0) {
+                                // 延迟显示确认对话框，让成功提示先显示
+                                setTimeout(() => {
+                                    const allowedLabels = ['黑名单', '好友', '收藏', '操作日志', '浏览历史', '快捷回复', '常用表情', '鸡腿统计', '关键词过滤', '笔记'];
+                                    const simplifiedApplied = applied
+                                        .map(s => s.replace(/\s*\([^)]*\)\s*/g, '').replace(/\s*（[^）]*）\s*/g, ''))
+                                        .filter(s => allowedLabels.includes(s))
+                                        .filter((s, idx, arr) => arr.indexOf(s) === idx);
+                                    const shouldReload = confirm(`下载配置成功！\n\n已下载: ${simplifiedApplied.join('、')}\n\n是否刷新页面以应用更改？`);
+                                    if (shouldReload) {
+                                        location.reload();
+                                    } else {
+                                        // 仅记录日志，不显示弹窗
+                                        Utils.showMessage('配置已同步，建议刷新页面以完全应用更改', 'info', false);
+
+                                        // 更新存储空间信息
+                                        const currentStorageInfo = document.querySelector('#login-auth-dialog .storage-info-container');
+                                        if (currentStorageInfo) {
+                                            UI.loadStorageInfo(currentStorageInfo);
+                                        }
+                                    }
+                                }, 500);
+                                resolve(true);
+                            } else {
+                                // 仅记录日志，不显示弹窗
+                                Utils.showMessage('从服务器获取配置成功，但没有数据需要应用', 'info', false);
+                                resolve(false);
+                            }
+                        } else {
+                            // 仅记录日志，不显示弹窗
+                            Utils.showMessage('服务器返回的配置数据格式错误', 'error', false);
+                            reject(new Error('配置数据格式错误'));
+                        }
+                    } catch (error) {
+                        if (error.message.includes('404')) {
+                            // 仅记录日志，不显示弹窗
+                            Utils.showMessage('服务器上没有配置数据，请先上传配置', 'warning', false);
+                        } else {
+                            // 仅记录日志，不显示弹窗
+                            Utils.showMessage(`配置下载失败: ${error.message}`, 'error', false);
+                        }
+                        reject(error); // 重新抛出错误，让进度条能够显示失败状态
+                    }
+                }, () => {
+                    // 取消/关闭对话框
+                    try { resolve(false); } catch (e) { /* no-op */ }
                 });
-                record.weekdayStats.forEach((count, weekday) => {
-                    mergedWeekdayStats[weekday] += count;
-                });
-                totalPosts += record.totalPosts;
-                validTimePosts += record.validTimePosts;
             });
+        }
+    };
 
-            return { hourlyStats: mergedHourlyStats, weekdayStats: mergedWeekdayStats, totalPosts, validTimePosts };
-        },
-
-        // 获取指定日期的用户统计
-        getUserStatsByDate(dateStr) {
-            // 优先从原始数据直接计算，确保数据准确性
-            return this.analyzeUserStatsByDate(dateStr);
-        },
-
-        // 获取指定天数的用户统计
-        getUserStatsByDays(days = 7) {
-            if (!this.userStatsHistory || this.userStatsHistory.length === 0) {
-                return [];
-            }
-
-            const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
-            const recentRecords = this.userStatsHistory.filter(record => record.date >= cutoffTime);
-
-            // 合并所有用户数据
-            const allUsers = new Map();
-
-            recentRecords.forEach(record => {
-                record.users.forEach(([user, count]) => {
-                    const currentCount = allUsers.get(user) || 0;
-                    allUsers.set(user, currentCount + count);
-                });
-            });
-
-            // 转换为数组并排序，只保留≥3次发帖的用户
-            const sortedUsers = Array.from(allUsers.entries())
-                .filter(([user, count]) => count >= 3)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 50);
-
-            return sortedUsers;
-        },
-
-        // 显示时间分布统计弹窗
-        showTimeDistributionDialog() {
-            // 检查弹窗是否已存在
-            const existingDialog = document.getElementById('time-distribution-dialog');
+    // UI管理
+    const UI = {
+        // 创建登录/注册对话框
+        showAuthDialog: function () {
+            // 检查是否已存在对话框
+            const existingDialog = document.getElementById('login-auth-dialog');
             if (existingDialog) {
                 existingDialog.remove();
                 return;
             }
 
             const dialog = document.createElement('div');
-            dialog.id = 'time-distribution-dialog';
+            dialog.id = 'login-auth-dialog';
+            // 检测是否为移动端
+            const isMobile = window.innerWidth <= 768;
+
             dialog.style.cssText = `
                 position: fixed;
-                top: 60px;
-                right: 16px;
+                ${isMobile ? `
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    width: 90vw;
+                    max-width: 350px;
+                ` : `
+                    top: 60px;
+                    right: 16px;
+                    width: 300px;
+                `}
                 z-index: 10000;
                 background: #fff;
                 border: 1px solid #ccc;
                 border-radius: 8px;
                 box-shadow: 0 2px 12px rgba(0,0,0,0.15);
-                max-height: 80vh;
+                padding: ${isMobile ? '16px' : '20px'};
+                max-height: ${isMobile ? '90vh' : '80vh'};
+                overflow-y: auto;
+                box-sizing: border-box;
+            `;
+
+            // 添加左上角拖拽区域
+            const dragHandle = document.createElement('div');
+            dragHandle.className = 'dialog-title-draggable'; // 添加可拖拽标识
+            dragHandle.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 30px;
+                height: 30px;
+                cursor: move;
+                background: transparent;
+                z-index: 1;
+                user-select: none;
+            `;
+
+            const title = document.createElement('div');
+            title.textContent = '配置同步';
+            title.style.cssText = `
+                font-weight: bold;
+                font-size: 16px;
+                margin-bottom: 15px;
+                text-align: center;
+                user-select: none;
+            `;
+
+            const closeBtn = document.createElement('span');
+            closeBtn.textContent = '×';
+            closeBtn.style.cssText = `
+                position: absolute;
+                right: 12px;
+                top: 8px;
+                cursor: pointer;
+                font-size: 20px;
+            `;
+            closeBtn.onclick = () => dialog.remove();
+
+            dialog.appendChild(dragHandle);
+            dialog.appendChild(title);
+            dialog.appendChild(closeBtn);
+
+            // 如果已登录，显示用户信息和同步功能
+            if (Auth.isLoggedIn()) {
+                this.createUserPanel(dialog);
+            } else {
+                this.createAuthPanel(dialog);
+            }
+
+            document.body.appendChild(dialog);
+
+            // 使对话框可拖动
+            this.makeDraggable(dialog);
+        },
+
+        // 优化输入框样式（移动端适配）
+        optimizeInputForMobile: function (input, isMobile) {
+            const styles = `
+                width: 100%;
+                padding: ${isMobile ? '12px 8px' : '8px'};
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                margin-bottom: 10px;
+                box-sizing: border-box;
+                font-size: ${isMobile ? '16px' : '14px'};
+                line-height: 1.4;
+                -webkit-appearance: none;
+                transition: border-color 0.2s ease;
+            `;
+            input.style.cssText = styles;
+
+            // 移动端禁用自动缩放
+            if (isMobile) {
+                input.setAttribute('autocapitalize', 'off');
+                input.setAttribute('autocorrect', 'off');
+            }
+        },
+
+        // 优化按钮样式（移动端适配）
+        optimizeButtonForMobile: function (button, isMobile) {
+            const currentStyles = button.style.cssText;
+            button.style.cssText = currentStyles + `
+                min-height: ${isMobile ? '44px' : '32px'};
+                touch-action: manipulation;
+                -webkit-appearance: none;
+            `;
+        },
+
+        // 创建带显示/隐藏功能的密码输入框
+        createPasswordInputWithToggle: function (input, isMobile) {
+            // 创建容器
+            const container = document.createElement('div');
+            container.style.cssText = `
+                position: relative;
+                width: 100%;
+                margin-bottom: 10px;
+            `;
+
+            // 调整输入框样式（为右侧按钮留空间）
+            const originalStyles = input.style.cssText;
+            input.style.cssText = originalStyles + `
+                padding-right: ${isMobile ? '50px' : '40px'};
+                margin-bottom: 0;
+            `;
+
+            // 创建显示/隐藏按钮
+            const toggleBtn = document.createElement('button');
+            toggleBtn.type = 'button';
+            toggleBtn.textContent = '👁️';
+            toggleBtn.title = '显示/隐藏密码';
+            toggleBtn.style.cssText = `
+                position: absolute;
+                right: ${isMobile ? '8px' : '4px'};
+                top: 50%;
+                transform: translateY(-50%);
+                background: transparent;
+                border: none;
+                cursor: pointer;
+                padding: ${isMobile ? '8px' : '4px 8px'};
+                font-size: ${isMobile ? '18px' : '16px'};
+                line-height: 1;
+                color: #666;
+                user-select: none;
+                outline: none;
+                transition: color 0.2s ease;
+            `;
+
+            // 切换显示/隐藏
+            toggleBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (input.type === 'password') {
+                    input.type = 'text';
+                    toggleBtn.textContent = '🙈';
+                    toggleBtn.title = '隐藏密码';
+                } else {
+                    input.type = 'password';
+                    toggleBtn.textContent = '👁️';
+                    toggleBtn.title = '显示密码';
+                }
+            };
+
+            // hover效果
+            toggleBtn.onmouseenter = () => {
+                toggleBtn.style.color = '#1890ff';
+            };
+            toggleBtn.onmouseleave = () => {
+                toggleBtn.style.color = '#666';
+            };
+
+            container.appendChild(input);
+            container.appendChild(toggleBtn);
+
+            return container;
+        },
+
+        // 创建认证面板
+        createAuthPanel: function (container) {
+            const form = document.createElement('div');
+            const isMobile = window.innerWidth <= 768;
+
+            // 用户名输入
+            const usernameLabel = document.createElement('div');
+            usernameLabel.textContent = '用户名:';
+            usernameLabel.style.marginBottom = '5px';
+
+            const usernameInput = document.createElement('input');
+            usernameInput.type = 'text';
+            usernameInput.placeholder = '请输入用户名';
+            this.optimizeInputForMobile(usernameInput, isMobile);
+
+            // 密码输入
+            const passwordLabel = document.createElement('div');
+            passwordLabel.textContent = '密码:';
+            passwordLabel.style.marginBottom = '5px';
+
+            const passwordInput = document.createElement('input');
+            passwordInput.type = 'password';
+            passwordInput.placeholder = '请输入密码';
+            this.optimizeInputForMobile(passwordInput, isMobile);
+            const passwordContainer = this.createPasswordInputWithToggle(passwordInput, isMobile);
+
+            // 安全码输入（仅注册时显示）
+            const securityCodeLabel = document.createElement('div');
+            securityCodeLabel.textContent = '安全码:';
+            securityCodeLabel.style.marginBottom = '5px';
+            securityCodeLabel.style.display = 'none';
+
+            const securityCodeInput = document.createElement('input');
+            securityCodeInput.type = 'password';
+            securityCodeInput.placeholder = '请输入安全码（用于找回密码）';
+            this.optimizeInputForMobile(securityCodeInput, isMobile);
+            const securityCodeContainer = this.createPasswordInputWithToggle(securityCodeInput, isMobile);
+            securityCodeContainer.style.display = 'none'; // 默认隐藏
+
+            // 模式切换提示
+            const modeHint = document.createElement('div');
+            modeHint.textContent = '登录模式';
+            modeHint.style.cssText = `
+                text-align: center;
+                color: #666;
+                font-size: 12px;
+                margin-bottom: 15px;
+            `;
+
+            // 按钮容器
+            const buttonContainer = document.createElement('div');
+            buttonContainer.style.cssText = `
+                display: flex;
+                gap: 10px;
+                margin-bottom: 10px;
+            `;
+
+            // 登录按钮
+            const loginBtn = document.createElement('button');
+            loginBtn.textContent = '登录';
+            loginBtn.style.cssText = `
+                flex: 1;
+                padding: 8px;
+                background: #1890ff;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            `;
+
+            // 注册按钮
+            const registerBtn = document.createElement('button');
+            registerBtn.textContent = '注册';
+            registerBtn.style.cssText = `
+                flex: 1;
+                padding: 8px;
+                background: #52c41a;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                display: none;
+            `;
+
+            // 模式切换容器
+            const switchContainer = document.createElement('div');
+            switchContainer.style.cssText = `
+                display: flex;
+                gap: 5px;
+                margin-bottom: 10px;
+            `;
+
+            // 切换到注册模式按钮
+            const switchToRegisterBtn = document.createElement('button');
+            switchToRegisterBtn.textContent = '切换到注册';
+            switchToRegisterBtn.style.cssText = `
+                flex: 1;
+                padding: 6px;
+                background: #f0f0f0;
+                color: #666;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+            `;
+
+            // 切换到登录模式按钮
+            const switchToLoginBtn = document.createElement('button');
+            switchToLoginBtn.textContent = '切换到登录';
+            switchToLoginBtn.style.cssText = `
+                flex: 1;
+                padding: 6px;
+                background: #f0f0f0;
+                color: #666;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+                display: none;
+            `;
+
+            // 找回密码按钮
+            const forgotPasswordBtn = document.createElement('button');
+            forgotPasswordBtn.textContent = '找回密码';
+            forgotPasswordBtn.style.cssText = `
+                width: 100%;
+                padding: 6px;
+                background: #faad14;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+                margin-bottom: 5px;
+            `;
+
+            // 当前模式：false=登录，true=注册
+            let isRegisterMode = false;
+
+            // 切换模式函数
+            const toggleMode = () => {
+                isRegisterMode = !isRegisterMode;
+                if (isRegisterMode) {
+                    // 切换到注册模式
+                    securityCodeLabel.style.display = 'block';
+                    securityCodeContainer.style.display = 'block';
+                    modeHint.textContent = '注册模式 - 请设置安全码用于找回密码';
+                    switchToRegisterBtn.style.display = 'none';
+                    switchToLoginBtn.style.display = 'block';
+                    // 只显示注册按钮
+                    loginBtn.style.display = 'none';
+                    registerBtn.style.display = 'block';
+                } else {
+                    // 切换到登录模式
+                    securityCodeLabel.style.display = 'none';
+                    securityCodeContainer.style.display = 'none';
+                    modeHint.textContent = '登录模式';
+                    switchToRegisterBtn.style.display = 'block';
+                    switchToLoginBtn.style.display = 'none';
+                    // 只显示登录按钮
+                    loginBtn.style.display = 'block';
+                    registerBtn.style.display = 'none';
+                }
+            };
+
+            switchToRegisterBtn.onclick = toggleMode;
+            switchToLoginBtn.onclick = toggleMode;
+
+            // 找回密码功能
+            const showForgotPasswordDialog = () => {
+                this.createForgotPasswordDialog();
+            };
+
+            forgotPasswordBtn.onclick = showForgotPasswordDialog;
+
+            // 事件处理
+            const handleAuth = async (isLogin) => {
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value;
+                const securityCode = securityCodeInput.value.trim();
+
+                if (!username || !password) {
+                    alert('请输入用户名和密码');
+                    return;
+                }
+
+                if (!isLogin && !securityCode) {
+                    alert('注册时请输入安全码');
+                    return;
+                }
+
+                try {
+                    loginBtn.disabled = true;
+                    registerBtn.disabled = true;
+                    // 显示处理中状态（不会影响最终恢复）
+                    if (isRegisterMode) { registerBtn.textContent = '处理中...'; }
+                    else { loginBtn.textContent = '处理中...'; }
+
+                    if (isLogin) {
+                        await Auth.login(username, password);
+                    } else {
+                        // 先注册
+                        await Auth.register(username, password, securityCode);
+                        // 注册成功后自动登录
+                        await Auth.login(username, password);
+                        // 清空输入框
+                        usernameInput.value = '';
+                        passwordInput.value = '';
+                        securityCodeInput.value = '';
+                        // 恢复按钮文案
+                        loginBtn.textContent = '登录';
+                        registerBtn.textContent = '注册';
+                    }
+
+                    // 登录成功后更新界面（包括注册后自动登录的场景）
+                    if (Auth.isLoggedIn()) {
+                        container.innerHTML = '';
+
+                        // 添加左上角拖拽区域
+                        const dragHandle = document.createElement('div');
+                        dragHandle.className = 'dialog-title-draggable'; // 添加可拖拽标识
+                        dragHandle.style.cssText = `
+                            position: absolute;
+                            top: 0;
+                            left: 0;
+                            width: 30px;
+                            height: 30px;
+                            cursor: move;
+                            background: transparent;
+                            z-index: 1;
+                            user-select: none;
+                        `;
+
+                        const title = document.createElement('div');
+                        title.textContent = '配置同步';
+                        title.style.cssText = `
+                            font-weight: bold;
+                            font-size: 16px;
+                            margin-bottom: 15px;
+                            text-align: center;
+                            user-select: none;
+                        `;
+
+                        const closeBtn = document.createElement('span');
+                        closeBtn.textContent = '×';
+                        closeBtn.style.cssText = `
+                            position: absolute;
+                            right: 12px;
+                            top: 8px;
+                            cursor: pointer;
+                            font-size: 20px;
+                        `;
+                        closeBtn.onclick = () => container.remove();
+
+                        container.appendChild(dragHandle);
+                        container.appendChild(title);
+                        container.appendChild(closeBtn);
+                        this.createUserPanel(container);
+
+                        // 重要：重新绑定拖拽功能
+                        this.makeDraggable(container);
+                    }
+                } catch (error) {
+                    // 错误已在Auth模块中处理
+                } finally {
+                    // 无论当前模式如何，统一恢复两个按钮的状态与文案
+                    loginBtn.disabled = false;
+                    registerBtn.disabled = false;
+                    loginBtn.textContent = '登录';
+                    registerBtn.textContent = '注册';
+                }
+            };
+
+            loginBtn.onclick = () => handleAuth(true);
+            registerBtn.onclick = () => handleAuth(false);
+
+            // 回车提交（根据当前模式决定是登录还是注册）
+            passwordInput.onkeydown = (e) => {
+                if (e.key === 'Enter') {
+                    handleAuth(!isRegisterMode);  // 登录模式=true，注册模式=false
+                }
+            };
+
+            // 安全码输入框也支持回车提交
+            securityCodeInput.onkeydown = (e) => {
+                if (e.key === 'Enter') {
+                    handleAuth(!isRegisterMode);  // 登录模式=true，注册模式=false
+                }
+            };
+
+            // 优化按钮移动端适配
+            this.optimizeButtonForMobile(loginBtn, isMobile);
+            this.optimizeButtonForMobile(registerBtn, isMobile);
+
+            buttonContainer.appendChild(loginBtn);
+            buttonContainer.appendChild(registerBtn);
+
+            // 优化其他按钮移动端适配
+            this.optimizeButtonForMobile(switchToRegisterBtn, isMobile);
+            this.optimizeButtonForMobile(switchToLoginBtn, isMobile);
+            this.optimizeButtonForMobile(forgotPasswordBtn, isMobile);
+
+            // 添加安全码输入到切换容器中
+            switchContainer.appendChild(switchToRegisterBtn);
+            switchContainer.appendChild(switchToLoginBtn);
+
+            form.appendChild(modeHint);
+            form.appendChild(usernameLabel);
+            form.appendChild(usernameInput);
+            form.appendChild(passwordLabel);
+            form.appendChild(passwordContainer);
+            form.appendChild(securityCodeLabel);
+            form.appendChild(securityCodeContainer);
+            form.appendChild(buttonContainer);
+            form.appendChild(switchContainer);
+            form.appendChild(forgotPasswordBtn);
+
+            container.appendChild(form);
+        },
+
+        // 创建找回密码对话框
+        createForgotPasswordDialog: function () {
+            // 移除可能存在的对话框
+            const existingDialog = document.getElementById('nodeseek-forgot-password-dialog');
+            if (existingDialog) {
+                existingDialog.remove();
+            }
+
+            // 创建对话框
+            const dialog = document.createElement('div');
+            dialog.id = 'nodeseek-forgot-password-dialog';
+            dialog.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: white;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                padding: 20px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                z-index: 10001;
+                width: 350px;
+                max-width: 90vw;
+            `;
+
+            // 添加左上角拖拽区域
+            const dragHandle = document.createElement('div');
+            dragHandle.className = 'dialog-title-draggable'; // 添加可拖拽标识
+            dragHandle.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 30px;
+                height: 30px;
+                cursor: move;
+                background: transparent;
+                z-index: 1;
+                user-select: none;
+            `;
+
+            // 标题
+            const title = document.createElement('div');
+            title.textContent = '找回密码';
+            title.style.cssText = `
+                font-weight: bold;
+                font-size: 16px;
+                margin-bottom: 15px;
+                text-align: center;
+            `;
+
+            // 关闭按钮
+            const closeBtn = document.createElement('span');
+            closeBtn.textContent = '×';
+            closeBtn.style.cssText = `
+                position: absolute;
+                right: 12px;
+                top: 8px;
+                cursor: pointer;
+                font-size: 20px;
+            `;
+            closeBtn.onclick = () => dialog.remove();
+
+            // 表单
+            const form = document.createElement('div');
+
+            // 用户名输入
+            const usernameLabel = document.createElement('div');
+            usernameLabel.textContent = '用户名:';
+            usernameLabel.style.marginBottom = '5px';
+
+            const usernameInput = document.createElement('input');
+            usernameInput.type = 'text';
+            usernameInput.placeholder = '请输入用户名';
+            usernameInput.style.cssText = `
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                margin-bottom: 10px;
+                box-sizing: border-box;
+            `;
+
+            // 安全码输入
+            const securityCodeLabel = document.createElement('div');
+            securityCodeLabel.textContent = '安全码:';
+            securityCodeLabel.style.marginBottom = '5px';
+
+            const securityCodeInput = document.createElement('input');
+            securityCodeInput.type = 'password';
+            securityCodeInput.placeholder = '请输入注册时设置的安全码';
+            securityCodeInput.style.cssText = `
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                margin-bottom: 10px;
+                box-sizing: border-box;
+            `;
+            const isMobileForgot = window.innerWidth <= 768;
+            const securityCodeContainer = this.createPasswordInputWithToggle(securityCodeInput, isMobileForgot);
+            securityCodeContainer.style.marginBottom = '10px';
+
+            // 新密码输入
+            const newPasswordLabel = document.createElement('div');
+            newPasswordLabel.textContent = '新密码:';
+            newPasswordLabel.style.marginBottom = '5px';
+
+            const newPasswordInput = document.createElement('input');
+            newPasswordInput.type = 'password';
+            newPasswordInput.placeholder = '请输入新密码（至少6个字符）';
+            newPasswordInput.style.cssText = `
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                margin-bottom: 15px;
+                box-sizing: border-box;
+            `;
+            const newPasswordContainer = this.createPasswordInputWithToggle(newPasswordInput, isMobileForgot);
+            newPasswordContainer.style.marginBottom = '15px';
+
+            // 按钮容器
+            const buttonContainer = document.createElement('div');
+            buttonContainer.style.cssText = `
+                display: flex;
+                gap: 10px;
+            `;
+
+            // 重置密码按钮
+            const resetBtn = document.createElement('button');
+            resetBtn.textContent = '重置密码';
+            resetBtn.style.cssText = `
+                flex: 1;
+                padding: 8px;
+                background: #faad14;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            `;
+
+            // 取消按钮
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = '取消';
+            cancelBtn.style.cssText = `
+                flex: 1;
+                padding: 8px;
+                background: #f0f0f0;
+                color: #666;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                cursor: pointer;
+            `;
+
+            // 事件处理
+            const handleReset = async () => {
+                const username = usernameInput.value.trim();
+                const securityCode = securityCodeInput.value.trim();
+                const newPassword = newPasswordInput.value;
+
+                if (!username || !securityCode || !newPassword) {
+                    alert('请填写所有字段');
+                    return;
+                }
+
+                if (newPassword.length < 6) {
+                    alert('新密码至少6个字符');
+                    return;
+                }
+
+                try {
+                    resetBtn.disabled = true;
+                    resetBtn.textContent = '重置中...';
+
+                    await Auth.resetPassword(username, securityCode, newPassword);
+                    dialog.remove();
+                } catch (error) {
+                    // 错误已在Auth模块中处理
+                } finally {
+                    resetBtn.disabled = false;
+                    resetBtn.textContent = '重置密码';
+                }
+            };
+
+            resetBtn.onclick = handleReset;
+            cancelBtn.onclick = () => dialog.remove();
+
+            // 回车提交
+            newPasswordInput.onkeydown = (e) => {
+                if (e.key === 'Enter') {
+                    handleReset();
+                }
+            };
+
+            // 组装界面
+            buttonContainer.appendChild(resetBtn);
+            buttonContainer.appendChild(cancelBtn);
+
+            form.appendChild(usernameLabel);
+            form.appendChild(usernameInput);
+            form.appendChild(securityCodeLabel);
+            form.appendChild(securityCodeContainer);
+            form.appendChild(newPasswordLabel);
+            form.appendChild(newPasswordContainer);
+            form.appendChild(buttonContainer);
+
+            dialog.appendChild(dragHandle);
+            dialog.appendChild(title);
+            dialog.appendChild(closeBtn);
+            dialog.appendChild(form);
+
+            document.body.appendChild(dialog);
+
+            // 使对话框可拖动
+            this.makeDraggable(dialog);
+
+            // 聚焦用户名输入框
+            usernameInput.focus();
+        },
+
+        // 创建用户面板
+        createUserPanel: function (container) {
+            const user = Auth.getCurrentUser();
+            const isMobile = window.innerWidth <= 768;
+
+            // 用户信息
+            const userInfo = document.createElement('div');
+            userInfo.style.cssText = `
+                background: #f5f5f5;
+                padding: 10px;
+                border-radius: 4px;
+                margin-bottom: 15px;
+                text-align: center;
+            `;
+            userInfo.innerHTML = `
+                <div style="font-weight: bold; color: #1890ff;">已登录</div>
+                <div style="margin-top: 5px;">${user.username}</div>
+            `;
+
+            // 存储空间信息（异步加载）
+            const storageInfo = document.createElement('div');
+            storageInfo.className = 'storage-info-container'; // 添加特殊类名以便查找
+            storageInfo.style.cssText = `
+                background: #e6f7ff;
+                border: 1px solid #91d5ff;
+                border-radius: 4px;
+                padding: 8px 12px;
+                margin-bottom: 15px;
+                font-size: 12px;
+                color: #1890ff;
+                line-height: 1.4;
+                text-align: center;
+            `;
+            storageInfo.innerHTML = `
+                <div>存储空间: 加载中...</div>
+            `;
+
+            // 异步加载存储空间信息
+            UI.loadStorageInfo(storageInfo);
+
+            // 数据保留政策提示
+            const policyTip = document.createElement('div');
+            policyTip.style.cssText = `
+                background: #fff7e6;
+                border: 1px solid #ffd591;
+                border-radius: 4px;
+                padding: 8px 12px;
+                margin-bottom: 15px;
+                font-size: 12px;
+                color: #d46b08;
+                line-height: 1.4;
+                text-align: center;
+            `;
+            policyTip.innerHTML = `
+                <div>账号保留365天（每日00:00清理过期）</div>
+                <div>登录、上传、下载均视为活动，365天无活动账号自动删除</div>
+            `;
+
+            // 添加元素到容器
+            container.appendChild(userInfo);
+            container.appendChild(storageInfo);
+            container.appendChild(policyTip);
+
+            // 同步按钮容器
+            const syncContainer = document.createElement('div');
+            syncContainer.style.cssText = `
                 display: flex;
                 flex-direction: column;
-                user-select: text;
-                -webkit-user-select: text;
-                -moz-user-select: text;
-                -ms-user-select: text;
+                gap: 10px;
+                margin-bottom: 15px;
             `;
 
-            // 移动端适配
-            if (window.innerWidth <= 767) {
-                dialog.style.cssText += `
-                    position: fixed !important;
-                    width: 95% !important;
-                    left: 2.5% !important;
-                    right: 2.5% !important;
-                    top: 5px !important;
-                    max-height: 95vh !important;
-                `;
-            } else {
-                dialog.style.width = '700px';
+            // 上传配置按钮
+            const uploadBtn = document.createElement('button');
+            uploadBtn.textContent = '上传到服务器';
+            uploadBtn.style.cssText = `
+                padding: 8px;
+                background: #52c41a;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            `;
+            uploadBtn.onclick = async () => {
+                // 只监听事件来切换状态，避免弹窗未确认就进入“同步中”
+                const onStart = (e) => {
+                    if (e && e.detail && e.detail.mode === 'upload') {
+                        uploadBtn.disabled = true;
+                        uploadBtn.textContent = '同步中...';
+                    }
+                };
+                const onEnd = (e) => {
+                    if (!e || !e.detail || e.detail.mode !== 'upload') return;
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = '上传到服务器';
+                    if (e.detail.success) {
+                        // 同步成功后刷新存储空间信息
+                        UI.loadStorageInfo(storageInfo);
+                    }
+                    window.removeEventListener('ns-sync-start', onStart);
+                    window.removeEventListener('ns-sync-end', onEnd);
+                };
+                window.addEventListener('ns-sync-start', onStart, { once: false });
+                window.addEventListener('ns-sync-end', onEnd, { once: false });
+                await Sync.upload();
+            };
+
+            // 下载配置按钮
+            const downloadBtn = document.createElement('button');
+            downloadBtn.textContent = '从服务器下载';
+            downloadBtn.style.cssText = `
+                padding: 8px;
+                background: #1890ff;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            `;
+            downloadBtn.onclick = async () => {
+                const onStart = (e) => {
+                    if (e && e.detail && e.detail.mode === 'download') {
+                        downloadBtn.disabled = true;
+                        downloadBtn.textContent = '同步中...';
+                    }
+                };
+                const onEnd = (e) => {
+                    if (!e || !e.detail || e.detail.mode !== 'download') return;
+                    downloadBtn.disabled = false;
+                    downloadBtn.textContent = '从服务器下载';
+                    if (e.detail.success) {
+                        UI.loadStorageInfo(storageInfo);
+                    }
+                    window.removeEventListener('ns-sync-start', onStart);
+                    window.removeEventListener('ns-sync-end', onEnd);
+                };
+                window.addEventListener('ns-sync-start', onStart, { once: false });
+                window.addEventListener('ns-sync-end', onEnd, { once: false });
+                await Sync.download();
+            };
+
+            // 修改密码按钮
+            const changePasswordBtn = document.createElement('button');
+            changePasswordBtn.textContent = '修改密码';
+            changePasswordBtn.style.cssText = `
+                padding: 8px;
+                background: #722ed1;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            `;
+            changePasswordBtn.onclick = () => {
+                this.createChangePasswordDialog();
+            };
+
+            // 删除同步数据按钮
+            const deleteConfigBtn = document.createElement('button');
+            deleteConfigBtn.textContent = '清除上传数据';
+            deleteConfigBtn.style.cssText = `
+                padding: 8px;
+                background: #f44336;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                min-width: 120px;
+            `;
+            deleteConfigBtn.onclick = async () => {
+                deleteConfigBtn.disabled = true;
+                const originalText = deleteConfigBtn.textContent;
+                deleteConfigBtn.textContent = '清除中...';
+                try {
+                    await Sync.deleteServerConfig();
+                    // 清除成功后刷新存储空间信息
+                    UI.loadStorageInfo(storageInfo);
+                } finally {
+                    deleteConfigBtn.disabled = false;
+                    deleteConfigBtn.textContent = originalText;
+                }
+            };
+
+            // 退出登录按钮
+            const logoutBtn = document.createElement('button');
+            logoutBtn.textContent = '退出登录';
+            logoutBtn.style.cssText = `
+                padding: 8px;
+                background: #f5222d;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            `;
+            logoutBtn.onclick = async () => {
+                if (confirm('确定要退出登录吗？')) {
+                    await Auth.logout();
+                    container.remove();
+                }
+            };
+
+            // 优化用户面板按钮移动端适配
+            this.optimizeButtonForMobile(uploadBtn, isMobile);
+            this.optimizeButtonForMobile(downloadBtn, isMobile);
+            this.optimizeButtonForMobile(changePasswordBtn, isMobile);
+            this.optimizeButtonForMobile(deleteConfigBtn, isMobile);
+            this.optimizeButtonForMobile(logoutBtn, isMobile);
+
+            syncContainer.appendChild(uploadBtn);
+            syncContainer.appendChild(downloadBtn);
+            syncContainer.appendChild(changePasswordBtn);
+            syncContainer.appendChild(deleteConfigBtn);
+
+            container.appendChild(syncContainer);
+            container.appendChild(logoutBtn);
+        },
+
+        // 创建修改密码对话框
+        createChangePasswordDialog: function () {
+            // 移除可能存在的对话框
+            const existingDialog = document.getElementById('nodeseek-change-password-dialog');
+            if (existingDialog) {
+                existingDialog.remove();
             }
 
-            // 创建固定区域（不滚动）
-            const fixedArea = document.createElement('div');
-            fixedArea.style.cssText = `
-                padding: ${window.innerWidth <= 767 ? '15px 15px 0 15px' : '18px 20px 0 20px'};
-                flex-shrink: 0;
+            // 创建对话框
+            const dialog = document.createElement('div');
+            dialog.id = 'nodeseek-change-password-dialog';
+            dialog.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: white;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                padding: 20px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                z-index: 10001;
+                width: 350px;
+                max-width: 90vw;
             `;
 
-            // 标题和关闭按钮
-            const header = document.createElement('div');
-            header.style.cssText = `
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 15px;
-                position: relative;
+            // 添加左上角拖拽区域
+            const dragHandle = document.createElement('div');
+            dragHandle.className = 'dialog-title-draggable'; // 添加可拖拽标识
+            dragHandle.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 30px;
+                height: 30px;
+                cursor: move;
+                background: transparent;
+                z-index: 1;
+                user-select: none;
             `;
 
+            // 标题
             const title = document.createElement('div');
-            title.textContent = `发帖时间分布统计`;
+            title.textContent = '修改密码';
             title.style.cssText = `
                 font-weight: bold;
                 font-size: 16px;
-                color: #17a2b8;
+                margin-bottom: 15px;
+                text-align: center;
             `;
 
+            // 关闭按钮
             const closeBtn = document.createElement('span');
             closeBtn.textContent = '×';
-            closeBtn.style.position = 'absolute';
-            closeBtn.style.right = '12px';
-            closeBtn.style.top = '8px';
-            closeBtn.style.cursor = 'pointer';
-            closeBtn.style.fontSize = '20px';
-            closeBtn.style.color = '#333';
-            closeBtn.className = 'close-btn';
+            closeBtn.style.cssText = `
+                position: absolute;
+                right: 12px;
+                top: 8px;
+                cursor: pointer;
+                font-size: 20px;
+            `;
             closeBtn.onclick = () => dialog.remove();
 
-            header.appendChild(title);
-            header.appendChild(closeBtn);
-            fixedArea.appendChild(header);
+            // 表单
+            const form = document.createElement('div');
 
-            // 日期选择按钮组
-            const daySelector = document.createElement('div');
-            daySelector.style.cssText = `
+            // 当前密码输入
+            const currentPasswordLabel = document.createElement('div');
+            currentPasswordLabel.textContent = '当前密码:';
+            currentPasswordLabel.style.marginBottom = '5px';
+
+            const currentPasswordInput = document.createElement('input');
+            currentPasswordInput.type = 'password';
+            currentPasswordInput.placeholder = '请输入当前密码';
+            currentPasswordInput.style.cssText = `
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                margin-bottom: 10px;
+                box-sizing: border-box;
+            `;
+            const isMobileChange = window.innerWidth <= 768;
+            const currentPasswordContainer = this.createPasswordInputWithToggle(currentPasswordInput, isMobileChange);
+            currentPasswordContainer.style.marginBottom = '10px';
+
+            // 新密码输入
+            const newPasswordLabel = document.createElement('div');
+            newPasswordLabel.textContent = '新密码:';
+            newPasswordLabel.style.marginBottom = '5px';
+
+            const newPasswordInput = document.createElement('input');
+            newPasswordInput.type = 'password';
+            newPasswordInput.placeholder = '请输入新密码（至少6个字符）';
+            newPasswordInput.style.cssText = `
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                margin-bottom: 10px;
+                box-sizing: border-box;
+            `;
+            const newPasswordContainer = this.createPasswordInputWithToggle(newPasswordInput, isMobileChange);
+            newPasswordContainer.style.marginBottom = '10px';
+
+            // 确认新密码输入
+            const confirmPasswordLabel = document.createElement('div');
+            confirmPasswordLabel.textContent = '确认新密码:';
+            confirmPasswordLabel.style.marginBottom = '5px';
+
+            const confirmPasswordInput = document.createElement('input');
+            confirmPasswordInput.type = 'password';
+            confirmPasswordInput.placeholder = '请再次输入新密码';
+            confirmPasswordInput.style.cssText = `
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
                 margin-bottom: 15px;
+                box-sizing: border-box;
+            `;
+            const confirmPasswordContainer = this.createPasswordInputWithToggle(confirmPasswordInput, isMobileChange);
+            confirmPasswordContainer.style.marginBottom = '15px';
+
+            // 按钮容器
+            const buttonContainer = document.createElement('div');
+            buttonContainer.style.cssText = `
                 display: flex;
-                gap: 5px;
-                flex-wrap: wrap;
+                gap: 10px;
             `;
 
-            const dateOptions = this.getRecentDates(7);
+            // 确认修改按钮
+            const confirmBtn = document.createElement('button');
+            confirmBtn.textContent = '确认修改';
+            confirmBtn.style.cssText = `
+                flex: 1;
+                padding: 8px;
+                background: #722ed1;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            `;
 
-            let selectedDates = new Set([dateOptions[0].dateStr]); // 默认选择今天
-            let contentContainer = null;
+            // 取消按钮
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = '取消';
+            cancelBtn.style.cssText = `
+                flex: 1;
+                padding: 8px;
+                background: #f0f0f0;
+                color: #666;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                cursor: pointer;
+            `;
 
-            // 渲染选择按钮
-            const renderSelectionButtons = () => {
-                daySelector.innerHTML = '';
+            // 事件处理
+            const handleChange = async () => {
+                const currentPassword = currentPasswordInput.value;
+                const newPassword = newPasswordInput.value;
+                const confirmPassword = confirmPasswordInput.value;
 
-                // 显示日期按钮，支持多选
-                dateOptions.forEach(dateOption => {
-                    const btn = document.createElement('button');
-                    btn.textContent = dateOption.displayStr;
-                    const isSelected = selectedDates.has(dateOption.dateStr);
-                    btn.style.cssText = `
-                        padding: 4px 8px;
-                        border: 1px solid #ddd;
-                        border-radius: 3px;
-                        cursor: pointer;
-                        font-size: 12px;
-                        background: ${isSelected ? '#17a2b8' : '#f8f9fa'};
-                        color: ${isSelected ? 'white' : '#333'};
-                    `;
-                    btn.onclick = () => {
-                        if (selectedDates.has(dateOption.dateStr)) {
-                            selectedDates.delete(dateOption.dateStr);
-                        } else {
-                            selectedDates.add(dateOption.dateStr);
-                        }
-                        renderSelectionButtons();
-                        updateContentMulti();
-                    };
-                    daySelector.appendChild(btn);
-                });
-            };
-
-            // 多选模式更新内容
-            const updateContentMulti = () => {
-                if (selectedDates.size === 0) {
-                    renderTimeDistributionContent({ hourlyStats: new Array(24).fill(0), weekdayStats: new Array(7).fill(0), totalPosts: 0, validTimePosts: 0 }, '多选', '未选择日期');
+                if (!currentPassword || !newPassword || !confirmPassword) {
+                    alert('请填写所有字段');
                     return;
                 }
 
-                // 获取选中日期的时间分布数据
-                const mergedHourlyStats = new Array(24).fill(0);
-                const mergedWeekdayStats = new Array(7).fill(0);
-                let totalPosts = 0;
-                let validTimePosts = 0;
-
-                selectedDates.forEach(dateStr => {
-                    const timeDistribution = this.getTimeDistributionByDate(dateStr);
-                    timeDistribution.hourlyStats.forEach((count, hour) => {
-                        mergedHourlyStats[hour] += count;
-                    });
-                    timeDistribution.weekdayStats.forEach((count, weekday) => {
-                        mergedWeekdayStats[weekday] += count;
-                    });
-                    totalPosts += timeDistribution.totalPosts;
-                    validTimePosts += timeDistribution.validTimePosts;
-                });
-
-                const selectedDateLabels = Array.from(selectedDates).sort().map(dateStr => {
-                    const date = dateOptions.find(d => d.dateStr === dateStr);
-                    return date ? date.displayStr : dateStr;
-                }).join(', ');
-
-                renderTimeDistributionContent({ hourlyStats: mergedHourlyStats, weekdayStats: mergedWeekdayStats, totalPosts, validTimePosts }, '多选', selectedDateLabels);
-            };
-
-            // 渲染时间分布内容
-            const renderTimeDistributionContent = (timeDistribution, modeLabel, periodLabel) => {
-                // 清空固定区域中的统计信息（如果存在）
-                const existingStats = fixedArea.querySelector('.stats-info');
-                if (existingStats) {
-                    existingStats.remove();
+                if (newPassword.length < 6) {
+                    alert('新密码至少6个字符');
+                    return;
                 }
 
-                // 在固定区域添加统计信息
-                const statsDiv = document.createElement('div');
-                statsDiv.className = 'stats-info';
-                statsDiv.style.cssText = `
-                    background: #f5f5f5;
-                    padding: 10px;
-                    border-radius: 5px;
-                    margin-bottom: 15px;
-                    font-size: 12px;
-                    color: #666;
-                `;
+                if (newPassword !== confirmPassword) {
+                    alert('两次输入的新密码不一致');
+                    return;
+                }
 
-                statsDiv.innerHTML = `
-                    查看模式：${modeLabel}（${periodLabel}）<br>
-                    统计文章：${timeDistribution.totalPosts} 篇<br>
-                    有效时间：${timeDistribution.validTimePosts} 篇（含时间信息）<br>
-                    时间覆盖率：${timeDistribution.totalPosts > 0 ? Math.round((timeDistribution.validTimePosts / timeDistribution.totalPosts) * 100) : 0}%
-                `;
-                fixedArea.appendChild(statsDiv);
+                try {
+                    confirmBtn.disabled = true;
+                    confirmBtn.textContent = '修改中...';
 
-                // 清空滚动内容区域
-                contentContainer.innerHTML = '';
-
-                if (timeDistribution.validTimePosts > 0) {
-                    // 24小时分布图表
-                    const hourlyContainer = document.createElement('div');
-                    hourlyContainer.style.cssText = `
-                        margin-bottom: 20px;
-                        border: 1px solid #eee;
-                        border-radius: 5px;
-                        padding: 15px;
-                    `;
-
-                    const hourlyTitle = document.createElement('div');
-                    hourlyTitle.textContent = '📊 24小时发帖分布';
-                    hourlyTitle.style.cssText = `
-                        font-weight: bold;
-                        margin-bottom: 10px;
-                        color: #17a2b8;
-                    `;
-                    hourlyContainer.appendChild(hourlyTitle);
-
-                    const maxHourlyCount = Math.max(...timeDistribution.hourlyStats);
-                    timeDistribution.hourlyStats.forEach((count, hour) => {
-                        const hourDiv = document.createElement('div');
-                        hourDiv.style.cssText = `
-                            display: flex;
-                            align-items: center;
-                            margin-bottom: 3px;
-                            font-size: 12px;
-                        `;
-
-                        const percentage = maxHourlyCount > 0 ? (count / maxHourlyCount) * 100 : 0;
-                        const hourLabel = String(hour).padStart(2, '0') + ':00';
-
-                        hourDiv.innerHTML = `
-                            <span style="min-width: 45px; color: #666;">${hourLabel}</span>
-                            <div style="flex: 1; margin: 0 10px; height: 12px; background: #f0f0f0; border-radius: 6px; overflow: hidden;">
-                                <div style="width: ${percentage}%; height: 100%; background: #17a2b8; border-radius: 6px;"></div>
-                            </div>
-                            <span style="min-width: 30px; text-align: right; color: #333;">${count}</span>
-                        `;
-
-                        hourlyContainer.appendChild(hourDiv);
-                    });
-
-                    contentContainer.appendChild(hourlyContainer);
-
-                    // 星期分布图表
-                    const weekdayContainer = document.createElement('div');
-                    weekdayContainer.style.cssText = `
-                        border: 1px solid #eee;
-                        border-radius: 5px;
-                        padding: 15px;
-                    `;
-
-                    const weekdayTitle = document.createElement('div');
-                    weekdayTitle.textContent = '📅 星期发帖分布';
-                    weekdayTitle.style.cssText = `
-                        font-weight: bold;
-                        margin-bottom: 10px;
-                        color: #17a2b8;
-                    `;
-                    weekdayContainer.appendChild(weekdayTitle);
-
-                    const weekdayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-                    const maxWeekdayCount = Math.max(...timeDistribution.weekdayStats);
-
-                    timeDistribution.weekdayStats.forEach((count, weekday) => {
-                        const weekdayDiv = document.createElement('div');
-                        weekdayDiv.style.cssText = `
-                            display: flex;
-                            align-items: center;
-                            margin-bottom: 5px;
-                            font-size: 12px;
-                        `;
-
-                        const percentage = maxWeekdayCount > 0 ? (count / maxWeekdayCount) * 100 : 0;
-
-                        weekdayDiv.innerHTML = `
-                            <span style="min-width: 35px; color: #666;">${weekdayNames[weekday]}</span>
-                            <div style="flex: 1; margin: 0 10px; height: 16px; background: #f0f0f0; border-radius: 8px; overflow: hidden;">
-                                <div style="width: ${percentage}%; height: 100%; background: #28a745; border-radius: 8px;"></div>
-                            </div>
-                            <span style="min-width: 30px; text-align: right; color: #333;">${count}</span>
-                        `;
-
-                        weekdayContainer.appendChild(weekdayDiv);
-                    });
-
-                    contentContainer.appendChild(weekdayContainer);
-                } else {
-                    const emptyDiv = document.createElement('div');
-                    emptyDiv.style.cssText = `
-                        text-align: center;
-                        color: #888;
-                        margin: 20px 0;
-                        padding: 40px 20px;
-                        background: #f9f9f9;
-                        border: 1px solid #eee;
-                        border-radius: 5px;
-                    `;
-                    emptyDiv.innerHTML = `
-                        <div style="font-size: 14px; margin-bottom: 8px;">📊 ${periodLabel}暂无时间分布数据</div>
-                        <div style="font-size: 12px; color: #999;">
-                            需要RSS数据中包含发帖时间信息
-                        </div>
-                    `;
-                    contentContainer.appendChild(emptyDiv);
+                    await Auth.changePassword(currentPassword, newPassword);
+                    dialog.remove();
+                } catch (error) {
+                    // 错误已在Auth模块中处理
+                } finally {
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = '确认修改';
                 }
             };
 
-            fixedArea.appendChild(daySelector);
+            confirmBtn.onclick = handleChange;
+            cancelBtn.onclick = () => dialog.remove();
 
-            // 添加固定区域到弹窗
-            dialog.appendChild(fixedArea);
+            // 回车提交
+            confirmPasswordInput.onkeydown = (e) => {
+                if (e.key === 'Enter') {
+                    handleChange();
+                }
+            };
 
-            // 创建可滚动内容容器
-            contentContainer = document.createElement('div');
-            contentContainer.style.cssText = `
-                flex: 1;
-                overflow-y: auto;
-                padding: ${window.innerWidth <= 767 ? '0 15px 10px 15px' : '0 20px 12px 20px'};
-            `;
-            dialog.appendChild(contentContainer);
+            // 组装界面
+            buttonContainer.appendChild(confirmBtn);
+            buttonContainer.appendChild(cancelBtn);
 
-            // 初始化显示
-            renderSelectionButtons();
-            updateContentMulti();
+            form.appendChild(currentPasswordLabel);
+            form.appendChild(currentPasswordContainer);
+            form.appendChild(newPasswordLabel);
+            form.appendChild(newPasswordContainer);
+            form.appendChild(confirmPasswordLabel);
+            form.appendChild(confirmPasswordContainer);
+            form.appendChild(buttonContainer);
+
+            dialog.appendChild(dragHandle);
+            dialog.appendChild(title);
+            dialog.appendChild(closeBtn);
+            dialog.appendChild(form);
 
             document.body.appendChild(dialog);
 
-            // 添加拖拽功能
-            if (window.makeDraggable) {
-                window.makeDraggable(dialog, {width: 50, height: 50});
+            // 使对话框可拖动
+            this.makeDraggable(dialog);
+
+            // 聚焦当前密码输入框
+            currentPasswordInput.focus();
+        },
+
+        // 获取当前token
+        getToken: function () {
+            return authToken;
+        },
+
+        // 加载存储空间信息
+        loadStorageInfo: async function (storageElement) {
+            try {
+                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/user`, {
+                    method: 'GET'
+                });
+
+                if (data.success && data.user && data.user.storage) {
+                    const storage = data.user.storage;
+                    const usageColor = storage.usage_percent >= 90 ? '#ff4d4f' :
+                        storage.usage_percent >= 70 ? '#faad14' : '#52c41a';
+
+                    storageElement.innerHTML = `
+                        <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
+                        <div>已使用: ${storage.usage_mb}MB / ${storage.limit_mb}MB</div>
+                        <div style="color: ${usageColor}; font-weight: bold;">剩余: ${storage.remaining_mb}MB (${storage.usage_percent}%)</div>
+                    `;
+                } else {
+                    storageElement.innerHTML = `
+                        <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
+                        <div style="color: #999;">数据格式错误</div>
+                    `;
+                }
+            } catch (error) {
+                console.error('获取存储空间信息失败:', error);
+                let errorMessage = '获取失败';
+                if (error.message.includes('超时')) {
+                    errorMessage = '请求超时';
+                } else if (error.message.includes('网络')) {
+                    errorMessage = '网络错误';
+                } else if (error.message.includes('401') || error.message.includes('403')) {
+                    errorMessage = '认证失败';
+                }
+
+                storageElement.innerHTML = `
+                    <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
+                    <div style="color: #999;">${errorMessage}</div>
+                `;
             }
         },
 
-        // 显示用户统计弹窗
-        showUserStatsDialog() {
-            // 检查弹窗是否已存在
-            const existingDialog = document.getElementById('user-stats-dialog');
-            if (existingDialog) {
-                existingDialog.remove();
-                return;
-            }
+        // 使对话框可拖动（支持PC和移动端）
+        makeDraggable: function (element) {
+            let isDragging = false;
+            let startX, startY, startLeft, startTop;
 
-            const dialog = document.createElement('div');
-            dialog.id = 'user-stats-dialog';
-            dialog.style.cssText = `
-                position: fixed;
-                top: 60px;
-                right: 16px;
-                z-index: 10000;
-                background: #fff;
-                border: 1px solid #ccc;
-                border-radius: 8px;
-                box-shadow: 0 2px 12px rgba(0,0,0,0.15);
-                padding: 18px 20px 12px 20px;
-                max-height: 80vh;
-                overflow-y: auto;
-                user-select: text;
-                -webkit-user-select: text;
-                -moz-user-select: text;
-                -ms-user-select: text;
-            `;
-
-            // 移动端适配
-            if (window.innerWidth <= 767) {
-                dialog.style.cssText += `
-                    position: fixed !important;
-                    width: 95% !important;
-                    left: 2.5% !important;
-                    right: 2.5% !important;
-                    top: 5px !important;
-                    max-height: 95vh !important;
-                    padding: 15px 15px 10px 15px !important;
-                `;
-            } else {
-                dialog.style.width = '600px';
-            }
-
-            // 标题和关闭按钮
-            const header = document.createElement('div');
-            header.style.cssText = `
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 15px;
-                position: relative;
-            `;
-
-            const title = document.createElement('div');
-            title.textContent = `活跃用户统计`;
-            title.style.cssText = `
-                font-weight: bold;
-                font-size: 16px;
-                color: #28a745;
-            `;
-
-            const closeBtn = document.createElement('span');
-            closeBtn.textContent = '×';
-            closeBtn.style.position = 'absolute';
-            closeBtn.style.right = '12px';
-            closeBtn.style.top = '8px';
-            closeBtn.style.cursor = 'pointer';
-            closeBtn.style.fontSize = '20px';
-            closeBtn.style.color = '#333';
-            closeBtn.className = 'close-btn';
-            closeBtn.onclick = () => dialog.remove();
-
-            header.appendChild(title);
-            header.appendChild(closeBtn);
-            dialog.appendChild(header);
-
-            // 日期选择按钮组
-            const daySelector = document.createElement('div');
-            daySelector.style.cssText = `
-                margin-bottom: 15px;
-                display: flex;
-                gap: 5px;
-                flex-wrap: wrap;
-            `;
-
-            const dateOptions = this.getRecentDates(7);
-
-            let selectedDates = new Set([dateOptions[0].dateStr]); // 默认选择今天
-            let contentContainer = null;
-
-            // 渲染选择按钮
-            const renderSelectionButtons = () => {
-                daySelector.innerHTML = '';
-
-                // 显示日期按钮，支持多选
-                dateOptions.forEach(dateOption => {
-                    const btn = document.createElement('button');
-                    btn.textContent = dateOption.displayStr;
-                    const isSelected = selectedDates.has(dateOption.dateStr);
-                    btn.style.cssText = `
-                        padding: 4px 8px;
-                        border: 1px solid #ddd;
-                        border-radius: 3px;
-                        cursor: pointer;
-                        font-size: 12px;
-                        background: ${isSelected ? '#28a745' : '#f8f9fa'};
-                        color: ${isSelected ? 'white' : '#333'};
-                    `;
-                    btn.onclick = () => {
-                        if (selectedDates.has(dateOption.dateStr)) {
-                            selectedDates.delete(dateOption.dateStr);
-                        } else {
-                            selectedDates.add(dateOption.dateStr);
-                        }
-                        renderSelectionButtons();
-                        updateContentMulti();
-                    };
-                    daySelector.appendChild(btn);
-                });
-            };
-
-            // 多选模式更新内容
-            const updateContentMulti = () => {
-                if (selectedDates.size === 0) {
-                    renderUserStatsContent([], '多选', '未选择日期');
-                    return;
+            // 通用的开始拖拽函数
+            const startDrag = function (clientX, clientY, target) {
+                // 只有点击标题区域才能拖动
+                if (target.className === 'dialog-title-draggable' ||
+                    target.closest('.dialog-title-draggable')) {
+                    isDragging = true;
+                    startX = clientX;
+                    startY = clientY;
+                    startLeft = parseInt(window.getComputedStyle(element).left, 10);
+                    startTop = parseInt(window.getComputedStyle(element).top, 10);
+                    return true;
                 }
-
-                // 获取选中日期的用户统计数据
-                const allUsers = new Map();
-
-                selectedDates.forEach(dateStr => {
-                    const userStats = this.getUserStatsByDate(dateStr);
-                    userStats.forEach(([user, count]) => {
-                        const currentCount = allUsers.get(user) || 0;
-                        allUsers.set(user, currentCount + count);
-                    });
-                });
-
-                // 转换为排序数组
-                const mergedUserStats = Array.from(allUsers.entries())
-                    .filter(([user, count]) => count >= 2)
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 50);
-
-                const selectedDateLabels = Array.from(selectedDates).sort().map(dateStr => {
-                    const date = dateOptions.find(d => d.dateStr === dateStr);
-                    return date ? date.displayStr : dateStr;
-                }).join(', ');
-
-                renderUserStatsContent(mergedUserStats, '多选', selectedDateLabels);
+                return false;
             };
 
-            // 渲染用户统计内容
-            const renderUserStatsContent = (userStats, modeLabel, periodLabel) => {
-                contentContainer.innerHTML = '';
-
-                // 统计信息
-                const statsDiv = document.createElement('div');
-                statsDiv.style.cssText = `
-                    background: #f5f5f5;
-                    padding: 10px;
-                    border-radius: 5px;
-                    margin-bottom: 15px;
-                    font-size: 12px;
-                    color: #666;
-                `;
-
-                // 获取主弹窗的统计数据作为参考
-                const mainStats = this.getHistoryStats();
-                const totalPosts = userStats.reduce((sum, [user, count]) => sum + count, 0);
-
-                statsDiv.innerHTML = `
-                    查看模式：${modeLabel}（${periodLabel}）<br>
-                    统计数据：${userStats.length > 0 ? '有' : '无'}<br>
-                    活跃用户：${userStats.length} 个（≥3次发帖）<br>
-                    活跃发帖：${totalPosts} 篇<br>
-                    平均发帖：${userStats.length > 0 ? Math.round(totalPosts / userStats.length) : 0} 篇/用户
-                `;
-                contentContainer.appendChild(statsDiv);
-
-                if (userStats.length > 0) {
-                    const listContainer = document.createElement('div');
-                    listContainer.style.cssText = `
-                        max-height: 50vh;
-                        overflow-y: auto;
-                        border: 1px solid #eee;
-                        border-radius: 5px;
-                    `;
-
-                    userStats.forEach((item, index) => {
-                        const [user, count] = item;
-                        const itemDiv = document.createElement('div');
-                        itemDiv.style.cssText = `
-                            display: flex;
-                            justify-content: space-between;
-                            align-items: center;
-                            padding: 8px 12px;
-                            border-bottom: 1px solid #f0f0f0;
-                            background: ${index < 3 ? '#e8f5e8' : '#fff'};
-                        `;
-
-                        // 排名标记
-                        let rankMark = '';
-                        if (index === 0) rankMark = '🥇';
-                        else if (index === 1) rankMark = '🥈';
-                        else if (index === 2) rankMark = '🥉';
-                        else rankMark = `#${index + 1}`;
-
-                        // 活跃度条
-                        const maxCount = userStats[0][1];
-                        const percentage = (count / maxCount) * 100;
-
-                        itemDiv.innerHTML = `
-                            <div style="display: flex; align-items: center; flex: 1;">
-                                <span style="margin-right: 8px; font-size: 14px; min-width: 30px;">${rankMark}</span>
-                                <span style="font-weight: ${index < 5 ? 'bold' : 'normal'}; color: ${index < 3 ? '#28a745' : '#333'}; word-break: break-all;">${user}</span>
-                            </div>
-                            <div style="display: flex; align-items: center;">
-                                <div style="width: 60px; height: 8px; background: #f0f0f0; border-radius: 4px; margin-right: 8px; overflow: hidden;">
-                                    <div style="width: ${percentage}%; height: 100%; background: ${index < 3 ? '#28a745' : '#17a2b8'}; border-radius: 4px;"></div>
-                                </div>
-                                <span style="font-size: 12px; color: #666; min-width: 25px; text-align: right;">${count}</span>
-                            </div>
-                        `;
-
-                        listContainer.appendChild(itemDiv);
-                    });
-
-                    contentContainer.appendChild(listContainer);
-                } else {
-                    const emptyDiv = document.createElement('div');
-                    emptyDiv.style.cssText = `
-                        text-align: center;
-                        color: #888;
-                        margin: 20px 0;
-                        padding: 40px 20px;
-                        background: #f9f9f9;
-                        border: 1px solid #eee;
-                        border-radius: 5px;
-                    `;
-                    emptyDiv.innerHTML = `
-                        <div style="font-size: 14px; margin-bottom: 8px;">👥 ${periodLabel}暂无活跃用户数据</div>
-                        <div style="font-size: 12px; color: #999;">
-                            活跃用户需要发帖≥3次才会被统计
-                        </div>
-                    `;
-                    contentContainer.appendChild(emptyDiv);
+            // 通用的拖拽移动函数
+            const handleDrag = function (clientX, clientY) {
+                if (isDragging) {
+                    const deltaX = clientX - startX;
+                    const deltaY = clientY - startY;
+                    element.style.left = (startLeft + deltaX) + 'px';
+                    element.style.top = (startTop + deltaY) + 'px';
                 }
             };
 
-            dialog.appendChild(daySelector);
+            // 通用的结束拖拽函数
+            const endDrag = function () {
+                if (isDragging) {
+                    isDragging = false;
+                }
+            };
 
-            // 内容容器
-            contentContainer = document.createElement('div');
-            dialog.appendChild(contentContainer);
+            // PC端鼠标事件
+            element.addEventListener('mousedown', function (e) {
+                if (startDrag(e.clientX, e.clientY, e.target)) {
+                    e.preventDefault();
+                }
+            });
 
-            // 初始化显示
-            renderSelectionButtons();
-            updateContentMulti();
+            document.addEventListener('mousemove', function (e) {
+                handleDrag(e.clientX, e.clientY);
+            });
 
-            document.body.appendChild(dialog);
+            document.addEventListener('mouseup', function () {
+                endDrag();
+            });
 
-            // 添加拖拽功能
-            if (window.makeDraggable) {
-                window.makeDraggable(dialog, {width: 50, height: 50});
+            // 移动端触摸事件
+            element.addEventListener('touchstart', function (e) {
+                if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    if (startDrag(touch.clientX, touch.clientY, e.target)) {
+                        e.preventDefault();
+                    }
+                }
+            }, { passive: false });
+
+            document.addEventListener('touchmove', function (e) {
+                if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    handleDrag(touch.clientX, touch.clientY);
+                    if (isDragging) {
+                        e.preventDefault();
+                    }
+                }
+            }, { passive: false });
+
+            document.addEventListener('touchend', function () {
+                endDrag();
+            });
+
+            document.addEventListener('touchcancel', function () {
+                endDrag();
+            });
+        }
+    };
+
+    // 主对象
+    const NodeSeekLogin = {
+        init: function () {
+            Auth.init();
+
+            // 验证token有效性
+            if (Auth.isLoggedIn()) {
+                Auth.validateToken();
+                Sync.initAutoSync();
+            }
+        },
+
+        // 显示登录对话框
+        showDialog: function () {
+            UI.showAuthDialog();
+        },
+
+        // 获取当前用户
+        getCurrentUser: function () {
+            return Auth.getCurrentUser();
+        },
+
+        // 检查是否已登录
+        isLoggedIn: function () {
+            return Auth.isLoggedIn();
+        },
+
+        // 同步配置到服务器
+        syncToServer: async function () {
+            return await Sync.upload();
+        },
+
+        // 从服务器下载配置
+        syncFromServer: async function () {
+            return await Sync.download();
+        },
+
+        // 新增：直接显示配置选择对话框（用于预览/调试）
+        showSelectionDialog: function (mode = 'upload') {
+            try {
+                Sync.showConfigSelectionDialog(mode, () => { });
+            } catch (e) {
+                console.error('显示选择对话框失败:', e);
             }
         }
     };
 
-    // 暴露到全局
-    window.NodeSeekFocus = NodeSeekFocus;
+    // 导出到全局
+    window.NodeSeekLogin = NodeSeekLogin;
 
     // 初始化
-    NodeSeekFocus.init();
+    NodeSeekLogin.init();
 
 })();
