@@ -1737,6 +1737,19 @@
                 }
                 return false;
             } catch (e) {
+                try {
+                    const msg = (e && e.message) ? String(e.message) : '';
+                    const m = msg.match(/剩余\s*(\d+)\s*小时\s*(\d+)\s*分钟/);
+                    if (m) {
+                        const h = parseInt(m[1] || '0');
+                        const min = parseInt(m[2] || '0');
+                        const lockMs = (Math.max(0, h) * 60 + Math.max(0, min)) * 60 * 1000;
+                        const lockUntil = Date.now() + lockMs;
+                        if (lockMs > 0) {
+                            localStorage.setItem('nodeseek_auto_sync_lock_until', lockUntil.toString());
+                        }
+                    }
+                } catch (err) { }
                 Utils.showMessage(`配置同步失败: ${e.message}`, 'error', false);
                 return false;
             }
