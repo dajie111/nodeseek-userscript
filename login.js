@@ -544,7 +544,7 @@
                         if (!enabled) {
                             localStorage.removeItem('nodeseek_auto_sync_lock_until');
                         }
-                        applied.push(`自动同步设置(${enabled ? '开启' : '关闭'})`);
+                        applied.push(`自动上传设置(${enabled ? '开启' : '关闭'})`);
                         try { Sync.initAutoSync(); } catch (e) { }
                     } catch (e) { }
                 }
@@ -1179,7 +1179,7 @@
                 autoSyncCheckbox.onclick = (e) => { e.stopPropagation(); };
                 const autoSyncLabel = document.createElement('label');
                 autoSyncLabel.htmlFor = 'auto-sync-config';
-                autoSyncLabel.textContent = '自动同步（每24小时一次）';
+                autoSyncLabel.textContent = '自动上传（每24小时一次）';
                 autoSyncLabel.style.cssText = `
                     cursor: pointer;
                     font-weight: bold;
@@ -1217,11 +1217,11 @@
                             localStorage.setItem('nodeseek_auto_sync_last_time', nowTs);
                             localStorage.setItem('nodeseek_auto_sync_last_attempt_time', nowTs);
                             try { Sync.initAutoSync(); } catch (e) { }
-                            Utils.showMessage('自动同步已开启', 'info', false);
+                            Utils.showMessage('自动上传已开启', 'info', false);
                         } else {
                             localStorage.removeItem('nodeseek_auto_sync_items');
                             localStorage.removeItem('nodeseek_auto_sync_lock_until');
-                            Utils.showMessage('自动同步已关闭', 'info', false);
+                            Utils.showMessage('自动上传已关闭', 'info', false);
                         }
                     } catch (e) { }
                 });
@@ -1667,7 +1667,7 @@
                             if (include('filterData') && config.filterData && typeof config.filterData === 'object') labels.push('关键词过滤');
                             if (include('notesData') && config.notesData && typeof config.notesData === 'object') labels.push('笔记');
 
-                            const syncDesc = `配置已同步到服务器 (${labels.join('、')})`;
+                            const syncDesc = `配置已上传到服务器 (${labels.join('、')})`;
                             // 仅输出到日志，不显示右上角弹窗
                             Utils.showMessage(syncDesc, 'success', false);
 
@@ -1731,7 +1731,7 @@
                     if (include('filterData') && config.filterData && typeof config.filterData === 'object') labels.push('关键词过滤');
                     if (include('notesData') && config.notesData && typeof config.notesData === 'object') labels.push('笔记');
 
-                    const syncDesc = `配置已同步到服务器 (${labels.join('、')})`;
+                    const syncDesc = `配置已上传到服务器 (${labels.join('、')})`;
                     Utils.showMessage(syncDesc, 'success', false);
                     return true;
                 }
@@ -1876,7 +1876,7 @@
 
             // 标题
             const title = document.createElement('div');
-            title.textContent = '清除同步数据';
+            title.textContent = '清除上传数据';
             title.style.cssText = `
                 font-weight: bold;
                 font-size: 16px;
@@ -2150,8 +2150,12 @@
                             if (applied.length > 0) {
                                 // 延迟显示确认对话框，让成功提示先显示
                                 setTimeout(() => {
-                                    const simplifiedApplied = applied.map(s => s.replace(/\s*\([^)]*\)\s*/g, '').replace(/\s*（[^）]*）\s*/g, ''));
-                                    const shouldReload = confirm(`配置同步成功！\n\n已同步: ${simplifiedApplied.join('、')}\n\n是否刷新页面以应用更改？`);
+                                    const allowedLabels = ['黑名单', '好友', '收藏', '操作日志', '浏览历史', '快捷回复', '常用表情', '鸡腿统计', '关键词过滤', '笔记'];
+                                    const simplifiedApplied = applied
+                                        .map(s => s.replace(/\s*\([^)]*\)\s*/g, '').replace(/\s*（[^）]*）\s*/g, ''))
+                                        .filter(s => allowedLabels.includes(s))
+                                        .filter((s, idx, arr) => arr.indexOf(s) === idx);
+                                    const shouldReload = confirm(`下载配置成功！\n\n已下载: ${simplifiedApplied.join('、')}\n\n是否刷新页面以应用更改？`);
                                     if (shouldReload) {
                                         location.reload();
                                     } else {
@@ -2984,7 +2988,7 @@
             `;
             policyTip.innerHTML = `
                 <div>账号保留365天（每日00:00清理过期）</div>
-                <div>登录或同步均视为活动，365天无活动账号自动删除</div>
+                <div>登录、上传、下载均视为活动，365天无活动账号自动删除</div>
             `;
 
             // 添加元素到容器
@@ -3003,7 +3007,7 @@
 
             // 上传配置按钮
             const uploadBtn = document.createElement('button');
-            uploadBtn.textContent = '同步到服务器';
+            uploadBtn.textContent = '上传到服务器';
             uploadBtn.style.cssText = `
                 padding: 8px;
                 background: #52c41a;
@@ -3023,7 +3027,7 @@
                 const onEnd = (e) => {
                     if (!e || !e.detail || e.detail.mode !== 'upload') return;
                     uploadBtn.disabled = false;
-                    uploadBtn.textContent = '同步到服务器';
+                    uploadBtn.textContent = '上传到服务器';
                     if (e.detail.success) {
                         // 同步成功后刷新存储空间信息
                         UI.loadStorageInfo(storageInfo);
@@ -3038,7 +3042,7 @@
 
             // 下载配置按钮
             const downloadBtn = document.createElement('button');
-            downloadBtn.textContent = '从服务器同步';
+            downloadBtn.textContent = '从服务器下载';
             downloadBtn.style.cssText = `
                 padding: 8px;
                 background: #1890ff;
@@ -3057,7 +3061,7 @@
                 const onEnd = (e) => {
                     if (!e || !e.detail || e.detail.mode !== 'download') return;
                     downloadBtn.disabled = false;
-                    downloadBtn.textContent = '从服务器同步';
+                    downloadBtn.textContent = '从服务器下载';
                     if (e.detail.success) {
                         UI.loadStorageInfo(storageInfo);
                     }
@@ -3086,7 +3090,7 @@
 
             // 删除同步数据按钮
             const deleteConfigBtn = document.createElement('button');
-            deleteConfigBtn.textContent = '清除同步数据';
+            deleteConfigBtn.textContent = '清除上传数据';
             deleteConfigBtn.style.cssText = `
                 padding: 8px;
                 background: #f44336;
@@ -3532,7 +3536,7 @@
             return await Sync.upload();
         },
 
-        // 从服务器同步配置
+        // 从服务器下载配置
         syncFromServer: async function () {
             return await Sync.download();
         },
