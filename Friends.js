@@ -47,12 +47,12 @@
         }
     }
     
-    function removeFriend(username) {
+    function removeFriend(username, silent = false) {
         let list = getFriends();
         list = list.filter(f => f.username !== username);
         setFriends(list);
         // 记录操作日志
-        if (typeof addLog === 'function') {
+        if (!silent && typeof addLog === 'function') {
             addLog(`删除好友 ${username}`);
         }
     }
@@ -91,10 +91,15 @@
             a.classList.remove('friend-user');
             const oldRemark = a.parentNode.querySelector('.friend-remark');
             if (oldRemark) oldRemark.remove();
-            // 移除旧的添加时间
-            const metaForRemove = a.closest('.nsk-content-meta-info');
-            if (metaForRemove) {
-                const oldFriendTime = metaForRemove.querySelector('.friend-time');
+            
+            // 移除旧的添加时间/信息容器
+            const metaInfo = a.closest('.nsk-content-meta-info');
+            if (metaInfo) {
+                // 移除旧容器
+                const oldContainer = metaInfo.querySelector('.friend-info-container');
+                if (oldContainer) oldContainer.remove();
+                // 兼容旧版本：移除单独的添加时间
+                const oldFriendTime = metaInfo.querySelector('.friend-time');
                 if (oldFriendTime) oldFriendTime.remove();
             }
 
@@ -109,19 +114,35 @@
                     const span = document.createElement('span');
                     span.className = 'friend-remark';
                     span.textContent = friend.remark;
+                    span.title = friend.remark;
                     a.parentNode.appendChild(span);
                 }
 
                 // 右侧显示添加时间（与拉黑时间一致的布局）
-                const metaInfo = a.closest('.nsk-content-meta-info');
                 if (metaInfo && friend.timestamp) {
+                    const isMobile = window.innerWidth <= 767;
+                    // 让父容器相对定位，便于绝对定位子元素
                     metaInfo.style.position = 'relative';
-                    let timeSpan = metaInfo.querySelector('.friend-time');
-                    if (!timeSpan) {
-                        timeSpan = document.createElement('span');
-                        timeSpan.className = 'friend-time';
-                        metaInfo.appendChild(timeSpan);
-                    }
+
+                    // 创建容器
+                    const container = document.createElement('div');
+                    container.className = 'friend-info-container';
+                    container.style.position = isMobile ? 'static' : 'absolute';
+                    container.style.right = isMobile ? '' : '-6px';
+                    container.style.top = isMobile ? '' : '21px';
+                    container.style.display = 'flex';
+                    container.style.alignItems = 'center';
+                    container.style.zIndex = isMobile ? '' : '10';
+                    container.style.background = isMobile ? 'transparent' : '#fff';
+                    container.style.padding = '0';
+                    container.style.flexWrap = isMobile ? 'wrap' : 'nowrap';
+                    container.style.gap = isMobile ? '6px' : '';
+                    container.style.marginTop = isMobile ? '4px' : '';
+
+                    // 显示添加时间
+                    const timeSpan = document.createElement('span');
+                    timeSpan.className = 'friend-time';
+                    
                     const date = new Date(friend.timestamp);
                     const timeStr = date.getFullYear() + '-' +
                         String(date.getMonth() + 1).padStart(2, '0') + '-' +
@@ -129,16 +150,14 @@
                         String(date.getHours()).padStart(2, '0') + ':' +
                         String(date.getMinutes()).padStart(2, '0') + ':' +
                         String(date.getSeconds()).padStart(2, '0');
-                    timeSpan.textContent = ' 添加时间：' + timeStr;
-                    timeSpan.style.position = 'absolute';
-                    timeSpan.style.right = '-2px';
-                    timeSpan.style.top = '21px';
-                    timeSpan.style.marginLeft = '16px';
+                        
+                    timeSpan.textContent = '添加时间：' + timeStr;
                     timeSpan.style.color = '#2ea44f';
                     timeSpan.style.fontSize = '10px';
-                    timeSpan.style.background = '#fff';
-                    timeSpan.style.padding = '0 4px';
-                    timeSpan.style.zIndex = '10';
+                    timeSpan.style.whiteSpace = 'nowrap';
+                    
+                    container.appendChild(timeSpan);
+                    metaInfo.appendChild(container);
                 }
             }
         });
