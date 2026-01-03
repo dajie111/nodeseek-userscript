@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NodeSeek 综合插件
 // @namespace    http://tampermonkey.net/
-// @version      2025.12.24
+// @version      2026.01.04
 // @description  NodeSeek 论坛黑名单，拉黑后红色高亮并可备注，增加域名检测控制按钮显隐，支持折叠功能，显示用户详细信息，快捷回复功能
 // @author       YourName
 // @match        https://www.nodeseek.com/*
@@ -32,6 +32,8 @@
     const FAVORITES_KEY = 'nodeseek_favorites';
     // 收藏分类列表存储键
     const FAVORITES_CATEGORIES_KEY = 'nodeseek_favorites_categories';
+    const FAVORITE_CATEGORY_NAME_MAX_LEN = 4;
+    const FAVORITE_CATEGORY_MAX_COUNT = 6;
 
     // 新增：折叠状态的存储键
     const COLLAPSED_STATE_KEY = 'nodeseek_buttons_collapsed';
@@ -111,15 +113,63 @@
         localStorage.setItem(FAVORITES_KEY, JSON.stringify(list));
     }
 
+    function normalizeFavoriteCategoryName(rawName) {
+        if (rawName === null || rawName === undefined) return '';
+        const name = String(rawName).trim();
+        if (!name) return '';
+        if (name === '未分类') return '未分类';
+        return name.slice(0, FAVORITE_CATEGORY_NAME_MAX_LEN);
+    }
+
     // 获取收藏分类列表
     function getFavoriteCategories() {
-        const categories = JSON.parse(localStorage.getItem(FAVORITES_CATEGORIES_KEY) || '[]');
-        // 确保有默认的"未分类"
-        if (!categories.includes('未分类')) {
-            categories.unshift('未分类');
-            setFavoriteCategories(categories);
+        const rawCategories = JSON.parse(localStorage.getItem(FAVORITES_CATEGORIES_KEY) || '[]');
+        const keptCustom = [];
+        const seen = new Set();
+
+        if (Array.isArray(rawCategories)) {
+            for (const raw of rawCategories) {
+                const normalized = normalizeFavoriteCategoryName(raw);
+                if (!normalized || normalized === '未分类') continue;
+                if (seen.has(normalized)) continue;
+                if (keptCustom.length >= FAVORITE_CATEGORY_MAX_COUNT) continue;
+                seen.add(normalized);
+                keptCustom.push(normalized);
+            }
         }
-        return categories;
+
+        const sanitized = ['未分类', ...keptCustom];
+        let categoriesChanged = !Array.isArray(rawCategories) || rawCategories.length !== sanitized.length;
+        if (!categoriesChanged) {
+            for (let i = 0; i < sanitized.length; i++) {
+                if (rawCategories[i] !== sanitized[i]) {
+                    categoriesChanged = true;
+                    break;
+                }
+            }
+        }
+        if (categoriesChanged) {
+            setFavoriteCategories(sanitized);
+        }
+
+        const favorites = getFavorites();
+        let favoritesChanged = false;
+        if (Array.isArray(favorites) && favorites.length > 0) {
+            for (const fav of favorites) {
+                const rawCat = fav && fav.category ? fav.category : '未分类';
+                const normalized = normalizeFavoriteCategoryName(rawCat) || '未分类';
+                const nextCategory = (normalized !== '未分类' && seen.has(normalized)) ? normalized : '未分类';
+                if (fav && fav.category !== nextCategory) {
+                    fav.category = nextCategory;
+                    favoritesChanged = true;
+                }
+            }
+        }
+        if (favoritesChanged) {
+            setFavorites(favorites);
+        }
+
+        return sanitized;
     }
 
     // 保存收藏分类列表
@@ -129,13 +179,13 @@
 
     // 添加收藏分类
     function addFavoriteCategory(category) {
-        if (!category || !category.trim()) return false;
+        const normalized = normalizeFavoriteCategoryName(category);
+        if (!normalized || normalized === '未分类') return false;
         const categories = getFavoriteCategories();
-        const trimmedCategory = category.trim();
-        // 限制分类名称最多7个字符
-        if (trimmedCategory.length > 7) return false;
-        if (categories.includes(trimmedCategory)) return false;
-        categories.push(trimmedCategory);
+        const customCount = categories.filter(c => c !== '未分类').length;
+        if (customCount >= FAVORITE_CATEGORY_MAX_COUNT) return false;
+        if (categories.includes(normalized)) return false;
+        categories.push(normalized);
         setFavoriteCategories(categories);
         return true;
     }
@@ -162,21 +212,19 @@
     // 重命名收藏分类
     function renameFavoriteCategory(oldName, newName) {
         if (oldName === '未分类') return false; // 不能重命名默认分类
-        if (!newName || !newName.trim()) return false;
+        const normalized = normalizeFavoriteCategoryName(newName);
+        if (!normalized || normalized === '未分类') return false;
         const categories = getFavoriteCategories();
-        const trimmedNewName = newName.trim();
-        // 限制分类名称最多7个字符
-        if (trimmedNewName.length > 7) return false;
-        if (categories.includes(trimmedNewName)) return false; // 新名称已存在
+        if (categories.includes(normalized)) return false; // 新名称已存在
         const index = categories.indexOf(oldName);
         if (index === -1) return false;
-        categories[index] = trimmedNewName;
+        categories[index] = normalized;
         setFavoriteCategories(categories);
         // 更新该分类下的收藏
         const favorites = getFavorites();
         favorites.forEach(fav => {
             if (fav.category === oldName) {
-                fav.category = trimmedNewName;
+                fav.category = normalized;
             }
         });
         setFavorites(favorites);
@@ -480,13 +528,23 @@
             addLog(`更新收藏: ${title}`);
         } else {
             // 新收藏
-            list.push({
+            const newItem = {
                 title: title,
                 url: url,
                 remark: remark || '',
                 category: category,
-                timestamp: new Date().toISOString()
-            });
+                timestamp: new Date().toISOString(),
+                pinned: false // 默认不置顶
+            };
+            
+            // 插入到第一个非置顶的位置，确保新收藏在非置顶区的顶部
+            const firstUnpinnedIndex = list.findIndex(item => !item.pinned);
+            if (firstUnpinnedIndex === -1) {
+                // 如果没有非置顶项（列表为空或全置顶），则添加到末尾
+                list.push(newItem);
+            } else {
+                list.splice(firstUnpinnedIndex, 0, newItem);
+            }
             addLog(`添加收藏: ${title}`);
         }
 
@@ -535,7 +593,7 @@
         if (userLinkElement) {
             // 获取用户ID
             if (userLinkElement.href) {
-                const match = userLinkElement.href.match(/\/space\/(\d+)/);
+                const match = userLinkElement.href.match(/\/space\/(\d+)/) || userLinkElement.href.match(/[?&]to=(\d+)/) || userLinkElement.href.match(/\/user\/(\d+)/);
                 if (match) userId = match[1];
             }
 
@@ -560,7 +618,6 @@
                     // 找到了楼层标记，获取楼层号
                     const floorNumber = floorMarkers[0].textContent.trim().replace('#', '');
                     postId = 'post-' + floorNumber;
-                    console.log("找到楼层标记:", floorNumber, "设置postId为:", postId);
                     break;
                 }
 
@@ -572,7 +629,6 @@
                     const floorMatch = floorLinks[0].href.match(/#(\d+)$/);
                     if (floorMatch) {
                         postId = 'post-' + floorMatch[1];
-                        console.log("从链接中找到楼层:", floorMatch[1], "设置postId为:", postId);
                         break;
                     }
                 }
@@ -584,7 +640,6 @@
                     const floorMatch = floorText.match(/(\d+)/);
                     if (floorMatch) {
                         postId = 'post-' + floorMatch[1];
-                        console.log("从class中找到楼层:", floorMatch[1], "设置postId为:", postId);
                         break;
                     }
                 }
@@ -596,7 +651,6 @@
                     const match = text.match(/#(\d+)/);
                     if (match) {
                         postId = 'post-' + match[1];
-                        console.log("从post-number中找到楼层:", match[1], "设置postId为:", postId);
                         break;
                     }
                 }
@@ -613,7 +667,6 @@
                     const hashMatch = window.location.hash.match(/#post-(\d+)/) || window.location.hash.match(/#(\d+)/);
                     if (hashMatch) {
                         postId = 'post-' + hashMatch[1];
-                        console.log("从URL hash中找到楼层:", hashMatch[1], "设置postId为:", postId);
                     }
                 }
             }
@@ -625,14 +678,12 @@
                 for (let i = 0; i < 10 && element; i++) {
                     if (element.getAttribute('data-post-id')) {
                         postId = 'post-' + element.getAttribute('data-post-id');
-                        console.log("从data-post-id中找到楼层:", element.getAttribute('data-post-id'), "设置postId为:", postId);
                         break;
                     }
 
                     // 检查元素ID是否为post-数字格式
                     if (element.id && element.id.match(/^post-\d+$/)) {
                         postId = element.id;
-                        console.log("从元素ID中找到楼层:", element.id, "设置postId为:", postId);
                         break;
                     }
 
@@ -645,7 +696,7 @@
                 .find(a => a.textContent.trim() === username);
 
             if (userLink && userLink.href) {
-                const match = userLink.href.match(/\/space\/(\d+)/);
+                const match = userLink.href.match(/\/space\/(\d+)/) || userLink.href.match(/[?&]to=(\d+)/) || userLink.href.match(/\/user\/(\d+)/);
                 if (match) userId = match[1];
             }
             // 方法2：如果还没找到postId，尝试从URL中解析
@@ -671,7 +722,6 @@
                 const pageUsername = document.querySelector('.user-card .user-info h3')?.textContent?.trim();
                 if (pageUsername === username) {
                     userId = currentPageMatch[1];
-                    console.log("从页面URL获取用户ID:", userId);
                 }
             }
         }
@@ -688,7 +738,7 @@
         // 记录操作日志
         addLog(`将用户 ${username} 加入黑名单${remark ? ` (备注: ${remark})` : ''}${postId ? ` (楼层ID: ${postId})` : ''}`);
         // 新增：拉黑时自动移除好友
-        removeFriend(username);
+        removeFriend(username, true);
     }
 
     // 移除黑名单
@@ -724,17 +774,114 @@
         return list[username] ? list[username].timestamp : '';
     }
 
+    function getBlacklistedEntryByUserId(userId) {
+        if (userId === null || typeof userId === 'undefined') return null;
+        const normalized = String(userId).trim();
+        if (!normalized) return null;
+        const list = getBlacklist();
+        for (const username of Object.keys(list)) {
+            const info = list[username];
+            if (!info) continue;
+            if (info.userId !== null && typeof info.userId !== 'undefined' && String(info.userId) === normalized) {
+                return { username, info };
+            }
+        }
+        return null;
+    }
+
+    function getHashQueryParam(name) {
+        try {
+            const hash = window.location.hash || '';
+            const idx = hash.indexOf('?');
+            if (idx === -1) return null;
+            const qs = hash.slice(idx + 1);
+            const params = new URLSearchParams(qs);
+            return params.get(name);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function findTalkTitleElement() {
+        const selectors = [
+            'h1', 'h2', 'h3', 'h4',
+            '.card-header', '.panel-heading', '.message-header', '.talk-header', '.chat-header',
+            '.card-title', '.panel-title', '.talk-title', '.chat-title'
+        ];
+        const nodes = [];
+        selectors.forEach(sel => {
+            try {
+                document.querySelectorAll(sel).forEach(el => nodes.push(el));
+            } catch (e) { }
+        });
+        for (const el of nodes) {
+            const t = (el.textContent || '').trim().replace(/\s+/g, ' ');
+            if (!t) continue;
+            if (/^与.{1,32}的对话$/.test(t)) return el;
+        }
+
+        try {
+            const candidates = [];
+            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT, null);
+            let node = walker.currentNode;
+            while (node) {
+                const el = node;
+                if (el && el.id !== 'ns-blacklist-talk-indicator') {
+                    const raw = (el.textContent || '').trim().replace(/\s+/g, ' ');
+                    if (raw && /^与.{1,32}的对话$/.test(raw)) {
+                        const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+                        if (rect && rect.width > 0 && rect.height > 0) {
+                            const computed = window.getComputedStyle ? window.getComputedStyle(el) : null;
+                            if (computed && (computed.display === 'none' || computed.visibility === 'hidden')) {
+                                // skip
+                            } else if ((el.children?.length || 0) <= 3) {
+                                candidates.push(el);
+                            }
+                        }
+                    }
+                }
+                node = walker.nextNode();
+            }
+            if (candidates.length === 0) return null;
+
+            candidates.sort((a, b) => {
+                const ra = a.getBoundingClientRect();
+                const rb = b.getBoundingClientRect();
+                const ha = ra ? ra.height : 9999;
+                const hb = rb ? rb.height : 9999;
+                if (ha !== hb) return ha - hb;
+                const wa = ra ? ra.width : 9999;
+                const wb = rb ? rb.width : 9999;
+                if (wa !== wb) return wa - wb;
+                const da = (a.children?.length || 0);
+                const db = (b.children?.length || 0);
+                return da - db;
+            });
+            return candidates[0];
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function updateTalkBlacklistIndicator() {
+        try {
+            const existing = document.getElementById('ns-blacklist-talk-indicator');
+            if (existing) existing.remove();
+            return;
+        } catch (e) { }
+    }
+
     // ====== 好友功能数据结构 ======
     // 好友功能已移动到 Friends.js 模块，通过 window.NodeSeekFriends 访问
     const getFriends = () => window.NodeSeekFriends?.getFriends() || [];
     const setFriends = (list) => window.NodeSeekFriends?.setFriends(list);
     const addFriend = (username, remarkInput) => window.NodeSeekFriends?.addFriend(username, remarkInput);
-    const removeFriend = (username) => window.NodeSeekFriends?.removeFriend(username);
+    const removeFriend = (username, silent) => window.NodeSeekFriends?.removeFriend(username, silent);
     const isFriend = (username) => window.NodeSeekFriends?.isFriend(username) || false;
 
     // 红色高亮样式
     const style = document.createElement('style');
-    style.innerHTML = `.blacklisted-user { color: red !important; font-weight: bold; white-space: nowrap; } .friend-user { color: #2ea44f !important; font-weight: bold; white-space: nowrap; } .blacklist-remark { color: #d00; font-size: 12px; margin-left: 4px; } .friend-remark { color: #2ea44f; font-size: 12px; margin-left: 4px; }
+    style.innerHTML = `.blacklisted-user { color: red !important; font-weight: bold; white-space: nowrap; } .friend-user { color: #2ea44f !important; font-weight: bold; white-space: nowrap; } .blacklist-remark { color: #d00; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; } .friend-remark { color: #2ea44f; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; }
     .blacklist-btn {
         margin-left: 7px;
         cursor: pointer;
@@ -1248,6 +1395,44 @@
     }
 
     // 高亮黑名单用户并显示备注和网址
+    let blacklistRemarkWidthRaf = null;
+    function findFloorMarkerElement(metaInfo) {
+        const anchorFloor = Array.from(metaInfo.querySelectorAll('a')).find(el => el.textContent && el.textContent.trim().match(/^#\d+$/));
+        if (anchorFloor) return anchorFloor.closest('.floor-link-wrapper') || anchorFloor;
+        const anyFloor = Array.from(metaInfo.querySelectorAll('*')).find(el => el.childElementCount === 0 && el.textContent && el.textContent.trim().match(/^#\d+$/));
+        if (!anyFloor) return null;
+        return anyFloor.closest('.floor-link-wrapper') || anyFloor;
+    }
+
+    function updateBlacklistRemarkWidthsInMeta(metaInfo) {
+        const floorEl = findFloorMarkerElement(metaInfo);
+        if (!floorEl) return;
+
+        const floorRect = floorEl.getBoundingClientRect();
+        metaInfo.querySelectorAll('.blacklist-remark, .friend-remark').forEach(span => {
+            const spanRect = span.getBoundingClientRect();
+            const available = Math.floor(floorRect.left - spanRect.left - 6);
+            span.style.maxWidth = Math.max(20, available) + 'px';
+        });
+    }
+
+    function updateAllBlacklistRemarkWidths() {
+        document.querySelectorAll('.nsk-content-meta-info').forEach(metaInfo => updateBlacklistRemarkWidthsInMeta(metaInfo));
+    }
+
+    function scheduleBlacklistRemarkWidthUpdate() {
+        if (blacklistRemarkWidthRaf) cancelAnimationFrame(blacklistRemarkWidthRaf);
+        blacklistRemarkWidthRaf = requestAnimationFrame(() => {
+            blacklistRemarkWidthRaf = null;
+            updateAllBlacklistRemarkWidths();
+        });
+    }
+
+    if (!window.__nsBlacklistRemarkResizeBound) {
+        window.__nsBlacklistRemarkResizeBound = true;
+        window.addEventListener('resize', scheduleBlacklistRemarkWidthUpdate);
+    }
+
     function highlightBlacklisted() {
         const list = getBlacklist();
 
@@ -1260,9 +1445,13 @@
             if (oldRemark) oldRemark.remove();
             const oldUrl = a.parentNode.querySelector('.blacklist-url');
             if (oldUrl) oldUrl.remove();
-            // 新增：移除旧的拉黑时间（在metaInfo下）
+            
+            // 新增：移除旧的黑名单信息容器（在metaInfo下）
             let metaInfo = a.closest('.nsk-content-meta-info');
             if (metaInfo) {
+                const oldContainer = metaInfo.querySelector('.blacklist-info-container');
+                if (oldContainer) oldContainer.remove();
+                // 兼容旧版本：移除单独的拉黑时间
                 const oldTime = metaInfo.querySelector('.blacklist-time');
                 if (oldTime) oldTime.remove();
             }
@@ -1287,68 +1476,92 @@
                 if (remark) {
                     const span = document.createElement('span');
                     span.className = 'blacklist-remark';
-                    span.textContent = remark;
+                    span.textContent = remark; // 移除“备注：”前缀，直接显示内容
+                    span.title = remark; // 悬停显示完整备注
                     a.parentNode.appendChild(span);
                 }
-                // 显示拉黑时的网址
+                
+                // 准备底部显示的信息：拉黑页面链接 和 拉黑时间
                 const url = getBlacklistUrl(username);
-                if (url) {
-                    const link = document.createElement('a');
-                    link.className = 'blacklist-url';
-
-                    // 构建包含精确楼层的链接
-                    let targetUrl = url;
-                    // 检查是否有楼层信息
-                    if (info.postId) {
-                        // 提取楼层号
-                        const floorNumber = info.postId.replace('post-', '');
-                        // 移除原始URL中可能存在的锚点
-                        targetUrl = targetUrl.split('#')[0];
-                        // 添加新的锚点（不带post-前缀）
-                        targetUrl += '#' + floorNumber;
-                    }
-
-                    link.href = targetUrl;
-                    link.textContent = info.postId ? '【拉黑页面#' + info.postId.replace('post-', '') + '】' : '【拉黑页面】';
-                    link.target = '_blank';
-                    link.style.color = '#06c';
-                    link.style.fontSize = '12px';
-                    link.style.marginLeft = '4px';
-                    a.parentNode.appendChild(link);
-                }
-                // 新增：显示拉黑时间
                 const timestamp = getBlacklistTime(username);
-                if (timestamp && metaInfo) {
+
+                if (metaInfo && (url || timestamp)) {
+                    const isMobile = window.innerWidth <= 767;
                     // 让父容器相对定位，便于绝对定位子元素
                     metaInfo.style.position = 'relative';
-                    // 查找或创建拉黑时间节点
-                    let timeSpan = metaInfo.querySelector('.blacklist-time');
-                    if (!timeSpan) {
-                        timeSpan = document.createElement('span');
-                        timeSpan.className = 'blacklist-time';
-                        metaInfo.appendChild(timeSpan); // 直接插入到metaInfo最后
+                    
+                    // 创建容器
+                    const container = document.createElement('div');
+                    container.className = 'blacklist-info-container';
+                    container.style.position = isMobile ? 'static' : 'absolute';
+                    container.style.right = isMobile ? '' : '-6px';
+                    container.style.top = isMobile ? '' : '21px';
+                    container.style.display = 'flex';
+                    container.style.alignItems = 'center';
+                    container.style.zIndex = isMobile ? '' : '10';
+                    container.style.background = isMobile ? 'transparent' : '#fff';
+                    container.style.padding = '0';
+                    container.style.flexWrap = isMobile ? 'wrap' : 'nowrap';
+                    container.style.gap = isMobile ? '6px' : '';
+                    container.style.marginTop = isMobile ? '4px' : '';
+                    
+                    // 1. 显示拉黑时的网址 (在左侧)
+                    if (url) {
+                        const link = document.createElement('a');
+                        link.className = 'blacklist-url';
+                        
+                        // 构建包含精确楼层的链接
+                        let targetUrl = url;
+                        // 检查是否有楼层信息
+                        if (info.postId) {
+                            // 提取楼层号
+                            const floorNumber = info.postId.replace('post-', '');
+                            // 移除原始URL中可能存在的锚点
+                            targetUrl = targetUrl.split('#')[0];
+                            // 添加新的锚点（不带post-前缀）
+                            targetUrl += '#' + floorNumber;
+                        }
+
+                        link.href = targetUrl;
+                        link.textContent = info.postId ? '【拉黑页面#' + info.postId.replace('post-', '') + '】' : '【拉黑页面】';
+                        link.target = '_blank';
+                        link.style.color = '#06c';
+                        link.style.fontSize = '10px'; // 调整字体大小以匹配时间
+                        link.style.position = 'relative'; // 使用相对定位
+                        link.style.left = isMobile ? '0px' : '10px';
+                        // link.style.marginLeft = '20px'; // 移除之前的 margin-left
+                        link.style.marginRight = isMobile ? '0px' : '8px';
+                        link.style.whiteSpace = 'nowrap';
+                        link.style.textDecoration = 'none'; // 去掉下划线
+                        container.appendChild(link);
                     }
-                    const date = new Date(timestamp);
-                    const timeStr = date.getFullYear() + '-' +
-                        String(date.getMonth() + 1).padStart(2, '0') + '-' +
-                        String(date.getDate()).padStart(2, '0') + ' ' +
-                        String(date.getHours()).padStart(2, '0') + ':' +
-                        String(date.getMinutes()).padStart(2, '0') + ':' +
-                        String(date.getSeconds()).padStart(2, '0');
-                    timeSpan.textContent = ' 拉黑时间：' + timeStr;
-                    // 绝对定位到最右侧
-                    timeSpan.style.position = 'absolute';
-                    timeSpan.style.right = '-2px';
-                    timeSpan.style.top = '21px';
-                    timeSpan.style.marginLeft = '16px';
-                    timeSpan.style.color = '#d00';
-                    timeSpan.style.fontSize = '10px';
-                    timeSpan.style.background = '#fff';
-                    timeSpan.style.padding = '0 4px';
-                    timeSpan.style.zIndex = '10';
+
+                    // 2. 显示拉黑时间 (在右侧)
+                    if (timestamp) {
+                        const timeSpan = document.createElement('span');
+                        timeSpan.className = 'blacklist-time';
+                        
+                        const date = new Date(timestamp);
+                        const timeStr = date.getFullYear() + '-' +
+                            String(date.getMonth() + 1).padStart(2, '0') + '-' +
+                            String(date.getDate()).padStart(2, '0') + ' ' +
+                            String(date.getHours()).padStart(2, '0') + ':' +
+                            String(date.getMinutes()).padStart(2, '0') + ':' +
+                            String(date.getSeconds()).padStart(2, '0');
+                            
+                        timeSpan.textContent = '拉黑时间：' + timeStr;
+                        timeSpan.style.color = '#d00';
+                        timeSpan.style.fontSize = '10px';
+                        timeSpan.style.whiteSpace = 'nowrap';
+                        
+                        container.appendChild(timeSpan);
+                    }
+                    
+                    metaInfo.appendChild(container);
                 }
             }
         });
+        scheduleBlacklistRemarkWidthUpdate();
     }
 
     // 新增：高亮好友用户并显示备注
@@ -3077,8 +3290,100 @@
             return pop;
         }
 
-        function renderTable(data) {
+        // 切换置顶状态
+        function togglePin(url) {
+            const list = getFavorites();
+            const index = list.findIndex(item => item.url === url);
+            if (index === -1) return;
+
+            const item = list[index];
+            item.pinned = !item.pinned;
+
+            // 从当前位置移除
+            list.splice(index, 1);
+
+            if (item.pinned) {
+                // 置顶：移动到列表最顶部
+                list.unshift(item);
+            } else {
+                // 取消置顶：移动到第一个非置顶项之后（即非置顶区的顶部）
+                const firstUnpinned = list.findIndex(i => !i.pinned);
+                if (firstUnpinned === -1) {
+                    // 如果全是置顶项（不应该发生，因为刚移除了一个），或者列表为空，放到末尾
+                    list.push(item);
+                } else {
+                    list.splice(firstUnpinned, 0, item);
+                }
+            }
+
+            setFavorites(list);
+            performSearch();
+        }
+
+        // 移动非置顶项
+        function moveUnpinnedItem(srcUrl, targetUrl) {
+            const list = getFavorites();
+            const srcIndex = list.findIndex(item => item.url === srcUrl);
+            const targetIndex = list.findIndex(item => item.url === targetUrl); // Original target index
+
+            if (srcIndex === -1 || targetIndex === -1) return;
+            // 只有非置顶项可以拖拽和接收放置
+            if (list[srcIndex].pinned || list[targetIndex].pinned) return;
+
+            const [item] = list.splice(srcIndex, 1);
+            // 重新获取目标索引，因为列表已变化
+            let newTargetIndex = list.findIndex(item => item.url === targetUrl);
+            
+            // 如果是向下拖拽（原索引 < 原目标索引），则插入到目标项之后
+            if (srcIndex < targetIndex) {
+                newTargetIndex++;
+            }
+            
+            list.splice(newTargetIndex, 0, item);
+             
+            setFavorites(list);
+            performSearch();
+        }
+
+        // 移动置顶项（仅在置顶区内排序）
+        function movePinnedItem(srcUrl, targetUrl) {
+            const list = getFavorites();
+            const srcIndex = list.findIndex(item => item.url === srcUrl);
+            const targetIndex = list.findIndex(item => item.url === targetUrl); // Original target index
+
+            if (srcIndex === -1 || targetIndex === -1) return;
+            // 只有置顶项可以拖拽和接收放置
+            if (!list[srcIndex].pinned || !list[targetIndex].pinned) return;
+
+            const [item] = list.splice(srcIndex, 1);
+            let newTargetIndex = list.findIndex(item => item.url === targetUrl);
+
+            if (srcIndex < targetIndex) {
+                newTargetIndex++;
+            }
+
+            list.splice(newTargetIndex, 0, item);
+
+            setFavorites(list);
+            performSearch();
+        }
+
+        function renderTable(data, isDragEnabled = false) {
             contentRoot.innerHTML = '';
+
+            // 注入样式
+            if (!document.getElementById('ns-blacklist-custom-style')) {
+                const style = document.createElement('style');
+                style.id = 'ns-blacklist-custom-style';
+                style.textContent = `
+                    .ns-row-pinned { background: transparent; }
+                    .ns-row-pinned td { color: #555; }
+                    .ns-row-dragging { opacity: 0.5; background: #e6f7ff; }
+                    .ns-row-draggable { cursor: default; }
+                    .ns-row-draggable td { background-color: transparent; }
+                `;
+                document.head.appendChild(style);
+            }
 
             const table = document.createElement('table');
             table.style.width = '100%';
@@ -3087,10 +3392,10 @@
             table.style.tableLayout = 'fixed';
             table.innerHTML = '<thead><tr>'
                 + '<th style="text-align:left;font-size:13px;width:42%;">标题</th>'
-                + '<th style="text-align:left;font-size:13px;width:19%;padding-left:18px;position:relative;left:75px;">备注</th>'
-                + '<th style="text-align:left;font-size:13px;width:18%;padding-left:42px;white-space:nowrap;position:relative;left:38px;">分类</th>'
+                + '<th style="text-align:left;font-size:13px;width:19%;padding-left:18px;position:relative;left:102px;">备注</th>'
+                + '<th style="text-align:left;font-size:13px;width:18%;padding-left:42px;white-space:nowrap;position:relative;left:65px;">分类</th>'
                 + '<th style="text-align:left;font-size:13px;width:11%;padding-left:0px;position:relative;left:-7px;">收藏时间</th>'
-                + '<th style="width:54px;text-align:right;"></th></tr></thead>';
+                + '<th style="width:100px;text-align:right;">操作</th></tr></thead>'; // 增加操作列宽度以容纳两个按钮
 
             try {
                 const thead = table.tHead;
@@ -3131,8 +3436,55 @@
             data.forEach(item => {
                 const tr = document.createElement('tr');
                 tr.style.borderBottom = '1px solid #eee';
+                if (item.pinned) {
+                    tr.classList.add('ns-row-pinned');
+                }
+
+                // 拖拽支持
+                if (isDragEnabled) {
+                    tr.draggable = false;
+                    tr.classList.add('ns-row-draggable');
+                    tr.dataset.url = item.url;
+
+                    tr.addEventListener('dragstart', (e) => {
+                        if (!tr.draggable) return;
+                        e.dataTransfer.setData('text/plain', item.url);
+                        e.dataTransfer.effectAllowed = 'move';
+                        tr.classList.add('ns-row-dragging');
+                    });
+
+                    tr.addEventListener('dragend', (e) => {
+                        tr.classList.remove('ns-row-dragging');
+                        tr.draggable = false;
+                    });
+
+                    tr.addEventListener('dragover', (e) => {
+                        e.preventDefault(); // 允许放置
+                        e.dataTransfer.dropEffect = 'move';
+                    });
+
+                    tr.addEventListener('drop', (e) => {
+                        e.preventDefault();
+                        const srcUrl = e.dataTransfer.getData('text/plain');
+                        const targetUrl = tr.dataset.url;
+                        if (srcUrl && targetUrl && srcUrl !== targetUrl) {
+                            const list = getFavorites();
+                            const srcItem = list.find(i => i.url === srcUrl);
+                            const targetItem = list.find(i => i.url === targetUrl);
+                            if (!srcItem || !targetItem) return;
+                            if (srcItem.pinned && targetItem.pinned) {
+                                movePinnedItem(srcUrl, targetUrl);
+                            } else if (!srcItem.pinned && !targetItem.pinned) {
+                                moveUnpinnedItem(srcUrl, targetUrl);
+                            }
+                        }
+                    });
+                }
 
                 const tdTitle = document.createElement('td');
+                const rowPaddingY = '1px';
+                tdTitle.style.paddingTop = rowPaddingY;
+                tdTitle.style.paddingBottom = rowPaddingY;
                 const titleLink = document.createElement('a');
                 titleLink.href = item.url;
                 titleLink.textContent = item.title;
@@ -3142,10 +3494,14 @@
                 // 保持站点默认字号，不进行修改
                 titleLink.style.textDecoration = 'none';
                 titleLink.style.display = 'block';
+                // 修复标题末尾无法点击的问题（被备注列padding遮挡）
+                titleLink.style.position = 'relative';
+                titleLink.style.zIndex = '5';
                 // 单行省略，保持横向布局不换行
-                // 桌面端让标题向右延伸到备注列左移产生的空白区（65px+18px≈83px）
+                // 桌面端让标题向右延伸到备注列左移产生的空白区
                 if (window.innerWidth > 767) {
-                    titleLink.style.width = 'calc(100% + 83px)';
+                    const extraTitleWidth = getCollapsedState() ? 5 : 0;
+                    titleLink.style.width = `calc(100% + ${110 + extraTitleWidth}px)`;
                 } else {
                     titleLink.style.width = '100%';
                 }
@@ -3160,14 +3516,17 @@
                 const tdRemark = document.createElement('td');
                 const isMobile = window.innerWidth <= 767;
                 tdRemark.textContent = item.remark || '';
+                tdRemark.style.paddingTop = rowPaddingY;
+                tdRemark.style.paddingBottom = rowPaddingY;
                 tdRemark.style.color = '#888';
                 tdRemark.style.fontSize = '12px';
                 tdRemark.style.textAlign = 'left';
                 tdRemark.style.cssText += 'text-align:left !important;';
-                // 备注列整体右移 10px（不改变列宽）
+                // 备注列整体右移（不改变列宽）
                 tdRemark.style.paddingLeft = '18px';
                 tdRemark.style.position = 'relative';
-                tdRemark.style.left = '75px';
+                tdRemark.style.left = '102px';
+                tdRemark.style.zIndex = '2';
                 if (!isMobile) {
                     // 备注列使用固定布局下的列宽，移除硬编码maxWidth，减少空白
                     tdRemark.style.overflow = 'hidden';
@@ -3229,32 +3588,77 @@
                 // 分类列
                 const tdCategory = document.createElement('td');
                 // 兼容旧数据，没有category字段的默认为"未分类"；展示时不显示"未分类"
-                const category = item.category || '未分类';
-                const displayCategory = (category === '未分类') ? '全部分类' : category;
-                tdCategory.textContent = displayCategory;
+                let category = item.category || '未分类';
+                tdCategory.style.paddingTop = rowPaddingY;
+                tdCategory.style.paddingBottom = rowPaddingY;
                 tdCategory.style.color = '#666';
                 tdCategory.style.fontSize = '12px';
                 tdCategory.style.textAlign = 'left';
                 tdCategory.style.paddingLeft = '42px';
                 tdCategory.style.whiteSpace = 'nowrap';
                 tdCategory.style.position = 'relative';
-                tdCategory.style.left = '38px';
+                tdCategory.style.left = '65px';
+                tdCategory.style.zIndex = '1';
                 tdCategory.style.cursor = 'pointer';
                 tdCategory.title = '点击修改分类';
+
+                const renderCategoryText = (categoryValue) => {
+                    const displayText = (categoryValue === '未分类') ? '全部分类' : categoryValue;
+                    tdCategory.textContent = '';
+                    const categoryText = document.createElement('span');
+                    categoryText.textContent = displayText;
+                    tdCategory.appendChild(categoryText);
+                };
+
+                renderCategoryText(category);
+
                 tdCategory.onclick = function (e) {
                     e.stopPropagation();
                     if (tdCategory.querySelector('select')) return;
+                    const prevOverflow = tdCategory.style.overflow;
+                    const prevZIndex = tdCategory.style.zIndex;
+                    const prevPointerEvents = tdCategory.style.pointerEvents;
+                    const restoreCategoryCellStyle = () => {
+                        tdCategory.style.overflow = prevOverflow;
+                        tdCategory.style.zIndex = prevZIndex;
+                        tdCategory.style.pointerEvents = prevPointerEvents;
+                    };
+
+                    tdCategory.style.overflow = 'visible';
+                    tdCategory.style.zIndex = '3';
+                    tdCategory.style.pointerEvents = 'none';
+
                     const select = document.createElement('select');
+                    select.style.pointerEvents = 'auto';
                     const categories = getFavoriteCategories();
-                    // 限制为约7字符宽度，避免过宽影响布局
-                    select.style.width = '7em';
-                    select.style.maxWidth = '7em';
-                    select.style.minWidth = '7em';
-                    select.style.padding = '2px';
-                    select.style.border = '1px solid #1890ff';
+                    select.style.boxSizing = 'border-box';
+                    select.style.position = 'relative';
+                    select.style.zIndex = '2';
+                    if (isMobile) {
+                        select.style.width = '100%';
+                        select.style.maxWidth = '100%';
+                        select.style.minWidth = '100%';
+                        select.style.padding = '5px';
+                    } else {
+                        select.style.width = '4.6em';
+                        select.style.maxWidth = '4.6em';
+                        select.style.minWidth = '4.6em';
+                        select.style.padding = '0px 2px';
+                    }
+                    const computedCategoryStyle = window.getComputedStyle(tdCategory);
+                    select.style.fontSize = computedCategoryStyle.fontSize || tdCategory.style.fontSize || '12px';
+                    select.style.fontFamily = computedCategoryStyle.fontFamily;
+                    select.style.fontWeight = computedCategoryStyle.fontWeight;
+                    select.style.lineHeight = '1.2';
+                    select.style.border = '0.5px solid rgba(0,0,0,0.5)';
                     select.style.borderRadius = '3px';
-                    select.style.fontSize = '12px';
-                    if (isMobile) { select.style.padding = '5px'; select.style.fontSize = '14px'; }
+                    select.style.outline = 'none';
+                    select.style.boxShadow = 'none';
+                    // 隐藏下拉箭头
+                    select.style.appearance = 'none';
+                    select.style.webkitAppearance = 'none';
+                    select.style.mozAppearance = 'none';
+                    select.style.textAlign = 'left';
                     categories.forEach(cat => {
                         const option = document.createElement('option');
                         option.value = cat;
@@ -3265,11 +3669,23 @@
                     tdCategory.textContent = '';
                     tdCategory.appendChild(select);
                     select.focus();
+                    try {
+                        if (typeof select.showPicker === 'function') {
+                            select.showPicker();
+                        } else {
+                            select.click();
+                            const mouseEventInit = { bubbles: true, cancelable: true, view: window };
+                            select.dispatchEvent(new MouseEvent('mousedown', mouseEventInit));
+                            select.dispatchEvent(new MouseEvent('mouseup', mouseEventInit));
+                            select.dispatchEvent(new MouseEvent('click', mouseEventInit));
+                        }
+                    } catch (err) { }
                     select.onblur = function () {
                         const newCategory = select.value;
                         select.remove();
-                        tdCategory.textContent = (newCategory === '未分类') ? '全部分类' : newCategory;
-                        tdCategory.title = '点击修改分类';
+                        restoreCategoryCellStyle();
+                        category = newCategory;
+                        renderCategoryText(newCategory);
                         let favorites = getFavorites();
                         const index = favorites.findIndex(fav => fav.url === item.url);
                         if (index !== -1) {
@@ -3282,12 +3698,14 @@
                     select.onkeydown = function (e) {
                         if (e.key === 'Enter') select.blur();
                         else if (e.key === 'Escape') {
-                            tdCategory.textContent = displayCategory;
-                            tdCategory.title = '点击修改分类';
+                            const oldCategory = category;
                             select.remove();
+                            restoreCategoryCellStyle();
+                            renderCategoryText(oldCategory);
                         }
                     };
                 };
+
                 tr.appendChild(tdCategory);
 
                 const tdTime = document.createElement('td');
@@ -3299,15 +3717,41 @@
                         String(date.getHours()).padStart(2, '0') + ':' +
                         String(date.getMinutes()).padStart(2, '0');
                 } else { tdTime.textContent = ''; }
+                tdTime.style.paddingTop = rowPaddingY;
+                tdTime.style.paddingBottom = rowPaddingY;
                 tdTime.style.fontSize = '12px';
                 tdTime.style.whiteSpace = 'nowrap';
                 tdTime.style.paddingLeft = '0px';
                 tdTime.style.position = 'relative';
                 tdTime.style.left = '-7px';
+                // 提高层级，防止被分类列遮挡导致点击误触分类修改
+                tdTime.style.zIndex = '5';
                 tr.appendChild(tdTime);
 
                 const tdOp = document.createElement('td');
+                tdOp.style.paddingTop = rowPaddingY;
+                tdOp.style.paddingBottom = rowPaddingY;
                 tdOp.style.textAlign = 'right';
+                tdOp.style.whiteSpace = 'nowrap';
+
+                // 置顶/取消置顶按钮
+                const pinBtn = document.createElement('button');
+                pinBtn.textContent = item.pinned ? '取消' : '置顶';
+                pinBtn.className = 'blacklist-btn';
+                pinBtn.style.fontSize = '11px';
+                pinBtn.style.marginRight = '4px';
+                pinBtn.style.padding = '2px 4px';
+                // 稍微区分颜色
+                pinBtn.style.color = item.pinned ? '#faad14' : '#1890ff';
+                pinBtn.style.border = `1px solid ${item.pinned ? '#faad14' : '#1890ff'}`;
+                pinBtn.style.background = '#fff';
+                
+                pinBtn.onclick = function(e) {
+                    e.stopPropagation();
+                    togglePin(item.url);
+                };
+                tdOp.appendChild(pinBtn);
+
                 const removeBtn = document.createElement('button');
                 removeBtn.textContent = '移除';
                 removeBtn.className = 'blacklist-btn red';
@@ -3316,15 +3760,41 @@
                     e.stopPropagation();
                     if (confirm('确定要移除该收藏？')) {
                         if (removeFromFavorites(item.url)) {
-                            const count = getFavorites().length;
-                            title.textContent = `收藏列表 (${count}条)`;
-                            const newData = getFavorites().sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-                            renderTable(newData);
+                            // 移除后重新搜索以刷新列表
+                            performSearch();
                         }
                     }
                 };
                 tdOp.appendChild(removeBtn);
                 tr.appendChild(tdOp);
+
+                // 仅在非“收藏时间/操作”区域按下鼠标时允许拖拽
+                if (isDragEnabled) {
+                    const enableDrag = () => { tr.draggable = true; };
+                    const disableDrag = () => { tr.draggable = false; };
+
+                    const bindEnable = (el) => {
+                        if (!el) return;
+                        el.addEventListener('mousedown', enableDrag, true);
+                        el.addEventListener('pointerdown', enableDrag, true);
+                    };
+                    const bindDisable = (el) => {
+                        if (!el) return;
+                        el.addEventListener('mouseenter', disableDrag, true);
+                        el.addEventListener('mouseover', disableDrag, true);
+                        el.addEventListener('mousedown', disableDrag, true);
+                        el.addEventListener('pointerdown', disableDrag, true);
+                    };
+
+                    bindEnable(tdTitle);
+                    bindEnable(tdRemark);
+                    bindEnable(tdCategory);
+
+                    bindDisable(tdTime);
+                    bindDisable(tdOp);
+
+                    tr.addEventListener('mouseleave', disableDrag, true);
+                }
 
                 tbody.appendChild(tr);
             });
@@ -3342,37 +3812,45 @@
                 if (!item.category) {
                     item.category = '未分类';
                 }
+                if (typeof item.pinned === 'undefined') {
+                    item.pinned = false;
+                }
             });
-            base = base.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+            // 移除默认的时间排序，改用列表本身的顺序（支持拖拽排序）
+            // base = base.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
 
             // 先按分类筛选
+            let filtered = base;
             if (selectedCategory) {
-                base = base.filter(item => (item.category || '未分类') === selectedCategory);
+                filtered = filtered.filter(item => (item.category || '未分类') === selectedCategory);
             }
 
             // 再按关键词搜索
             if (kw) {
-                base = base.filter(item =>
+                filtered = filtered.filter(item =>
                     (item.title && normalizeForSearch(item.title).includes(kw)) ||
                     (item.remark && normalizeForSearch(item.remark).includes(kw))
                 );
-                title.textContent = `收藏列表 (${base.length}条搜索结果)`;
+                title.textContent = `收藏列表 (${filtered.length}条搜索结果)`;
             } else {
                 if (selectedCategory) {
-                    title.textContent = `收藏列表 (${base.length}条 - ${selectedCategory})`;
+                    title.textContent = `收藏列表 (${filtered.length}条 - ${selectedCategory})`;
                 } else {
-                    title.textContent = `收藏列表 (${base.length}条)`;
+                    title.textContent = `收藏列表 (${filtered.length}条)`;
                 }
             }
-            renderTable(base);
+            
+            // 只有在无搜索词且无分类筛选（显示全部）时，才允许拖拽排序
+            const isDragEnabled = !kw && !selectedCategory;
+            renderTable(filtered, isDragEnabled);
         }
 
         // 添加实时搜索事件监听
         searchInput.addEventListener('input', performSearch);
         categoryFilter.addEventListener('change', performSearch);
 
-        // 初次渲染
-        renderTable(list);
+        // 初次渲染（通过 performSearch 触发，确保逻辑一致）
+        performSearch();
 
         document.body.appendChild(dialog);
         // 内容根节点占据剩余空间，未满600px时自然高度；超过时由内容根自身滚动
@@ -3470,9 +3948,9 @@
                 item.style.display = 'flex';
                 item.style.justifyContent = 'space-between';
                 item.style.alignItems = 'center';
-                item.style.padding = '10px';
+                item.style.padding = '5px';
                 item.style.borderBottom = '1px solid #eee';
-                item.style.marginBottom = '5px';
+                item.style.marginBottom = '2px';
 
                 const leftDiv = document.createElement('div');
                 leftDiv.style.flex = '1';
@@ -3499,14 +3977,10 @@
                     renameBtn.style.fontSize = '11px';
                     renameBtn.style.padding = '4px 8px';
                     renameBtn.onclick = function () {
-                        const newName = prompt('请输入新分类名称（最多7个字符）：', category);
-                        if (newName && newName.trim() && newName.trim() !== category) {
-                            // 检查字符长度
-                            if (newName.trim().length > 7) {
-                                alert('分类名称不能超过7个字符');
-                                return;
-                            }
-                            if (renameFavoriteCategory(category, newName.trim())) {
+                        const newName = prompt('请输入新分类名称（最多4个字符）：', category);
+                        const normalized = normalizeFavoriteCategoryName(newName);
+                        if (normalized && normalized !== category) {
+                            if (renameFavoriteCategory(category, normalized)) {
                                 renderCategoryList();
                                 // 刷新收藏列表弹窗
                                 const favoritesDialog = document.getElementById('favorites-dialog');
@@ -3514,7 +3988,7 @@
                                     favoritesDialog.remove();
                                     showFavoritesDialog();
                                 }
-                                addLog(`重命名分类: ${category} -> ${newName.trim()}`);
+                                addLog(`重命名分类: ${category} -> ${normalized}`);
                             } else {
                                 alert('重命名失败：分类名称已存在或超过字符限制');
                             }
@@ -3529,7 +4003,7 @@
                     deleteBtn.style.fontSize = '11px';
                     deleteBtn.style.padding = '4px 8px';
                     deleteBtn.onclick = function () {
-                        if (confirm(`确定要删除分类"${category}"吗？该分类下的收藏将移动到"未分类"。`)) {
+                        if (confirm(`确定要删除分类"${category}"吗？该分类下的收藏将移动到"全部分类"。`)) {
                             if (removeFavoriteCategory(category)) {
                                 renderCategoryList();
                                 // 刷新收藏列表弹窗
@@ -3563,7 +4037,7 @@
         addCategoryDiv.style.borderTop = '1px solid #eee';
 
         const addLabel = document.createElement('div');
-        addLabel.textContent = '添加新分类';
+        addLabel.textContent = '添加新分类（最多6个）';
         addLabel.style.fontSize = '14px';
         addLabel.style.fontWeight = '500';
         addLabel.style.marginBottom = '10px';
@@ -3575,7 +4049,7 @@
 
         const addInput = document.createElement('input');
         addInput.type = 'text';
-        addInput.placeholder = '请输入分类名称（最多7个字符）';
+        addInput.placeholder = '请输入分类名称（最多4个字符）';
         addInput.style.flex = '1';
         addInput.style.padding = isMobile ? '10px' : '6px 8px';
         addInput.style.border = '1px solid #ddd';
@@ -3588,19 +4062,30 @@
         lengthHint.style.color = '#999';
         lengthHint.style.marginLeft = '8px';
         lengthHint.style.whiteSpace = 'nowrap';
-        lengthHint.textContent = '0/7';
+        lengthHint.textContent = '0/4';
         addInputDiv.appendChild(addInput);
 
         // 实时显示字符长度
-        addInput.addEventListener('input', function () {
-            const length = this.value.length;
-            lengthHint.textContent = `${length}/7`;
-            // 超过限制时显示红色
-            if (length > 7) {
-                lengthHint.style.color = '#f00';
-            } else {
-                lengthHint.style.color = '#999';
+        let isComposingCategoryName = false;
+        addInput.addEventListener('compositionstart', function () { isComposingCategoryName = true; });
+        addInput.addEventListener('compositionend', function () {
+            isComposingCategoryName = false;
+            if (this.value.length > FAVORITE_CATEGORY_NAME_MAX_LEN) {
+                this.value = this.value.slice(0, FAVORITE_CATEGORY_NAME_MAX_LEN);
             }
+            lengthHint.textContent = `${this.value.length}/${FAVORITE_CATEGORY_NAME_MAX_LEN}`;
+            lengthHint.style.color = '#999';
+        });
+        addInput.addEventListener('input', function () {
+            if (isComposingCategoryName) {
+                lengthHint.textContent = `${this.value.length}/${FAVORITE_CATEGORY_NAME_MAX_LEN}`;
+                return;
+            }
+            if (this.value.length > FAVORITE_CATEGORY_NAME_MAX_LEN) {
+                this.value = this.value.slice(0, FAVORITE_CATEGORY_NAME_MAX_LEN);
+            }
+            lengthHint.textContent = `${this.value.length}/${FAVORITE_CATEGORY_NAME_MAX_LEN}`;
+            lengthHint.style.color = '#999';
         });
 
         const addBtn = document.createElement('button');
@@ -3608,19 +4093,21 @@
         addBtn.className = 'blacklist-btn';
         addBtn.style.padding = isMobile ? '10px 16px' : '6px 12px';
         addBtn.onclick = function () {
-            const categoryName = addInput.value.trim();
+            const categories = getFavoriteCategories();
+            const customCount = categories.filter(c => c !== '未分类').length;
+            if (customCount >= FAVORITE_CATEGORY_MAX_COUNT) {
+                alert(`分类数量已达上限（${FAVORITE_CATEGORY_MAX_COUNT}个）`);
+                return;
+            }
+
+            const categoryName = normalizeFavoriteCategoryName(addInput.value);
             if (!categoryName) {
                 alert('请输入分类名称');
                 return;
             }
-            // 检查字符长度
-            if (categoryName.length > 7) {
-                alert('分类名称不能超过7个字符');
-                return;
-            }
             if (addFavoriteCategory(categoryName)) {
                 addInput.value = '';
-                lengthHint.textContent = '0/7';
+                lengthHint.textContent = '0/4';
                 lengthHint.style.color = '#999';
                 renderCategoryList();
                 // 刷新收藏列表弹窗
@@ -3631,7 +4118,7 @@
                 }
                 addLog(`添加分类: ${categoryName}`);
             } else {
-                alert('添加失败：分类名称已存在或超过字符限制');
+                alert('添加失败：分类名称已存在或超过数量/字符限制');
             }
         };
         addInput.onkeydown = function (e) {
@@ -4321,5 +4808,301 @@
 
     // 为快捷回复模块暴露日志函数
     window.addQuickReplyLog = addLog;
+
+    function findTalkTitleElementFast() {
+        const selectors = [
+            'h1', 'h2', 'h3', 'h4',
+            '.card-header', '.panel-heading', '.message-header', '.talk-header', '.chat-header',
+            '.card-title', '.panel-title', '.talk-title', '.chat-title'
+        ];
+        const nodes = [];
+        selectors.forEach(sel => {
+            try {
+                document.querySelectorAll(sel).forEach(el => nodes.push(el));
+            } catch (e) { }
+        });
+        for (const el of nodes) {
+            const t = (el.textContent || '').trim().replace(/\s+/g, ' ');
+            if (!t) continue;
+            if (/^与.{1,32}的对话$/.test(t)) return el;
+        }
+        return null;
+    }
+
+    function formatIsoToLocalText(timestamp) {
+        try {
+            if (!timestamp) return '';
+            const date = new Date(timestamp);
+            if (Number.isNaN(date.getTime())) return String(timestamp);
+            return date.getFullYear() + '-' +
+                String(date.getMonth() + 1).padStart(2, '0') + '-' +
+                String(date.getDate()).padStart(2, '0') + ' ' +
+                String(date.getHours()).padStart(2, '0') + ':' +
+                String(date.getMinutes()).padStart(2, '0') + ':' +
+                String(date.getSeconds()).padStart(2, '0');
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function buildBlacklistTargetUrl(info) {
+        try {
+            if (!info || !info.url) return '';
+            let targetUrl = String(info.url);
+            if (info.postId && !targetUrl.includes('#post-') && !targetUrl.includes('#' + String(info.postId).replace('post-', ''))) {
+                targetUrl = targetUrl.split('#')[0];
+                targetUrl += '#' + String(info.postId).replace('post-', '');
+            }
+            return targetUrl;
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function getCurrentTalkBlacklistedMatch() {
+        try {
+            const to = getHashQueryParam('to');
+            if (to) {
+                const byId = getBlacklistedEntryByUserId(to);
+                if (byId) return byId;
+            }
+
+            const titleEl = findTalkTitleElementFast();
+            if (!titleEl) return null;
+            const titleText = (titleEl.textContent || '').trim().replace(/\s+/g, ' ');
+            const nameMatch = titleText.match(/^与(.+)的对话$/);
+            const talkUsername = nameMatch ? nameMatch[1].trim() : '';
+            if (!talkUsername) return null;
+
+            if (!isBlacklisted(talkUsername)) return null;
+            const list = getBlacklist();
+            return { username: talkUsername, info: list[talkUsername] };
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function getCurrentTalkFriendMatch() {
+        try {
+            const friends = getFriends();
+            const to = getHashQueryParam('to');
+
+            if (to) {
+                const match = friends.find(f => {
+                    if (!f.pmUrl) return false;
+                    const matchId = f.pmUrl.match(/[?&]to=(\d+)/);
+                    return matchId && matchId[1] === to;
+                });
+                if (match) return match;
+            }
+
+            const titleEl = findTalkTitleElementFast();
+            if (!titleEl) return null;
+            const titleText = (titleEl.textContent || '').trim().replace(/\s+/g, ' ');
+            const nameMatch = titleText.match(/^与(.+)的对话$/);
+            const talkUsername = nameMatch ? nameMatch[1].trim() : '';
+            if (!talkUsername) return null;
+
+            return friends.find(f => f.username === talkUsername);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function ensureBlacklistNavEntryAndMeta() {
+        const appSwitch = document.querySelector('.app-switch');
+        if (!appSwitch) return;
+
+        const links = appSwitch.querySelectorAll('a');
+        let pmLink = null;
+        for (const link of links) {
+            if ((link.textContent || '').includes('私信')) {
+                pmLink = link;
+                break;
+            }
+        }
+        if (!pmLink) return;
+
+        try {
+            appSwitch.querySelectorAll('.ns-blacklist-entry').forEach(el => el.remove());
+        } catch (e) { }
+
+        let meta = appSwitch.querySelector('.ns-blacklist-entry-meta');
+        const isMobile = window.innerWidth <= 767;
+        if (!meta) {
+            meta = document.createElement('span');
+            meta.className = 'ns-blacklist-entry-meta';
+            meta.style.marginLeft = isMobile ? '10px' : '30px';
+            meta.style.fontSize = isMobile ? '12px' : '14px';
+            meta.style.color = '#fc5154ff';
+            meta.style.whiteSpace = isMobile ? 'normal' : 'nowrap';
+            meta.style.verticalAlign = 'middle';
+            meta.style.display = 'inline-flex';
+            meta.style.alignItems = 'center';
+            meta.style.flexWrap = isMobile ? 'wrap' : 'nowrap';
+            meta.style.columnGap = isMobile ? '6px' : '';
+            meta.style.rowGap = isMobile ? '2px' : '';
+            meta.style.lineHeight = isMobile ? '12px' : '14px';
+            meta.style.display = 'none';
+        }
+        meta.style.fontSize = isMobile ? '12px' : '14px';
+        meta.style.marginLeft = isMobile ? '10px' : '30px';
+        meta.style.whiteSpace = isMobile ? 'normal' : 'nowrap';
+        meta.style.flexWrap = isMobile ? 'wrap' : 'nowrap';
+        meta.style.columnGap = isMobile ? '6px' : '';
+        meta.style.rowGap = isMobile ? '2px' : '';
+        meta.style.lineHeight = isMobile ? '12px' : '14px';
+
+        if (pmLink.nextSibling) {
+            if (meta.parentNode !== pmLink.parentNode || pmLink.nextSibling !== meta) {
+                pmLink.parentNode.insertBefore(meta, pmLink.nextSibling);
+            }
+        } else {
+            if (meta.parentNode !== pmLink.parentNode || meta !== pmLink.parentNode.lastChild) {
+                pmLink.parentNode.appendChild(meta);
+            }
+        }
+
+        const routeKey = (window.location.pathname || '') + '|' + (window.location.hash || '');
+        const now = Date.now();
+        const lastRouteKey = ensureBlacklistNavEntryAndMeta._lastRouteKey || '';
+        const lastCheckAt = ensureBlacklistNavEntryAndMeta._lastCheckAt || 0;
+        const minInterval = (routeKey === lastRouteKey) ? 1500 : 0;
+        if (minInterval && (now - lastCheckAt) < minInterval) return;
+        ensureBlacklistNavEntryAndMeta._lastCheckAt = now;
+
+        const matched = getCurrentTalkBlacklistedMatch();
+        const friendMatched = getCurrentTalkFriendMatch();
+
+        const key = [
+            matched ? 'BL' : 'NB',
+            matched?.username || '',
+            matched?.info?.timestamp || '',
+            matched?.info?.remark || '',
+            matched?.info?.url || '',
+            matched?.info?.postId || '',
+            friendMatched ? 'FR' : 'NF',
+            friendMatched?.username || '',
+            friendMatched?.timestamp || '',
+            friendMatched?.remark || ''
+        ].join('|');
+
+        if (ensureBlacklistNavEntryAndMeta._lastKey === key) return;
+        ensureBlacklistNavEntryAndMeta._lastKey = key;
+        ensureBlacklistNavEntryAndMeta._lastRouteKey = routeKey;
+
+        if ((!matched || !matched.info) && !friendMatched) {
+            meta.textContent = '';
+            meta.style.display = 'none';
+            return;
+        }
+
+        while (meta.firstChild) meta.removeChild(meta.firstChild);
+        
+        // 优先显示黑名单
+        if (matched && matched.info) {
+            meta.style.color = '#fc5154ff';
+            
+            const timeText = formatIsoToLocalText(matched.info.timestamp);
+            const remark = matched.info.remark ? String(matched.info.remark) : '';
+            const url = buildBlacklistTargetUrl(matched.info);
+            const pageText = matched.info.postId ? `楼层#${String(matched.info.postId).replace('post-', '')}` : '页面';
+
+            const timeSpan = document.createElement('span');
+            timeSpan.textContent = `拉黑时间：${timeText || '未知'}`;
+            timeSpan.style.lineHeight = isMobile ? '12px' : '14px';
+            meta.appendChild(timeSpan);
+
+            const remarkSpan = document.createElement('span');
+            remarkSpan.style.marginLeft = '8px';
+            remarkSpan.style.maxWidth = 'none';
+            remarkSpan.style.display = 'inline';
+            remarkSpan.style.overflow = 'visible';
+            remarkSpan.style.textOverflow = 'clip';
+            remarkSpan.style.whiteSpace = 'nowrap';
+            remarkSpan.style.flex = '0 0 auto';
+            remarkSpan.style.lineHeight = isMobile ? '12px' : '14px';
+
+            const rawRemarkText = remark || '无';
+            const remarkChars = Array.from(String(rawRemarkText));
+            const shownRemark = remarkChars.length > 20 ? remarkChars.slice(0, 20).join('') + '…' : String(rawRemarkText);
+            remarkSpan.textContent = `备注：${shownRemark}`;
+            remarkSpan.title = rawRemarkText;
+            meta.appendChild(remarkSpan);
+
+            if (url) {
+                const pageLink = document.createElement('a');
+                pageLink.href = url;
+                pageLink.target = '_blank';
+                pageLink.rel = 'noopener noreferrer';
+                pageLink.style.marginLeft = '8px';
+                pageLink.style.color = 'rgba(74, 162, 250, 1)';
+                pageLink.style.textDecoration = 'none';
+                pageLink.style.whiteSpace = 'nowrap';
+                pageLink.style.lineHeight = isMobile ? '12px' : '14px';
+                pageLink.textContent = `拉黑页面：${pageText}`;
+                pageLink.onmouseenter = function () { pageLink.style.textDecoration = 'underline'; };
+                pageLink.onmouseleave = function () { pageLink.style.textDecoration = 'none'; };
+                meta.appendChild(pageLink);
+            } else {
+                const none = document.createElement('span');
+                none.style.marginLeft = '8px';
+                none.style.color = '#06c';
+                none.style.lineHeight = isMobile ? '12px' : '14px';
+                none.textContent = `拉黑页面：${pageText}`;
+                meta.appendChild(none);
+            }
+        } else if (friendMatched) {
+            meta.style.color = '#2ea44f';
+            
+            const timeText = formatIsoToLocalText(friendMatched.timestamp);
+            const remark = friendMatched.remark ? String(friendMatched.remark) : '';
+            
+            const timeSpan = document.createElement('span');
+            timeSpan.textContent = `添加时间：${timeText || '未知'}`;
+            timeSpan.style.lineHeight = isMobile ? '12px' : '14px';
+            meta.appendChild(timeSpan);
+
+            const remarkSpan = document.createElement('span');
+            remarkSpan.style.marginLeft = '8px';
+            remarkSpan.style.maxWidth = 'none';
+            remarkSpan.style.display = 'inline';
+            remarkSpan.style.overflow = 'visible';
+            remarkSpan.style.textOverflow = 'clip';
+            remarkSpan.style.whiteSpace = 'nowrap';
+            remarkSpan.style.flex = '0 0 auto';
+            remarkSpan.style.lineHeight = isMobile ? '12px' : '14px';
+
+            const rawRemarkText = remark || '无';
+            const remarkChars = Array.from(String(rawRemarkText));
+            const shownRemark = remarkChars.length > 20 ? remarkChars.slice(0, 20).join('') + '…' : String(rawRemarkText);
+            remarkSpan.textContent = `备注：${shownRemark}`;
+            remarkSpan.title = rawRemarkText;
+            meta.appendChild(remarkSpan);
+        }
+
+        meta.style.display = 'inline-flex';
+    }
+
+    let nsBlacklistNavTimer = null;
+    function scheduleEnsureBlacklistNav() {
+        if (nsBlacklistNavTimer) return;
+        nsBlacklistNavTimer = setTimeout(() => {
+            nsBlacklistNavTimer = null;
+            ensureBlacklistNavEntryAndMeta();
+        }, 200);
+    }
+
+    const blacklistEntryObserver = new MutationObserver(() => {
+        scheduleEnsureBlacklistNav();
+    });
+
+    try {
+        blacklistEntryObserver.observe(document.body, { childList: true, subtree: true });
+    } catch (e) { }
+
+    window.addEventListener('hashchange', scheduleEnsureBlacklistNav);
+    setTimeout(scheduleEnsureBlacklistNav, 300);
+    setTimeout(scheduleEnsureBlacklistNav, 1500);
 
 })();
