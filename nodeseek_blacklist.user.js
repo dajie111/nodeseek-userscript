@@ -3758,7 +3758,7 @@
                 removeBtn.style.fontSize = '11px';
                 removeBtn.onclick = function (e) {
                     e.stopPropagation();
-                    if (confirm('确定要移除该收藏？')) {
+                    if (confirm(`确定要移除该收藏？\n${item.title}`)) {
                         if (removeFromFavorites(item.url)) {
                             // 移除后重新搜索以刷新列表
                             performSearch();
