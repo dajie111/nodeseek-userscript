@@ -3,12 +3,17 @@
     'use strict';
 
     // 配置
-    const SIGN_API = '/api/attendance?random=true';
+    const APIS = {
+        random: '/api/attendance?random=true',
+        fixed: '/api/attendance?random=false'
+    };
     const STORAGE_KEYS = {
         signStatus: 'nodeseek_sign_status',           // 签到状态
         masterWindow: 'nodeseek_master_window',       // 主窗口ID
         lastHeartbeat: 'nodeseek_last_heartbeat',     // 心跳时间
-        hourlySignTime: 'nodeseek_hourly_sign_time'   // 小时签到时间记录
+        hourlySignTime: 'nodeseek_hourly_sign_time',  // 小时签到时间记录
+        signMode: 'nodeseek_sign_mode',               // 签到模式：random 或 fixed
+        signEnabled: 'nodeseek_sign_enabled'          // 签到开关
     };
 
     class AutoSignSystem {
@@ -17,6 +22,10 @@
             this.isMaster = false;
             this.timers = [];
             this.nextSignTimer = null;
+            
+            // 暴露全局接口，供外部调用
+            window.NodeSeekClockIn = this;
+            
             this.init();
         }
 
@@ -154,12 +163,24 @@
 
         // 执行签到API
         async performSignIn() {
+            // 检查是否开启了自动签到
+            if (localStorage.getItem(STORAGE_KEYS.signEnabled) !== 'true') {
+                // this.addLog('自动签到已关闭，跳过执行');
+                return;
+            }
+
             try {
                 // 记录当前小时已签到
                 const now = new Date();
                 localStorage.setItem(STORAGE_KEYS.hourlySignTime, now.getTime().toString());
                 
-                const response = await fetch(SIGN_API, {
+                // 获取当前签到模式
+                const mode = localStorage.getItem(STORAGE_KEYS.signMode) || 'random';
+                const api = APIS[mode] || APIS.random;
+                
+                // this.addLog(`开始执行自动签到 (模式: ${mode === 'fixed' ? '固定' : '随机'})...`);
+
+                const response = await fetch(api, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -169,12 +190,32 @@
 
                 // 只在签到成功时输出日志
                 if (response.ok) {
-                    this.addLog('✅ 自动签到成功！');
+                    const result = await response.json();
+                    const modeText = mode === 'fixed' ? '固定' : '随机';
+                    this.addLog(`✅ 自动签到成功(${modeText})！${result.message || 'OK'}`);
+                } else {
+                    // this.addLog(`❌ 自动签到失败: ${response.status}`);
                 }
 
             } catch (error) {
-                // 签到异常时静默处理，不输出日志
+                // 签到异常时静默处理，但如果有日志函数则记录
+                // this.addLog(`❌ 签到出错: ${error.message}`);
             }
+        }
+
+        // 设置签到模式
+        setSignMode(mode) {
+            if (APIS[mode]) {
+                localStorage.setItem(STORAGE_KEYS.signMode, mode);
+                // this.addLog(`已切换签到模式为: ${mode === 'random' ? '随机签到' : '固定签到'}`);
+                return true;
+            }
+            return false;
+        }
+
+        // 获取当前签到模式
+        getSignMode() {
+            return localStorage.getItem(STORAGE_KEYS.signMode) || 'random';
         }
 
         // 页面卸载清理
