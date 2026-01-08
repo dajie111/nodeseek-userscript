@@ -268,11 +268,16 @@
                     const payload = { entries: Array.isArray(logsArray) ? logsArray : [] };
                     // 将签到设置嵌入到允许的键内，避免顶级不允许的键
                     const signEnabledRaw = localStorage.getItem('nodeseek_sign_enabled');
+                    const signModeRaw = localStorage.getItem('nodeseek_sign_mode');
                     if (signEnabledRaw !== null) {
                         try {
                             const enabled = JSON.parse(signEnabledRaw);
                             payload.settings = { enabled: !!enabled };
                         } catch (e) { /* ignore */ }
+                    }
+                    if (signModeRaw !== null) {
+                        if (!payload.settings) payload.settings = {};
+                        payload.settings.mode = signModeRaw;
                     }
                     config.logs = payload;
                 } catch (e) {
@@ -589,8 +594,16 @@
                             const enabled = config.logs.settings ? config.logs.settings.enabled : undefined;
                             if (typeof enabled !== 'undefined') {
                                 localStorage.setItem('nodeseek_sign_enabled', JSON.stringify(!!enabled));
-                                applied.push(`签到设置(${enabled ? '开启' : '关闭'})`);
+                                // applied.push(`签到设置(${enabled ? '开启' : '关闭'})`);
                             }
+                            
+                            // 新增：应用签到模式
+                            const mode = config.logs.settings ? config.logs.settings.mode : undefined;
+                            if (typeof mode !== 'undefined') {
+                                localStorage.setItem('nodeseek_sign_mode', mode);
+                            }
+                            const modeStr = mode === 'fixed' ? '固定' : (mode === 'random' ? '随机' : '默认');
+                            applied.push(`签到设置(${enabled ? '开启' : '关闭'}, ${modeStr})`);
                         }
                     } catch (e) {
                         console.error('应用操作日志失败:', e);
