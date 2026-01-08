@@ -996,7 +996,22 @@
         .blacklist-btn {
             padding: 3px 6px !important;
             font-size: 12px !important;
-            margin-left: 5px !important;
+            margin-left: 0 !important; /* 移除左边距，避免布局错乱 */
+            width: auto !important; /* 强制自适应宽度 */
+            min-width: unset !important; /* 移除最小宽度限制 */
+            max-width: 100% !important; /* 确保不超出容器 */
+            white-space: nowrap !important; /* 防止文字换行 */
+        }
+        
+        /* 针对签到按钮的特殊适配 */
+        #sign-in-btn {
+            width: 100% !important; /* 签到按钮占满一行 */
+        }
+
+        /* 修复按钮容器内间距 */
+        #nodeseek-plugin-buttons-container {
+            gap: 5px !important; /* 减小间距 */
+            padding: 8px !important;
         }
 
         /* 表格容器适配 - 移动端纵向布局 */
@@ -1726,12 +1741,16 @@
             console.error('导出快捷回复设置失败:', error);
         }
 
-        // 新增：签到设置（是否开启自动签到）
+        // 新增：签到设置（是否开启自动签到及模式）
         let signSettings = {};
         try {
             const signEnabled = localStorage.getItem('nodeseek_sign_enabled');
             if (signEnabled !== null) {
                 signSettings.enabled = signEnabled === 'true';
+            }
+            const signMode = localStorage.getItem('nodeseek_sign_mode');
+            if (signMode !== null) {
+                signSettings.mode = signMode;
             }
         } catch (error) {
             console.error('导出签到设置失败:', error);
@@ -2026,13 +2045,17 @@
                         }
                     }
 
-                    // 新增：处理签到设置（是否开启自动签到）
+                    // 新增：处理签到设置（是否开启自动签到及模式）
                     if (json.signSettings && typeof json.signSettings === 'object') {
                         try {
                             if (typeof json.signSettings.enabled !== 'undefined') {
                                 localStorage.setItem('nodeseek_sign_enabled', json.signSettings.enabled ? 'true' : 'false');
-                                importInfo.push(`签到设置(${json.signSettings.enabled ? '开启' : '关闭'})`);
                             }
+                            if (typeof json.signSettings.mode !== 'undefined') {
+                                localStorage.setItem('nodeseek_sign_mode', json.signSettings.mode);
+                            }
+                            const modeStr = json.signSettings.mode === 'fixed' ? '固定' : (json.signSettings.mode === 'random' ? '随机' : '默认');
+                            importInfo.push(`签到设置(${json.signSettings.enabled ? '开启' : '关闭'}, ${modeStr})`);
                         } catch (error) {
                             console.error('导入签到设置失败:', error);
                             importInfo.push('签到设置(失败)');
@@ -2629,7 +2652,10 @@
 
         // 根据签到状态设置按钮文本和颜色
         if (signInEnabled) {
-            signInBtn.textContent = '关闭签到';
+            // 获取当前模式
+            const mode = localStorage.getItem('nodeseek_sign_mode') || 'random';
+            const modeText = mode === 'fixed' ? '固定' : '随机';
+            signInBtn.textContent = `关闭签到(${modeText})`;
             signInBtn.style.background = '#f44336'; // 红色表示可以关闭
         } else {
             signInBtn.textContent = '开启签到';
@@ -2637,49 +2663,159 @@
         }
 
         // 设置按钮宽度一致
-        signInBtn.style.width = '100px';
+        // signInBtn.style.width = '100px'; // 移除固定宽度，改用minWidth
+        signInBtn.style.minWidth = '100px';
+        signInBtn.style.whiteSpace = 'nowrap'; // 防止文字换行
 
         // 签到按钮点击逻辑
-        signInBtn.addEventListener('click', function () {
-            // 切换状态
-            const newStatus = localStorage.getItem('nodeseek_sign_enabled') !== 'true';
-            localStorage.setItem('nodeseek_sign_enabled', newStatus);
+        signInBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            
+            // 当前状态
+            const isEnabled = localStorage.getItem('nodeseek_sign_enabled') === 'true';
 
-            if (newStatus) {
-                // 开启签到
-                signInBtn.textContent = '关闭签到';
-                signInBtn.style.background = '#f44336'; // 红色表示可以关闭
-
-                // 记录日志
-                addLog('开启签到功能');
-
-                // 如果签到模块已加载，显示当前状态
-                if (window.NodeSeekClockIn) {
-                    const todaySigned = window.NodeSeekClockIn.isTodayAlreadySigned();
-                    const inSignWindow = window.NodeSeekClockIn.isInSignTimeWindow();
-                    const inPreSign = window.NodeSeekClockIn.isInPreSignMode();
-
-                    let statusMsg = '';
-                    if (todaySigned) {
-                        statusMsg = '今日已签到完成';
-                    } else if (inSignWindow) {
-                        statusMsg = '当前在签到时间窗口内';
-                    } else if (inPreSign) {
-                        statusMsg = '当前在预签到模式';
-                    } else {
-                        statusMsg = '等待签到时间 (00:00:00-00:00:10)';
-                    }
-                    addLog('签到状态: ' + statusMsg);
-                }
-            } else {
-                // 关闭签到
+            if (isEnabled) {
+                // 如果已开启，则直接关闭
+                localStorage.setItem('nodeseek_sign_enabled', 'false');
+                
+                // 更新按钮状态
                 signInBtn.textContent = '开启签到';
                 signInBtn.style.background = '#4CAF50'; // 绿色表示可以开启
-
+                
                 // 记录日志
                 addLog('关闭签到功能');
+            } else {
+                // 如果未开启，则弹出模式选择对话框
+                showSignModeDialog();
             }
         });
+
+        // 显示签到模式选择弹窗
+        function showSignModeDialog() {
+            // 移除可能存在的旧弹窗
+            const existingDialog = document.getElementById('sign-mode-dialog');
+            if (existingDialog) existingDialog.remove();
+
+            const dialog = document.createElement('div');
+            dialog.id = 'sign-mode-dialog';
+            dialog.style.position = 'fixed';
+            dialog.style.top = '50%';
+            dialog.style.left = '50%';
+            dialog.style.transform = 'translate(-50%, -50%)';
+            dialog.style.zIndex = 10005;
+            dialog.style.background = '#fff';
+            dialog.style.border = '1px solid #ccc';
+            dialog.style.borderRadius = '8px';
+            dialog.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
+            dialog.style.padding = '20px';
+            dialog.style.width = '300px';
+            dialog.style.textAlign = 'center';
+
+            // 标题
+            const title = document.createElement('div');
+            title.textContent = '选择签到模式';
+            title.style.fontSize = '16px';
+            title.style.fontWeight = 'bold';
+            title.style.marginBottom = '20px';
+            dialog.appendChild(title);
+
+            // 按钮容器
+            const btnContainer = document.createElement('div');
+            btnContainer.style.display = 'flex';
+            btnContainer.style.justifyContent = 'space-around';
+            btnContainer.style.marginBottom = '15px';
+
+            // 随机签到按钮
+            const randomBtn = document.createElement('button');
+            randomBtn.textContent = '随机签到';
+            randomBtn.className = 'blacklist-btn';
+            randomBtn.style.background = '#2196F3';
+            randomBtn.style.padding = '8px 16px';
+            randomBtn.onclick = function() {
+                enableSign('random');
+                dialog.remove();
+            };
+
+            // 固定签到按钮
+            const fixedBtn = document.createElement('button');
+            fixedBtn.textContent = '固定签到';
+            fixedBtn.className = 'blacklist-btn';
+            fixedBtn.style.background = '#FF9800';
+            fixedBtn.style.padding = '8px 16px';
+            fixedBtn.onclick = function() {
+                enableSign('fixed');
+                dialog.remove();
+            };
+
+            btnContainer.appendChild(randomBtn);
+            btnContainer.appendChild(fixedBtn);
+            dialog.appendChild(btnContainer);
+
+            // 取消按钮
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = '取消';
+            cancelBtn.style.border = 'none';
+            cancelBtn.style.background = 'transparent';
+            cancelBtn.style.color = '#999';
+            cancelBtn.style.cursor = 'pointer';
+            cancelBtn.style.marginTop = '10px';
+            cancelBtn.onclick = function() {
+                dialog.remove();
+            };
+            dialog.appendChild(cancelBtn);
+
+            // 点击遮罩关闭
+            const overlay = document.createElement('div');
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.background = 'rgba(0,0,0,0.3)';
+            overlay.style.zIndex = 10004;
+            overlay.onclick = function() {
+                dialog.remove();
+                overlay.remove();
+            };
+
+            document.body.appendChild(overlay);
+            document.body.appendChild(dialog);
+            
+            // 确保弹窗移除时遮罩也移除
+            const originalRemove = dialog.remove.bind(dialog);
+            dialog.remove = function() {
+                if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                originalRemove();
+            };
+        }
+
+        // 开启签到功能的具体实现
+        function enableSign(mode) {
+            localStorage.setItem('nodeseek_sign_enabled', 'true');
+            
+            // 设置模式
+            if (window.NodeSeekClockIn && window.NodeSeekClockIn.setSignMode) {
+                window.NodeSeekClockIn.setSignMode(mode);
+            } else {
+                // 如果 Clockin.js 还没加载好或者旧版本，尝试手动设置 localStorage
+                localStorage.setItem('nodeseek_sign_mode', mode);
+            }
+
+            // 更新按钮状态
+            const modeText = mode === 'fixed' ? '固定' : '随机';
+            signInBtn.textContent = `关闭签到(${modeText})`;
+            signInBtn.style.background = '#f44336'; // 红色表示可以关闭
+
+            // 记录日志
+            addLog(`开启签到功能 (${modeText}签到)`);
+
+            // 如果签到模块已加载，显示当前状态
+            if (window.NodeSeekClockIn) {
+                // 触发一次状态检查或更新
+                 const todaySigned = window.NodeSeekClockIn.isTodayAlreadySigned ? window.NodeSeekClockIn.isTodayAlreadySigned() : false;
+                 // ... (此处可保留原有状态检查逻辑，如果有的话)
+            }
+        }
 
         // 初始化签到功能模块
         function initClockInFeature() {
@@ -2843,11 +2979,19 @@
         // 调整按钮宽度使其统一
         const btnWidth = '100px';
 
-        logBtn.style.width = btnWidth;
+        // 移除所有按钮的固定宽度设置，改为 minWidth
+        // logBtn.style.width = btnWidth;
+        logBtn.style.minWidth = btnWidth;
+        
         // 导出和导入按钮已使用百分比宽度，不需要再设置
-        viewBtn.style.width = btnWidth;
-        viewFriendsBtn.style.width = btnWidth;
-        quickEditBtn.style.width = btnWidth; // 设置快捷编辑按钮宽度
+        // viewBtn.style.width = btnWidth;
+        viewBtn.style.minWidth = btnWidth;
+        
+        // viewFriendsBtn.style.width = btnWidth;
+        viewFriendsBtn.style.minWidth = btnWidth;
+        
+        // quickEditBtn.style.width = btnWidth; // 设置快捷编辑按钮宽度
+        quickEditBtn.style.minWidth = btnWidth;
 
         // 新增：查看按钮
         const viewFavoritesBtn = document.createElement('button');
