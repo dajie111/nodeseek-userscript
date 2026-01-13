@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NodeSeek 综合插件
 // @namespace    http://tampermonkey.net/
-// @version      2026.01.04
+// @version      2026.01.13
 // @description  NodeSeek 论坛黑名单，拉黑后红色高亮并可备注，增加域名检测控制按钮显隐，支持折叠功能，显示用户详细信息，快捷回复功能
 // @author       YourName
 // @match        https://www.nodeseek.com/*
@@ -3251,10 +3251,10 @@
             ? window.NodeSeekFilter.isMobileDevice()
             : (window.innerWidth <= 767);
         if (!isMobile) {
-            // 桌面端固定宽度，增加30%
-            dialog.style.width = '832px';
-            dialog.style.minWidth = '832px';
-            dialog.style.maxWidth = '832px';
+            // 桌面端固定宽度，缩小100px
+            dialog.style.width = '732px';
+            dialog.style.minWidth = '732px';
+            dialog.style.maxWidth = '732px';
             // 改为“最大高度600px，未满自动伸缩”，并采用纵向flex布局
             dialog.style.maxHeight = '600px';
             dialog.style.display = 'flex';
@@ -3535,11 +3535,11 @@
             // 固定表格布局，按列宽分配，减少空白
             table.style.tableLayout = 'fixed';
             table.innerHTML = '<thead><tr>'
-                + '<th style="text-align:left;font-size:13px;width:42%;">标题</th>'
-                + '<th style="text-align:left;font-size:13px;width:19%;padding-left:18px;position:relative;left:102px;">备注</th>'
-                + '<th style="text-align:left;font-size:13px;width:18%;padding-left:42px;white-space:nowrap;position:relative;left:65px;">分类</th>'
-                + '<th style="text-align:left;font-size:13px;width:11%;padding-left:0px;position:relative;left:-7px;">收藏时间</th>'
-                + '<th style="width:100px;text-align:right;">操作</th></tr></thead>'; // 增加操作列宽度以容纳两个按钮
+                + '<th style="text-align:left;font-size:13px;width:35%;">标题</th>'
+                + '<th style="text-align:left;font-size:13px;width:16%;padding-left:18px;position:relative;left:110px;">备注</th>'
+                + '<th style="text-align:left;font-size:13px;width:16%;padding-left:42px;white-space:nowrap;position:relative;left:78px;">分类</th>'
+                 + '<th style="text-align:left;font-size:13px;width:18%;padding-left:0px;position:relative;left:33px;">收藏时间</th>'
+                + '<th style="width:100px;text-align:right;"></th></tr></thead>'; // 增加操作列宽度以容纳两个按钮
 
             try {
                 const thead = table.tHead;
@@ -3645,7 +3645,7 @@
                 // 桌面端让标题向右延伸到备注列左移产生的空白区
                 if (window.innerWidth > 767) {
                     const extraTitleWidth = getCollapsedState() ? 5 : 0;
-                    titleLink.style.width = `calc(100% + ${110 + extraTitleWidth}px)`;
+                    titleLink.style.width = `calc(100% + ${121 + extraTitleWidth}px)`;
                 } else {
                     titleLink.style.width = '100%';
                 }
@@ -3659,7 +3659,6 @@
 
                 const tdRemark = document.createElement('td');
                 const isMobile = window.innerWidth <= 767;
-                tdRemark.textContent = item.remark || '';
                 tdRemark.style.paddingTop = rowPaddingY;
                 tdRemark.style.paddingBottom = rowPaddingY;
                 tdRemark.style.color = '#888';
@@ -3669,7 +3668,7 @@
                 // 备注列整体右移（不改变列宽）
                 tdRemark.style.paddingLeft = '18px';
                 tdRemark.style.position = 'relative';
-                tdRemark.style.left = '102px';
+                tdRemark.style.left = '110px';
                 tdRemark.style.zIndex = '2';
                 if (!isMobile) {
                     // 备注列使用固定布局下的列宽，移除硬编码maxWidth，减少空白
@@ -3679,54 +3678,72 @@
                 } else {
                     tdRemark.style.wordBreak = 'break-word';
                 }
-                if (item.remark) {
-                    tdRemark.title = item.remark;
-                    if (!isMobile) {
-                        tdRemark.onmouseover = function () {
-                            if (this.offsetWidth < this.scrollWidth) {
-                                this.style.position = 'relative';
+
+                const renderRemark = () => {
+                    tdRemark.textContent = '';
+                    const span = document.createElement('span');
+                    const hasRemark = !!(item.remark && item.remark.trim());
+                    span.textContent = hasRemark ? item.remark : '\u00A0';
+                    span.style.cursor = 'pointer';
+                    
+                    if (!hasRemark) {
+                        span.style.display = 'block';
+                        span.style.width = '100%';
+                        span.title = '点击编辑备注';
+                    } else {
+                        span.title = item.remark;
+                    }
+
+                    span.onclick = function (e) {
+                        e.stopPropagation();
+                        const currentText = item.remark || '';
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.value = currentText;
+                        input.style.width = '100%';
+                        input.style.maxWidth = '100%';
+                        input.style.boxSizing = 'border-box';
+                        input.style.padding = '2px';
+                        input.style.border = '1px solid #1890ff';
+                        input.style.borderRadius = '3px';
+                        input.style.fontSize = '12px';
+                        if (isMobile) { input.style.padding = '5px'; input.style.fontSize = '14px'; }
+                        input.style.height = isMobile ? '28px' : '18px';
+                        
+                        tdRemark.textContent = '';
+                        tdRemark.appendChild(input);
+                        input.focus();
+                        
+                        const finishEdit = () => {
+                            const newRemark = input.value;
+                            input.remove();
+                            item.remark = newRemark;
+                            
+                            let favorites = getFavorites();
+                            const index = favorites.findIndex(fav => fav.url === item.url);
+                            if (index !== -1) {
+                                favorites[index].remark = newRemark;
+                                setFavorites(favorites);
+                                addLog(`更新收藏备注: ${item.title}`);
+                            }
+                            renderRemark();
+                        };
+
+                        input.onblur = finishEdit;
+                        
+                        input.onkeydown = function (e) {
+                            if (e.key === 'Enter') input.blur();
+                            else if (e.key === 'Escape') { 
+                                input.remove();
+                                renderRemark(); 
                             }
                         };
-                    }
-                } else {
-                    tdRemark.title = '点击编辑备注';
-                }
-                tdRemark.style.cursor = 'pointer';
-                tdRemark.onclick = function (e) {
-                    e.stopPropagation();
-                    if (tdRemark.querySelector('input')) return;
-                    const currentText = tdRemark.textContent;
-                    const input = document.createElement('input');
-                    input.type = 'text';
-                    input.value = currentText;
-                    input.style.width = '95%';
-                    input.style.padding = '2px';
-                    input.style.border = '1px solid #1890ff';
-                    input.style.borderRadius = '3px';
-                    input.style.fontSize = '12px';
-                    if (isMobile) { input.style.padding = '5px'; input.style.fontSize = '14px'; }
-                    tdRemark.textContent = '';
-                    tdRemark.appendChild(input);
-                    input.focus();
-                    input.onblur = function () {
-                        const newRemark = input.value;
-                        input.remove();
-                        tdRemark.textContent = newRemark;
-                        tdRemark.title = newRemark || '点击编辑备注';
-                        let favorites = getFavorites();
-                        const index = favorites.findIndex(fav => fav.url === item.url);
-                        if (index !== -1) {
-                            favorites[index].remark = newRemark;
-                            setFavorites(favorites);
-                            addLog(`更新收藏备注: ${item.title}`);
-                            item.remark = newRemark;
-                        }
+                        input.onclick = function(e) { e.stopPropagation(); };
                     };
-                    input.onkeydown = function (e) {
-                        if (e.key === 'Enter') input.blur();
-                        else if (e.key === 'Escape') { tdRemark.textContent = currentText; tdRemark.title = currentText || '点击编辑备注'; }
-                    };
+                    tdRemark.appendChild(span);
                 };
+                
+                renderRemark();
                 tr.appendChild(tdRemark);
 
                 // 分类列
@@ -3741,24 +3758,37 @@
                 tdCategory.style.paddingLeft = '42px';
                 tdCategory.style.whiteSpace = 'nowrap';
                 tdCategory.style.position = 'relative';
-                tdCategory.style.left = '65px';
+                tdCategory.style.left = '78px';
                 tdCategory.style.zIndex = '1';
-                tdCategory.style.cursor = 'pointer';
-                tdCategory.title = '点击修改分类';
+                tdCategory.style.cursor = 'default';
+                tdCategory.style.lineHeight = isMobile ? '1.4' : '1.2';
 
                 const renderCategoryText = (categoryValue) => {
                     const displayText = (categoryValue === '未分类') ? '全部分类' : categoryValue;
                     tdCategory.textContent = '';
                     const categoryText = document.createElement('span');
                     categoryText.textContent = displayText;
+                    // 固定点击区域宽度为 4 个中文字符
+                    categoryText.style.display = 'inline-block';
+                    categoryText.style.width = '4.5em'; 
+                    categoryText.style.overflow = 'hidden';
+                    categoryText.style.textOverflow = 'ellipsis';
+                    categoryText.style.whiteSpace = 'nowrap';
+                    categoryText.style.cursor = 'pointer';
+                    categoryText.style.verticalAlign = 'middle';
+                    categoryText.title = '点击修改分类: ' + displayText;
+                    
+                    categoryText.onclick = function (e) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (tdCategory.querySelector('select')) return;
+                        showCategorySelect();
+                    };
+                    
                     tdCategory.appendChild(categoryText);
                 };
 
-                renderCategoryText(category);
-
-                tdCategory.onclick = function (e) {
-                    e.stopPropagation();
-                    if (tdCategory.querySelector('select')) return;
+                const showCategorySelect = () => {
                     const prevOverflow = tdCategory.style.overflow;
                     const prevZIndex = tdCategory.style.zIndex;
                     const prevPointerEvents = tdCategory.style.pointerEvents;
@@ -3784,21 +3814,22 @@
                         select.style.minWidth = '100%';
                         select.style.padding = '5px';
                     } else {
-                        select.style.width = '4.6em';
-                        select.style.maxWidth = '4.6em';
-                        select.style.minWidth = '4.6em';
+                        select.style.width = '4.5em';
+                        select.style.maxWidth = '4.5em';
+                        select.style.minWidth = '4.5em';
                         select.style.padding = '0px 2px';
                     }
                     const computedCategoryStyle = window.getComputedStyle(tdCategory);
                     select.style.fontSize = computedCategoryStyle.fontSize || tdCategory.style.fontSize || '12px';
                     select.style.fontFamily = computedCategoryStyle.fontFamily;
                     select.style.fontWeight = computedCategoryStyle.fontWeight;
-                    select.style.lineHeight = '1.2';
+                    select.style.height = isMobile ? '28px' : '18px';
+                    select.style.lineHeight = isMobile ? '1.4' : '1.2';
+                    select.style.margin = '0';
                     select.style.border = '0.5px solid rgba(0,0,0,0.5)';
                     select.style.borderRadius = '3px';
                     select.style.outline = 'none';
                     select.style.boxShadow = 'none';
-                    // 隐藏下拉箭头
                     select.style.appearance = 'none';
                     select.style.webkitAppearance = 'none';
                     select.style.mozAppearance = 'none';
@@ -3850,6 +3881,7 @@
                     };
                 };
 
+                renderCategoryText(category);
                 tr.appendChild(tdCategory);
 
                 const tdTime = document.createElement('td');
@@ -3867,7 +3899,7 @@
                 tdTime.style.whiteSpace = 'nowrap';
                 tdTime.style.paddingLeft = '0px';
                 tdTime.style.position = 'relative';
-                tdTime.style.left = '-7px';
+                tdTime.style.left = '33px';
                 // 提高层级，防止被分类列遮挡导致点击误触分类修改
                 tdTime.style.zIndex = '5';
                 tr.appendChild(tdTime);
@@ -3914,7 +3946,14 @@
 
                 // 仅在非“收藏时间/操作”区域按下鼠标时允许拖拽
                 if (isDragEnabled) {
-                    const enableDrag = () => { tr.draggable = true; };
+                    const enableDrag = (e) => {
+                        // 如果点击的是输入框或下拉框，不要启用拖拽
+                        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) {
+                            tr.draggable = false;
+                            return;
+                        }
+                        tr.draggable = true;
+                    };
                     const disableDrag = () => { tr.draggable = false; };
 
                     const bindEnable = (el) => {
@@ -3931,8 +3970,6 @@
                     };
 
                     bindEnable(tdTitle);
-                    bindEnable(tdRemark);
-                    bindEnable(tdCategory);
 
                     bindDisable(tdTime);
                     bindDisable(tdOp);
