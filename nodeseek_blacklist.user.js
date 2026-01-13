@@ -19,7 +19,6 @@
 // @require      https://raw.githubusercontent.com/dajie111/nodeseek-userscript/refs/heads/main/vps.js
 // @require      https://raw.githubusercontent.com/dajie111/nodeseek-userscript/refs/heads/main/History.js
 // @require      https://raw.githubusercontent.com/dajie111/nodeseek-userscript/refs/heads/main/notes.js
-
 // ==/UserScript==
 
 (function () {
