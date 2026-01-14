@@ -3636,7 +3636,7 @@
                 titleLink.style.fontWeight = 'normal';
                 // 保持站点默认字号，不进行修改
                 titleLink.style.textDecoration = 'none';
-                titleLink.style.display = 'block';
+                titleLink.style.display = 'inline-block';
                 // 修复标题末尾无法点击的问题（被备注列padding遮挡）
                 titleLink.style.position = 'relative';
                 titleLink.style.zIndex = '5';
@@ -3644,9 +3644,10 @@
                 // 桌面端让标题向右延伸到备注列左移产生的空白区
                 if (window.innerWidth > 767) {
                     const extraTitleWidth = getCollapsedState() ? 5 : 0;
-                    titleLink.style.width = `calc(100% + ${121 + extraTitleWidth}px)`;
+                    titleLink.style.maxWidth = `calc(100% + ${121 + extraTitleWidth}px)`;
+                    titleLink.style.top = '4px';
                 } else {
-                    titleLink.style.width = '100%';
+                    titleLink.style.maxWidth = '100%';
                 }
                 titleLink.style.overflow = 'hidden';
                 titleLink.style.textOverflow = 'ellipsis';
@@ -3680,21 +3681,20 @@
 
                 const renderRemark = () => {
                     tdRemark.textContent = '';
+                    tdRemark.style.cursor = 'pointer';
+                    tdRemark.title = item.remark || '点击编辑备注';
+
                     const span = document.createElement('span');
                     const hasRemark = !!(item.remark && item.remark.trim());
                     span.textContent = hasRemark ? item.remark : '\u00A0';
-                    span.style.cursor = 'pointer';
                     
-                    if (!hasRemark) {
-                        span.style.display = 'block';
-                        span.style.width = '100%';
-                        span.title = '点击编辑备注';
-                    } else {
-                        span.title = item.remark;
-                    }
+                    tdRemark.appendChild(span);
 
-                    span.onclick = function (e) {
+                    tdRemark.onclick = function (e) {
                         e.stopPropagation();
+                        
+                        if (tdRemark.querySelector('input')) return;
+
                         const currentText = item.remark || '';
                         const input = document.createElement('input');
                         input.type = 'text';
@@ -3710,6 +3710,8 @@
                         input.style.height = isMobile ? '28px' : '18px';
                         
                         tdRemark.textContent = '';
+                        tdRemark.style.cursor = 'default';
+                        tdRemark.onclick = null;
                         tdRemark.appendChild(input);
                         input.focus();
                         
@@ -3739,7 +3741,6 @@
                         };
                         input.onclick = function(e) { e.stopPropagation(); };
                     };
-                    tdRemark.appendChild(span);
                 };
                 
                 renderRemark();
@@ -3757,6 +3758,7 @@
                 tdCategory.style.paddingLeft = '42px';
                 tdCategory.style.whiteSpace = 'nowrap';
                 tdCategory.style.position = 'relative';
+                tdCategory.style.top = '-1px';
                 tdCategory.style.left = '78px';
                 tdCategory.style.zIndex = '1';
                 tdCategory.style.cursor = 'default';
