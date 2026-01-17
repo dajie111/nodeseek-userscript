@@ -5,6 +5,9 @@
 
     // VPS计算器模块
     const NodeSeekVPS = {
+        // 上传结果
+        uploadResult: null,
+
         // 配置交易金额: -
         config: {
             // 多个免费汇率API，按优先级排序
@@ -326,6 +329,21 @@
             // 隐藏错误信息
             NodeSeekVPS.utils.hideError();
 
+            // 重置复制按钮状态
+            const mdText = document.getElementById('vps-copy-md-text');
+            const mdCopied = document.getElementById('vps-copy-md-copied');
+            if (mdText && mdCopied) {
+                mdText.style.opacity = '1';
+                mdCopied.style.opacity = '0';
+            }
+
+            const textText = document.getElementById('vps-markdown-text');
+            const textCopied = document.getElementById('vps-markdown-copied');
+            if (textText && textCopied) {
+                textText.style.opacity = '1';
+                textCopied.style.opacity = '0';
+            }
+
             // 验证输入
             if (!exchangeRate || isNaN(exchangeRate)) {
                 NodeSeekVPS.utils.toggleLoading(false);
@@ -387,10 +405,65 @@
                     trade_currency_code: tradeCurrencyCode
                 });
 
+                // 注入续费周期文字 (用于SVG)
+                const cycleMap = {
+                    'monthly': '月付',
+                    'quarterly': '季付',
+                    'semiannually': '半年付',
+                    'annually': '年付',
+                    'biennially': '两年付',
+                    'triennially': '三年付',
+                    'quinquennially': '五年付'
+                };
+                result.renew_period = cycleMap[paymentCycle] || paymentCycle;
+                result.reference_rate = NodeSeekVPS.utils.formatNumber(referenceRate, 3);
+
                 await NodeSeekVPS.utils.delay(500);
 
                 // 更新结果显示
                 NodeSeekVPS.updateResultDisplay(result);
+
+                // 生成并上传SVG
+                NodeSeekVPS.uploadResult = null; // 重置
+                const updatedDateEl = document.getElementById('vps-updated-date');
+                const currencySelect = document.getElementById('vps-currency-code');
+                const cycleSelect = document.getElementById('vps-payment-cycle');
+                const tradeCurrencySelect = document.getElementById('vps-trade-currency-code');
+                const svgData = {
+                    inputs: {
+                        reference_rate: result.reference_rate || '',
+                        updated_date: updatedDateEl ? (updatedDateEl.textContent || '') : '',
+                        exchange_rate: NodeSeekVPS.utils.formatNumber(exchangeRate, 3),
+                        renew_money: NodeSeekVPS.utils.formatNumber(renewMoney, 2),
+                        currency_text: currencySelect && currencySelect.selectedIndex >= 0 ? currencySelect.options[currencySelect.selectedIndex].text : currencyCode,
+                        payment_cycle_text: cycleSelect && cycleSelect.selectedIndex >= 0 ? cycleSelect.options[cycleSelect.selectedIndex].text : paymentCycle,
+                        expiry_date: expiryDate,
+                        trade_date: tradeDate,
+                        trade_money: tradeMoney !== null && !isNaN(tradeMoney) ? NodeSeekVPS.utils.formatNumber(tradeMoney, 2) : '',
+                        trade_currency_text: tradeCurrencySelect && tradeCurrencySelect.selectedIndex >= 0 ? tradeCurrencySelect.options[tradeCurrencySelect.selectedIndex].text : tradeCurrencyCode
+                    },
+                    outputs: {
+                        remain_days: result.remain_days,
+                        expiry_date: result.expiry_date,
+                        currency_code: result.currency_code,
+                        remain_value: result.remain_value,
+                        remain_value_cny: result.remain_value_cny,
+                        trade_money: result.trade_money,
+                        trade_money_cny: result.trade_money_cny,
+                        trade_currency_code: result.trade_currency_code,
+                        premium_type: result.premium_type,
+                        premium_abs: result.premium_abs,
+                        premium_foreign: result.premium_foreign
+                    }
+                };
+                const svgContent = NodeSeekVPS.generateSVG(svgData);
+                // 保存SVG内容供稍后上传
+                NodeSeekVPS.currentSVGContent = svgContent;
+                
+                // 移除自动上传逻辑
+                // if (localStorage.getItem('nodeseek_login_token')) {
+                //    NodeSeekVPS.uploadResult = await NodeSeekVPS.uploadSVG(svgContent);
+                // }
 
                 NodeSeekVPS.utils.toggleLoading(false);
 
@@ -402,6 +475,7 @@
 
                 // 设置分享数据
                 document.getElementById('vps-is-calculated').value = '1';
+                NodeSeekVPS.updateShareButtonsState();
 
             } catch (error) {
                 NodeSeekVPS.utils.toggleLoading(false);
@@ -729,11 +803,11 @@
             }
         },
 
-        // 复制Markdown文本
+        // 复制Markdown文本（实际上现在这个函数恢复为复制详细文本信息的 Markdown 格式）
         copyMarkdownText: async () => {
             const isCalculated = document.getElementById('vps-is-calculated').value;
             if (isCalculated !== '1') {
-                return;
+                return false;
             }
             // 读取所有输入参数
             const referenceRate = document.getElementById('vps-reference-rate').value;
@@ -792,11 +866,418 @@
             if (premiumLabel && premiumText) {
                 markdownText += `\n- ${premiumLabel} ${premiumText}`;
             }
+            
+            // 复制文本不包含图片链接
+            
             markdownText += `\n\n*导出时间: ${(new Date().toLocaleString('zh-CN'))}*\n`;
             await NodeSeekVPS.utils.copyToClipboard(markdownText);
-            document.getElementById('vps-markdown-text').style.opacity = '0';
-            document.getElementById('vps-markdown-copied').style.opacity = '1';
-            // 不再自动恢复
+            return true;
+        },
+
+        copyImageMarkdown: async () => {
+            const isCalculated = document.getElementById('vps-is-calculated').value;
+            if (isCalculated !== '1') {
+                return false;
+            }
+            
+            // 检查登录状态
+            const token = localStorage.getItem('nodeseek_login_token');
+            if (!token) {
+                NodeSeekVPS.utils.showToast('需要登录才能使用', 'error');
+                return false;
+            }
+
+            // 如果尚未上传，则执行上传
+            if (!NodeSeekVPS.uploadResult) {
+                if (NodeSeekVPS.currentSVGContent) {
+                    // 使用静默上传
+                    NodeSeekVPS.uploadResult = await NodeSeekVPS.uploadSVG(NodeSeekVPS.currentSVGContent, true);
+                }
+            }
+
+            if (!NodeSeekVPS.uploadResult || !NodeSeekVPS.uploadResult.url) {
+                NodeSeekVPS.utils.showToast('上传失败或未找到可分享的图片链接', 'error');
+                return false;
+            }
+
+            const url = NodeSeekVPS.uploadResult.url;
+            const md = `![VPS计算结果](${url})`;
+            await NodeSeekVPS.utils.copyToClipboard(md);
+            return true;
+        },
+
+        copyPlainText: async () => {
+            const isCalculated = document.getElementById('vps-is-calculated').value;
+            if (isCalculated !== '1') {
+                return;
+            }
+
+            const referenceRate = document.getElementById('vps-reference-rate').value;
+            const exchangeRate = document.getElementById('vps-exchange-rate').value;
+            const renewMoney = document.getElementById('vps-renew-money').value;
+            const currencyCode = document.getElementById('vps-currency-code').options[document.getElementById('vps-currency-code').selectedIndex].text;
+            const paymentCycle = document.getElementById('vps-payment-cycle').options[document.getElementById('vps-payment-cycle').selectedIndex].text;
+            const expiryDate = document.getElementById('vps-expiry-date').value;
+            const tradeDate = document.getElementById('vps-trade-date').value;
+            const tradeMoney = document.getElementById('vps-trade-money').value;
+            const tradeCurrencyCode = document.getElementById('vps-trade-currency-code').options[document.getElementById('vps-trade-currency-code').selectedIndex].text;
+
+            const remainDaysElement = document.querySelector('.vps-output-remain-days');
+            const expiryDateElement = document.querySelector('.vps-output-expiry-date');
+            const remainValueElement = document.querySelector('.vps-output-remain-value');
+
+            const remainDays = remainDaysElement ? remainDaysElement.textContent : '';
+            const expiryDateResult = expiryDateElement ? expiryDateElement.textContent : '';
+            const remainValue = remainValueElement ? remainValueElement.textContent : '';
+
+            const customRow = document.getElementById('vps-tr-custom-exchange-show');
+            let customValue = '';
+            if (customRow && customRow.style.display !== 'none' && customRow.innerText) {
+                customValue = customRow.innerText;
+            }
+
+            const tradeMoneyRow = document.getElementById('vps-trade-money-row');
+            const premiumRow = document.getElementById('vps-premium-row');
+            let tradeMoneyText = '';
+            let premiumText = '';
+            let premiumLabel = '';
+            if (tradeMoneyRow) {
+                const tradeMoneySpan = tradeMoneyRow.querySelector('span:last-child');
+                if (tradeMoneySpan && tradeMoneySpan.textContent && tradeMoneySpan.textContent.trim()) {
+                    tradeMoneyText = tradeMoneySpan.textContent.trim();
+                }
+            }
+            if (premiumRow) {
+                const spans = premiumRow.querySelectorAll('span');
+                if (spans.length >= 2) {
+                    premiumLabel = spans[0].textContent.trim();
+                    premiumText = spans[1].textContent.trim().replace(/-([\d.]+)/g, '$1');
+                }
+            }
+
+            let text = `VPS 剩余价值计算器\n\n输入参数\n参考汇率: ${referenceRate}\n外币汇率: ${exchangeRate}\n续费金额: ${renewMoney} ${currencyCode}\n付款周期: ${paymentCycle}\n到期时间: ${expiryDate}\n交易日期: ${tradeDate}\n交易金额: ${tradeMoney && tradeMoney.trim() ? tradeMoney + ' ' + tradeCurrencyCode : ''}\n\n计算结果\n剩余天数: ${remainDays} ${expiryDateResult}\n剩余价值: ${remainValue}`;
+            if (customValue) {
+                text += `\n${customValue}`;
+            }
+            text += `\n交易金额: ${tradeMoneyText || ''}`;
+            if (premiumLabel && premiumText) {
+                text += `\n${premiumLabel} ${premiumText}`;
+            }
+            text += `\n\n导出时间: ${(new Date().toLocaleString('zh-CN'))}\n`;
+
+            await NodeSeekVPS.utils.copyToClipboard(text);
+        },
+
+        updateShareButtonsState: () => {
+            const isCalculated = document.getElementById('vps-is-calculated')?.value;
+            const token = localStorage.getItem('nodeseek_login_token');
+
+            const copyBtn = document.getElementById('vps-copy-btn');
+            if (copyBtn) {
+                const enabled = isCalculated === '1';
+                copyBtn.disabled = !enabled;
+                copyBtn.style.opacity = enabled ? '1' : '0.5';
+                copyBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+                copyBtn.title = enabled ? '点击下载' : '请先点击“计算剩余价值”';
+            }
+
+            const markdownBtn = document.getElementById('vps-markdown-btn');
+            if (markdownBtn) {
+                const enabled = isCalculated === '1';
+                markdownBtn.disabled = !enabled;
+                markdownBtn.style.opacity = enabled ? '1' : '0.5';
+                markdownBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+                markdownBtn.title = enabled ? '点击复制文本' : '请先点击“计算剩余价值”';
+            }
+
+            const copyMdBtn = document.getElementById('vps-copy-md-btn');
+            if (copyMdBtn) {
+                const enabled = isCalculated === '1' && !!token;
+                copyMdBtn.disabled = !enabled;
+                copyMdBtn.style.opacity = enabled ? '1' : '0.5';
+                copyMdBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+                if (isCalculated !== '1') {
+                    copyMdBtn.title = '请先点击“计算剩余价值”';
+                } else if (!token) {
+                    copyMdBtn.title = '需要登录才能使用';
+                } else {
+                    copyMdBtn.title = '点击复制 Markdown';
+                }
+            }
+        },
+
+        // 生成SVG内容
+        generateSVG: (data) => {
+            const escapeXml = (input) => {
+                return String(input ?? '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&apos;');
+            };
+
+            const inputs = (data && data.inputs) ? data.inputs : {};
+            const outputs = (data && data.outputs) ? data.outputs : {};
+
+            const width = 1100;
+            const outerPadding = 20;
+            const headerH = 0;
+            const bodyGap = 20;
+            const footerH = 50;
+            const gap = 24;
+
+            const now = new Date();
+            const dateStr = now.getFullYear() + '/' + (now.getMonth() + 1) + '/' + now.getDate() + ' ' + now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
+
+            const inputRows = [
+                { label: '参考汇率', sub: inputs.updated_date ? ('(更新时间' + inputs.updated_date + ' (ExchangeRate-API))') : '', value: inputs.reference_rate || '' },
+                { label: '外币汇率', sub: '', value: inputs.exchange_rate || '' },
+                { label: '续费金额', sub: '', value: (inputs.renew_money || '') + (inputs.currency_text ? (' ' + inputs.currency_text) : '') },
+                { label: '付款周期', sub: '', value: inputs.payment_cycle_text || '' },
+                { label: '到期时间', sub: '', value: inputs.expiry_date || '' },
+                { label: '交易日期', sub: '', value: inputs.trade_date || '' },
+                { label: '交易金额（可选）', sub: '', value: (inputs.trade_money ? inputs.trade_money : '') + (inputs.trade_money && inputs.trade_currency_text ? (' ' + inputs.trade_currency_text) : '') }
+            ];
+
+            const fieldH = 46;
+            const fieldGap = 18;
+            let sumRowHeight = 0;
+            for (let i = 0; i < inputRows.length; i++) {
+                sumRowHeight += (inputRows[i].sub ? 48 : 28) + fieldH + fieldGap;
+            }
+
+            const btnH = 0;
+            const leftNeededH = 20 + sumRowHeight + 10;
+            // rightNeededH 估算: H2(60) + Card1(200) + gap(24) + Card2(160) + pad(20)
+            const rightNeededH = 60 + 200 + 24 + 160 + 20;
+            const bodyH = Math.max(leftNeededH, rightNeededH);
+            const height = outerPadding * 2 + headerH + bodyGap + bodyH + footerH - 50;
+
+            const outer = { x: outerPadding, y: outerPadding, w: width - outerPadding * 2, h: height - outerPadding * 2 };
+            const bodyY = outer.y + headerH + bodyGap;
+            const panelW = Math.floor((outer.w - gap) / 2);
+            // 修正：同步减小面板高度，避免超出 SVG 底部
+            const panelH = bodyH - 50; 
+            const left = { x: outer.x, y: bodyY, w: panelW, h: panelH };
+            const right = { x: outer.x + panelW + gap, y: bodyY, w: panelW, h: panelH };
+
+            const remainDaysLine = (outputs.remain_days !== undefined && outputs.remain_days !== null && outputs.remain_days !== '') ? (String(outputs.remain_days) + ' 天') : '';
+            const expiryHint = outputs.expiry_date ? ('(于 ' + outputs.expiry_date + ' 过期)') : '';
+            const remainValueLine = (outputs.remain_value ? outputs.remain_value : '') + (outputs.currency_code ? (' ' + outputs.currency_code) : '') + (outputs.remain_value_cny ? (' / ' + outputs.remain_value_cny + ' CNY') : '');
+
+            let tradeMoneyLine = '';
+            if (outputs.trade_money && outputs.trade_money !== '') {
+                tradeMoneyLine = outputs.trade_money + (outputs.trade_currency_code ? (' ' + outputs.trade_currency_code) : '') + (outputs.trade_money_cny ? (' / ' + outputs.trade_money_cny + ' CNY') : '');
+            }
+
+            let premiumLineLabel = '';
+            let premiumLineValue = '';
+            if (outputs.premium_type && outputs.premium_abs) {
+                let premiumForeignAbs = outputs.premium_foreign;
+                if (typeof premiumForeignAbs === 'string' && premiumForeignAbs.startsWith('-')) premiumForeignAbs = premiumForeignAbs.replace('-', '');
+                premiumLineLabel = outputs.premium_type + ':';
+                premiumLineValue = (premiumForeignAbs ? premiumForeignAbs : '') + (outputs.currency_code ? (' ' + outputs.currency_code) : '') + ' / ' + outputs.premium_abs + ' CNY';
+            }
+
+            const shareButtons = [
+                { label: '下载', w: 84 },
+                { label: '复制文本', w: 104 },
+                { label: '复制 MD', w: 96 }
+            ];
+
+            const footerText = '导出时间: ' + dateStr;
+
+            const displayScale = 0.7;
+            const displayW = Math.round(width * displayScale);
+            const displayH = Math.round(height * displayScale);
+
+            let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${displayW}" height="${displayH}" viewBox="0 0 ${width} ${height}">
+<defs>
+  <linearGradient id="gradBtn" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#4f46e5"/>
+    <stop offset="100%" stop-color="#7c3aed"/>
+  </linearGradient>
+</defs>
+<style>
+  .font { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .outer { fill: #ffffff; stroke: #eeeeee; stroke-width: 1; }
+  .panel { fill: #ffffff; stroke: #eeeeee; stroke-width: 1; }
+  .soft { fill: #f8fafc; stroke: #eef2f7; stroke-width: 1; }
+  .h2 { font-size: 26px; font-weight: 700; fill: #111827; text-anchor: middle; dominant-baseline: middle; }
+  .label { font-size: 18px; font-weight: 700; fill: #111827; dominant-baseline: middle; }
+  .sub { font-size: 15px; fill: #6b7280; dominant-baseline: middle; }
+  .input { fill: #fafafa; stroke: none; }
+  .inputText { font-size: 18px; fill: #111827; dominant-baseline: middle; }
+  .resultLabel { font-size: 18px; font-weight: 700; fill: #111827; dominant-baseline: middle; }
+  .resultValue { font-size: 18px; fill: #111827; dominant-baseline: middle; }
+  .em { fill: #ff0000; font-weight: 700; }
+  .pillText { font-size: 14px; font-weight: 700; fill: #ffffff; dominant-baseline: middle; text-anchor: middle; }
+  .btn { fill: #ededed; stroke: none; }
+  .btnText { font-size: 16px; fill: #111827; dominant-baseline: middle; text-anchor: middle; }
+  .footer { font-size: 18px; font-weight: 700; fill: #111827; dominant-baseline: middle; }
+</style>
+<rect class="outer" x="${outer.x}" y="${outer.y}" width="${outer.w}" height="${outer.h}" rx="16" ry="16"/>
+<rect class="panel" x="${left.x}" y="${left.y}" width="${left.w}" height="${left.h}" rx="12" ry="12"/>
+<rect class="panel" x="${right.x}" y="${right.y}" width="${right.w}" height="${right.h}" rx="12" ry="12"/>
+`;
+
+            const leftInnerX = left.x + 24;
+            let cy = left.y + 24;
+            const inputW = left.w - 48;
+
+            for (let i = 0; i < inputRows.length; i++) {
+                const row = inputRows[i];
+                svg += `<text class="font label" x="${leftInnerX}" y="${cy + 14}">${escapeXml(row.label)}</text>`;
+                if (row.sub) {
+                    svg += `<text class="font sub" x="${leftInnerX}" y="${cy + 37}">${escapeXml(row.sub)}</text>`;
+                    cy += 48;
+                } else {
+                    cy += 28;
+                }
+                svg += `<rect class="input" x="${leftInnerX}" y="${cy}" width="${inputW}" height="${fieldH}" rx="10" ry="10"/>`;
+                svg += `<text class="font inputText" x="${leftInnerX + 16}" y="${cy + fieldH / 2}">${escapeXml(row.value)}</text>`;
+                cy += fieldH + fieldGap;
+            }
+
+            const btnW = inputW;
+            const btnY = cy + 10;
+            // svg += `<rect fill="url(#gradBtn)" x="${leftInnerX}" y="${btnY}" width="${btnW}" height="${btnH}" rx="14" ry="14"/>`;
+            // svg += `<text class="font pillText" x="${leftInnerX + btnW / 2}" y="${btnY + btnH / 2}">计算剩余价值</text>`;
+
+            const rightInnerX = right.x + 24;
+            svg += `<text class="font h2" x="${right.x + right.w / 2}" y="${right.y + 50}">计算结果</text>`;
+
+            const card1 = { x: rightInnerX, y: right.y + 90, w: right.w - 48, h: 200 };
+            svg += `<rect class="soft" x="${card1.x}" y="${card1.y}" width="${card1.w}" height="${card1.h}" rx="12" ry="12"/>`;
+
+            const rLabelX = card1.x + 24;
+            const rValueX = card1.x + 120;
+            let ry = card1.y + 40;
+
+            svg += `<text class="font resultLabel" x="${rLabelX}" y="${ry}">剩余天数:</text>`;
+            svg += `<text x="${rValueX}" y="${ry}" class="font resultValue">
+                      <tspan class="em">${escapeXml(remainDaysLine)}</tspan>
+                      <tspan class="sub" dx="10">${escapeXml(expiryHint)}</tspan>
+                    </text>`;
+            ry += 42;
+
+            svg += `<text class="font resultLabel" x="${rLabelX}" y="${ry}">剩余价值:</text>`;
+            svg += `<text class="font resultValue em" x="${rValueX}" y="${ry}">${escapeXml(remainValueLine)}</text>`;
+            ry += 42;
+
+            svg += `<text class="font resultLabel" x="${rLabelX}" y="${ry}">交易金额:</text>`;
+            svg += `<text class="font resultValue" x="${rValueX}" y="${ry}">${escapeXml(tradeMoneyLine)}</text>`;
+            ry += 42;
+
+            svg += `<text class="font resultLabel" x="${rLabelX}" y="${ry}">${escapeXml(premiumLineLabel || '溢价:')}</text>`;
+            svg += `<text class="font resultValue" x="${rValueX}" y="${ry}">${escapeXml(premiumLineValue)}</text>`;
+
+            const card2 = { x: rightInnerX, y: card1.y + card1.h + 24, w: right.w - 48, h: 160 };
+            svg += `<rect class="soft" x="${card2.x}" y="${card2.y}" width="${card2.w}" height="${card2.h}" rx="12" ry="12"/>`;
+            svg += `<text class="font label" x="${card2.x + card2.w / 2}" y="${card2.y + 40}" text-anchor="middle">分享功能</text>`;
+
+            const btnY2 = card2.y + 80;
+            const totalBtnW = shareButtons.reduce((sum, b) => sum + (b.w + 20), 0) + (shareButtons.length - 1) * 10; 
+            // Note: I need to update shareButtons widths in the definition if I want them wider, 
+            // but here I just added +20 to each for calculation, which is wrong if I don't update the object.
+            // Let's rely on updated shareButtons definition which I should do.
+            
+            // Re-calculating center based on new widths (I will update shareButtons array in next tool call or this one if possible, but search/replace is tricky for that).
+            // Let's assume I update shareButtons widths: 84->100, 104->120, 96->110.
+            const updatedShareButtons = [
+                { label: '下载', w: 100 },
+                { label: '复制文本', w: 120 },
+                { label: '复制 MD', w: 110 }
+            ];
+            const realTotalBtnW = updatedShareButtons.reduce((sum, b) => sum + b.w, 0) + (updatedShareButtons.length - 1) * 10;
+            let bx = card2.x + (card2.w - realTotalBtnW) / 2;
+            
+            for (let i = 0; i < updatedShareButtons.length; i++) {
+                const b = updatedShareButtons[i];
+                svg += `<rect class="btn" x="${bx}" y="${btnY2}" width="${b.w}" height="36" rx="8" ry="8"/>`;
+                svg += `<text class="font btnText" x="${bx + b.w / 2}" y="${btnY2 + 18}">${escapeXml(b.label)}</text>`;
+                bx += b.w + 10;
+            }
+
+            const footerX = outer.x + outer.w - 30;
+            const footerY = outer.y + outer.h - 41;
+            svg += `<text class="font footer" x="${footerX}" y="${footerY}" text-anchor="end">${escapeXml(footerText)}</text>`;
+            svg += `</svg>`;
+            return svg;
+        },
+
+        // 上传SVG
+        uploadSVG: async (svgContent, silent = false) => {
+            const token = localStorage.getItem('nodeseek_login_token');
+            if (!token) return null;
+
+            const serverUrl = 'https://hb.396663.xyz'; 
+            
+            try {
+                // 显示上传中...
+                if (!silent) {
+                    NodeSeekVPS.utils.showToast('正在上传计算结果...', 'tips');
+                }
+                
+                const response = await fetch(`${serverUrl}/api/vps/upload_svg`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ svg: svgContent })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        if (!silent) {
+                            NodeSeekVPS.utils.showToast('上传成功', 'success');
+                        }
+                        try { window.dispatchEvent(new CustomEvent('ns-storage-changed')); } catch (e) { }
+                        return {
+                            url: `${serverUrl}${data.url}`,
+                            filename: data.filename,
+                            id: data.id
+                        };
+                    } else {
+                        NodeSeekVPS.utils.showToast('上传失败: ' + data.message, 'error');
+                    }
+                } else {
+                    if (response.status === 401) {
+                        // Token 失效处理
+                        localStorage.removeItem('nodeseek_login_token');
+                        const copyMdBtn = document.getElementById('vps-copy-md-btn');
+                        if (copyMdBtn) {
+                            copyMdBtn.style.opacity = '0.5';
+                            copyMdBtn.style.cursor = 'not-allowed';
+                            copyMdBtn.title = '登录已失效，请重新登录';
+                        }
+                        NodeSeekVPS.utils.showToast('登录已失效，请重新登录', 'error');
+                        return null;
+                    }
+
+                    let errorMessage = 'HTTP ' + response.status;
+                    try {
+                        const errorData = await response.json();
+                        if (errorData && errorData.message) {
+                            errorMessage = errorData.message;
+                        }
+                    } catch (e) {
+                        // Ignore json parse error
+                    }
+                    
+                    if (response.status === 413) {
+                         NodeSeekVPS.utils.showToast('上传失败: 存储空间不足', 'error');
+                    } else {
+                         NodeSeekVPS.utils.showToast('上传失败: ' + errorMessage, 'error');
+                    }
+                }
+            } catch (error) {
+                NodeSeekVPS.utils.showToast('SVG上传出错', 'error');
+            }
+            return null;
         },
 
         // 绑定事件监听器
@@ -881,12 +1362,49 @@
             const copyBtn = document.getElementById('vps-copy-btn');
             if (copyBtn) {
                 copyBtn.addEventListener('click', NodeSeekVPS.copyShareLink);
+                copyBtn.addEventListener('mouseenter', NodeSeekVPS.updateShareButtonsState);
             }
 
             // Markdown复制按钮
             const markdownBtn = document.getElementById('vps-markdown-btn');
             if (markdownBtn) {
-                markdownBtn.addEventListener('click', NodeSeekVPS.copyMarkdownText);
+                markdownBtn.addEventListener('click', async () => {
+                    if (markdownBtn.disabled) return;
+                    const ok = await NodeSeekVPS.copyMarkdownText(); // 恢复调用 copyMarkdownText 而不是 copyPlainText
+                    if (!ok) return;
+                    const text = document.getElementById('vps-markdown-text');
+                    const copied = document.getElementById('vps-markdown-copied');
+                    if (text && copied) {
+                        text.style.opacity = '0';
+                        copied.style.opacity = '1';
+                    }
+                });
+                markdownBtn.addEventListener('mouseenter', NodeSeekVPS.updateShareButtonsState);
+            }
+
+            // 复制 MD 按钮 (新)
+            const copyMdBtn = document.getElementById('vps-copy-md-btn');
+            if (copyMdBtn) {
+                // 初始化检查
+                NodeSeekVPS.updateShareButtonsState();
+
+                // 鼠标移入时再次检查（处理多标签页登录状态变化）
+                copyMdBtn.addEventListener('mouseenter', NodeSeekVPS.updateShareButtonsState);
+
+                copyMdBtn.addEventListener('click', async () => {
+                    // 如果被禁用则不执行
+                    if (copyMdBtn.disabled || copyMdBtn.style.cursor === 'not-allowed') return;
+
+                    const success = await NodeSeekVPS.copyImageMarkdown();
+                    if (success) {
+                        const text = document.getElementById('vps-copy-md-text');
+                        const copied = document.getElementById('vps-copy-md-copied');
+                        if (text && copied) {
+                            text.style.opacity = '0';
+                            copied.style.opacity = '1';
+                        }
+                    }
+                });
             }
 
             // 关闭模态框
@@ -927,6 +1445,8 @@
                     });
                 }
             });
+
+            NodeSeekVPS.updateShareButtonsState();
         },
 
         // 打开货币转换器
@@ -1732,7 +2252,7 @@
                                 <div style="margin-bottom: 20px;">
                                     <label style="font-weight: bold; display: block; margin-bottom: 5px;">交易金额（可选）</label>
                                     <div style="display: flex; gap: 10px;">
-                                        <input type="number" id="vps-trade-money" placeholder="实际成交金额" min="0" step="0.01" style="flex: 1; padding: 8px; border: none; border-radius: 6px; background: #fafafa; color: #333;">
+                                        <input type="number" id="vps-trade-money" placeholder="实际成交金额" min="0" step="0.01" oninput="if(value.length>7)value=value.slice(0,7)" style="flex: 1; padding: 8px; border: none; border-radius: 6px; background: #fafafa; color: #333;">
                                         <select id="vps-trade-currency-code" style="width: 150px; padding: 8px; border: none; border-radius: 6px; background: #fafafa; color: #333;">
                                             <option value="CNY" selected>人民币 (CNY)</option>
                                             <option value="USD">美元 (USD)</option>
@@ -1810,6 +2330,10 @@
                                         <span id="vps-markdown-text" style="transition: opacity 0.2s; opacity: 1; position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center;">复制文本</span>
                                         <span id="vps-markdown-copied" style="transition: opacity 0.2s; opacity: 0; position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center;">已复制</span>
                                     </button>
+                                    <button id="vps-copy-md-btn" style="background: #ededed; color: #333; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; min-width: 70px; position: relative; overflow: hidden;">
+                                        <span id="vps-copy-md-text" style="transition: opacity 0.2s; opacity: 1; position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center;">复制 MD</span>
+                                        <span id="vps-copy-md-copied" style="transition: opacity 0.2s; opacity: 0; position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center;">已复制</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1871,8 +2395,9 @@
                     #vps-calculate-btn:hover { transform: translateY(-2px); opacity: 0.95; }
 
                     #vps-view-btn:hover,
-                    #vps-copy-btn:hover,
-                    #vps-markdown-btn:hover {
+                    #vps-copy-btn:not(:disabled):hover,
+                    #vps-markdown-btn:not(:disabled):hover,
+                    #vps-copy-md-btn:not(:disabled):hover {
                         background: rgba(255,255,255,0.3) !important;
                         transform: translateY(-1px);
                     }
@@ -1933,7 +2458,8 @@
                         }
 
                         #vps-copy-btn,
-                        #vps-markdown-btn {
+                        #vps-markdown-btn,
+                        #vps-copy-md-btn {
                             width: 100% !important;
                             padding: 10px !important;
                         }
