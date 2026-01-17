@@ -2313,7 +2313,7 @@
 
                             <!-- 分享功能 -->
                             <div id="vps-share" style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #eef2f7;">
-                                <h4 style="margin: 0 0 15px 0; text-align: center;">分享功能</h4>
+                                <h4 style="margin: 0 0 15px 0; text-align: center;">分享功能<span style="font-size: 12px; font-weight: normal; color: #666; margin-left: 5px;">（svg需要登录使用）</span></h4>
                                 <input id="vps-is-calculated" type="hidden" value="">
 
                                 <div class="button-container" style="display: flex; gap: 8px; justify-content: center;">
