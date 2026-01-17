@@ -21,8 +21,6 @@
             // 记录日志（去除模块前缀）
             if (typeof window.addLog === 'function') {
                 window.addLog(message);
-            } else {
-                console.log(message);
             }
 
             // 显示界面提示
@@ -138,16 +136,15 @@
 
             const maxRetries = finalOptions.retries || 0;
             let lastError;
+            const gmRequester =
+                (typeof GM_xmlhttpRequest === 'function') ? GM_xmlhttpRequest :
+                    (typeof GM !== 'undefined' && GM && typeof GM.xmlHttpRequest === 'function') ? GM.xmlHttpRequest :
+                        null;
 
             for (let attempt = 0; attempt <= maxRetries; attempt++) {
-                // 添加超时控制
-                const controller = new AbortController();
                 const timeout = finalOptions.timeout || 15000;
-                const timeoutId = setTimeout(() => controller.abort(), timeout);
-
                 const requestOptions = {
                     ...finalOptions,
-                    signal: controller.signal
                 };
 
                 // 移除自定义选项
@@ -156,21 +153,71 @@
                 delete requestOptions.retryDelay;
 
                 try {
-                    const response = await fetch(url, requestOptions);
-                    clearTimeout(timeoutId);
+                    let responseOk = false;
+                    let status = 0;
+                    let statusText = '';
+                    let responseData = null;
+
+                    if (gmRequester) {
+                        const gmResp = await new Promise((resolve, reject) => {
+                            const method = String(requestOptions.method || 'GET').toUpperCase();
+                            const headers = requestOptions.headers || {};
+                            const data = requestOptions.body;
+                            gmRequester({
+                                method,
+                                url,
+                                headers,
+                                data,
+                                timeout,
+                                responseType: 'text',
+                                onload: resolve,
+                                onerror: () => reject(new TypeError('fetch failed')),
+                                ontimeout: () => {
+                                    const err = new Error('timeout');
+                                    err.name = 'AbortError';
+                                    reject(err);
+                                }
+                            });
+                        });
+
+                        status = gmResp.status || 0;
+                        statusText = gmResp.statusText || '';
+                        responseOk = status >= 200 && status < 300;
+
+                        const text = typeof gmResp.responseText === 'string' ? gmResp.responseText : '';
+                        if (!text) {
+                            responseData = {};
+                        } else {
+                            try {
+                                responseData = JSON.parse(text);
+                            } catch {
+                                throw new Error('服务器响应格式错误');
+                            }
+                        }
+                    } else {
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), timeout);
+                        try {
+                            const response = await fetch(url, { ...requestOptions, signal: controller.signal });
+                            status = response.status;
+                            statusText = response.statusText;
+                            responseOk = !!response.ok;
+                            try {
+                                responseData = await response.json();
+                            } catch {
+                                throw new Error('服务器响应格式错误');
+                            }
+                        } finally {
+                            clearTimeout(timeoutId);
+                        }
+                    }
 
                     // 检查响应是否成功
-                    if (!response.ok) {
-                        let errorMessage;
-                        try {
-                            const errorData = await response.json();
-                            errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
-                        } catch {
-                            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-                        }
+                    if (!responseOk) {
+                        const errorMessage = (responseData && responseData.message) ? responseData.message : `HTTP ${status}: ${statusText}`;
 
                         // 对于某些状态码，不需要重试
-                        if (response.status === 401 || response.status === 403 || response.status === 404 || response.status === 429) {
+                        if (status === 401 || status === 403 || status === 404 || status === 429) {
                             throw new Error(errorMessage);
                         }
 
@@ -182,12 +229,8 @@
                         continue;
                     }
 
-                    // 解析JSON响应
-                    const data = await response.json();
-                    return data;
+                    return responseData;
                 } catch (error) {
-                    clearTimeout(timeoutId);
-
                     // 处理不同类型的错误
                     if (error.name === 'AbortError') {
                         lastError = new Error('请求超时，请检查网络连接');
@@ -202,7 +245,6 @@
                     // 对于网络错误，尝试重试
                     if (attempt < maxRetries && (error.name === 'AbortError' || error instanceof TypeError)) {
                         const retryDelay = finalOptions.retryDelay || 1000;
-                        console.log(`请求失败，${retryDelay}ms后进行第${attempt + 1}次重试...`);
 
                         // 同步操作显示重试提示
                         if (isSyncOperation) {
@@ -217,7 +259,6 @@
                         continue;
                     }
 
-                    console.error('Request failed after all retries:', lastError);
                     throw lastError;
                 }
             }
@@ -352,7 +393,6 @@
                         }
                     }
                 } catch (error) {
-                    console.error('获取鸡腿统计数据失败:', error);
                 }
             }
 
@@ -395,7 +435,6 @@
                         config.hotTopicsData = hotTopicsData;
                     }
                 } catch (error) {
-                    console.error('获取热点统计数据失败:', error);
                 }
             }
 
@@ -456,7 +495,6 @@
                         config.filterData = filterData;
                     }
                 } catch (error) {
-                    console.error('获取关键词过滤数据失败:', error);
                 }
             }
 
@@ -484,7 +522,6 @@
                         }
                     }
                 } catch (error) {
-                    console.error('获取笔记数据失败:', error);
                 }
             }
 
@@ -606,7 +643,6 @@
                             applied.push(`签到设置(${enabled ? '开启' : '关闭'}, ${modeStr})`);
                         }
                     } catch (e) {
-                        console.error('应用操作日志失败:', e);
                         applied.push("操作日志(失败)");
                     }
                 }
@@ -699,7 +735,6 @@
                             }
                         }
                     } catch (error) {
-                        console.error('应用鸡腿统计数据失败:', error);
                         applied.push("鸡腿统计(失败)");
                     }
                 }
@@ -744,7 +779,6 @@
                             applied.push(`热点统计(${hotImportCount}项)`);
                         }
                     } catch (error) {
-                        console.error('应用热点统计数据失败:', error);
                         applied.push("热点统计(失败)");
                     }
                 }
@@ -819,7 +853,6 @@
                             }
                         } catch (e) { }
                     } catch (error) {
-                        console.error('应用关键词过滤数据失败:', error);
                         applied.push("关键词过滤(失败)");
                     }
                 }
@@ -855,14 +888,12 @@
                             applied.push("笔记");
                         }
                     } catch (error) {
-                        console.error('应用笔记数据失败:', error);
                         applied.push("笔记(失败)");
                     }
                 }
 
                 return applied;
             } catch (error) {
-                console.error('应用配置失败:', error);
                 throw error;
             }
         }
@@ -988,7 +1019,6 @@
                     });
                 }
             } catch (error) {
-                console.error('退出登录请求失败:', error);
             } finally {
                 this.clearAuth();
                 Utils.showMessage('已退出登录');
@@ -1011,14 +1041,12 @@
                     return true;
                 }
             } catch (error) {
-                console.error('Token验证失败:', error);
                 // 如果是认证错误，清除本地存储的认证信息
                 if (error.message.includes('401') || error.message.includes('403')) {
                     this.clearAuth();
                     Utils.showMessage('登录已过期，请重新登录', 'warning');
                 } else {
                     // 网络错误时不清除认证信息，保持登录状态
-                    console.warn('网络错误，保持当前登录状态');
                 }
             }
             return false;
@@ -1534,7 +1562,6 @@
                     await new Promise(resolve => setTimeout(resolve, 800));
 
                 } catch (error) {
-                    console.error('同步操作失败:', error);
                     progressLabel.textContent = '同步失败';
                     progressFill.style.background = 'linear-gradient(90deg, #f44336, #e57373)';
                     progressFill.style.width = '100%';
@@ -1855,6 +1882,104 @@
             }
         },
 
+        getSvgRetentionDays: async function () {
+            if (!Auth.isLoggedIn()) {
+                Utils.showMessage('请先登录', 'error');
+                return null;
+            }
+            try {
+                const data = await this._requestSvgApi('/api/vps/svg_retention', { method: 'GET' });
+                if (data && data.success) return data.days;
+                return null;
+            } catch (e) {
+                return null;
+            }
+        },
+
+        setSvgRetentionDays: async function (days) {
+            if (!Auth.isLoggedIn()) {
+                Utils.showMessage('请先登录', 'error');
+                return false;
+            }
+            try {
+                const data = await this._requestSvgApi('/api/vps/svg_retention', { method: 'POST', body: { days } });
+                if (data && data.success) return true;
+                return false;
+            } catch (e) {
+                return false;
+            }
+        },
+
+        deleteSvgFiles: async function ({ all = false, days = 365 } = {}) {
+            if (!Auth.isLoggedIn()) {
+                Utils.showMessage('请先登录', 'error');
+                return null;
+            }
+            try {
+                const payload = all ? { all: true } : { days };
+                const data = await this._requestSvgApi('/api/vps/svg_delete', { method: 'POST', body: payload });
+                if (data && data.success) return data.deleted || 0;
+                Utils.showMessage(data && data.message ? data.message : '删除失败', 'error');
+                return null;
+            } catch (e) {
+                Utils.showMessage(`删除失败: ${e.message}`, 'error');
+                return null;
+            }
+        },
+
+        _requestSvgApi: async function (path, { method = 'GET', body = null, timeout = 15000 } = {}) {
+            const gmRequester =
+                (typeof GM_xmlhttpRequest === 'function') ? GM_xmlhttpRequest :
+                    (typeof GM !== 'undefined' && GM && typeof GM.xmlHttpRequest === 'function') ? GM.xmlHttpRequest :
+                        null;
+            if (gmRequester) {
+                try {
+                    const gmResp = await new Promise((resolve, reject) => {
+                        const headers = { 'Content-Type': 'application/json' };
+                        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+                        gmRequester({
+                            method,
+                            url: `${CONFIG.SERVER_URL}${path}`,
+                            headers,
+                            data: body ? JSON.stringify(body) : undefined,
+                            timeout,
+                            responseType: 'text',
+                            onload: resolve,
+                            onerror: () => reject(new TypeError('fetch failed')),
+                            ontimeout: () => {
+                                const err = new Error('timeout');
+                                err.name = 'AbortError';
+                                reject(err);
+                            }
+                        });
+                    });
+                    const text = typeof gmResp.responseText === 'string' ? gmResp.responseText : '';
+                    if (!text) return null;
+                    try { return JSON.parse(text); } catch (e) { return null; }
+                } catch (e) {
+                    return null;
+                }
+            }
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+                const response = await fetch(`${CONFIG.SERVER_URL}${path}`, {
+                    method,
+                    headers,
+                    body: body ? JSON.stringify(body) : undefined,
+                    signal: controller.signal
+                });
+                let data = null;
+                try { data = await response.json(); } catch (e) { data = null; }
+                if (!response.ok) return data;
+                return data;
+            } finally {
+                try { clearTimeout(timeoutId); } catch (e) { }
+            }
+        },
+
         // 显示删除同步数据确认对话框
         showDeleteConfigDialog: function () {
             // 移除已存在的对话框
@@ -2105,7 +2230,6 @@
                     await new Promise(resolve => setTimeout(resolve, 800));
 
                 } catch (error) {
-                    console.error('删除操作失败:', error);
                     progressLabel.textContent = '清除失败';
                     progressFill.style.background = 'linear-gradient(90deg, #f44336, #e57373)';
                     progressFill.style.width = '100%';
@@ -3112,6 +3236,21 @@
                 this.createChangePasswordDialog();
             };
 
+            // SVG上传设置按钮
+            const svgSettingsBtn = document.createElement('button');
+            svgSettingsBtn.textContent = 'SVG上传设置';
+            svgSettingsBtn.style.cssText = `
+                padding: 8px;
+                background: #fa8c16;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            `;
+            svgSettingsBtn.onclick = () => {
+                this.createSvgUploadSettingsDialog(storageInfo);
+            };
+
             // 删除同步数据按钮
             const deleteConfigBtn = document.createElement('button');
             deleteConfigBtn.textContent = '清除上传数据';
@@ -3160,16 +3299,282 @@
             this.optimizeButtonForMobile(uploadBtn, isMobile);
             this.optimizeButtonForMobile(downloadBtn, isMobile);
             this.optimizeButtonForMobile(changePasswordBtn, isMobile);
+            this.optimizeButtonForMobile(svgSettingsBtn, isMobile);
             this.optimizeButtonForMobile(deleteConfigBtn, isMobile);
             this.optimizeButtonForMobile(logoutBtn, isMobile);
 
             syncContainer.appendChild(uploadBtn);
             syncContainer.appendChild(downloadBtn);
             syncContainer.appendChild(changePasswordBtn);
+            syncContainer.appendChild(svgSettingsBtn);
             syncContainer.appendChild(deleteConfigBtn);
 
             container.appendChild(syncContainer);
             container.appendChild(logoutBtn);
+        },
+
+        createSvgUploadSettingsDialog: function (storageInfoContainer) {
+            const dialogId = 'nodeseek-svg-upload-settings-dialog';
+            const existingDialog = document.getElementById(dialogId);
+            if (existingDialog) {
+                existingDialog.remove();
+                return;
+            }
+
+            const isMobile = window.innerWidth <= 768;
+            const dialog = document.createElement('div');
+            dialog.id = dialogId;
+            dialog.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: ${isMobile ? '90vw' : '420px'};
+                max-width: ${isMobile ? '90vw' : '420px'};
+                z-index: 10001;
+                background: #fff;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+                padding: 20px;
+                box-sizing: border-box;
+            `;
+
+            const dragHandle = document.createElement('div');
+            dragHandle.className = 'dialog-title-draggable';
+            dragHandle.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 30px;
+                height: 30px;
+                cursor: move;
+                background: transparent;
+                z-index: 1;
+                user-select: none;
+            `;
+
+            const title = document.createElement('div');
+            title.textContent = 'SVG上传设置';
+            title.style.cssText = `
+                font-weight: bold;
+                font-size: 16px;
+                margin-bottom: 15px;
+                text-align: center;
+                color: #fa8c16;
+            `;
+
+            const closeBtn = document.createElement('span');
+            closeBtn.textContent = '×';
+            closeBtn.style.cssText = `
+                position: absolute;
+                right: 12px;
+                top: 8px;
+                cursor: pointer;
+                font-size: 20px;
+                color: #999;
+            `;
+            closeBtn.onclick = () => {
+                if (pendingSaveTimer) {
+                    try { clearTimeout(pendingSaveTimer); } catch (e) { }
+                    pendingSaveTimer = null;
+                }
+                dialog.remove();
+            };
+
+            const options = [
+                { days: 30, label: '1个月失效' },
+                { days: 90, label: '3个月失效' },
+                { days: 180, label: '6个月失效' },
+                { days: 365, label: '1年失效' },
+                { days: 730, label: '2年失效' }
+            ];
+
+            const getLabel = (days) => {
+                const hit = options.find(o => o.days === days);
+                return hit ? hit.label : `${days}天失效`;
+            };
+
+            const tip = document.createElement('div');
+            tip.style.cssText = `
+                background: #fff7e6;
+                border: 1px solid #ffd591;
+                border-radius: 6px;
+                padding: 10px 12px;
+                font-size: 12px;
+                color: #d46b08;
+                line-height: 1.5;
+                text-align: center;
+                margin-bottom: 12px;
+            `;
+            tip.innerHTML = `
+                <div>系统每天 00:00 自动清理：删除上传时间超过失效周期的旧 SVG</div>
+                <div>例如：选择 1年失效，则会删除上传超过 1 年的 SVG</div>
+            `.trim();
+
+            const form = document.createElement('div');
+            form.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            `;
+
+            const retentionRow = document.createElement('div');
+            retentionRow.style.cssText = `
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            `;
+
+            const retentionLabel = document.createElement('div');
+            retentionLabel.textContent = '失效周期';
+            retentionLabel.style.cssText = `
+                width: 70px;
+                font-size: 13px;
+                color: #333;
+                font-weight: 600;
+            `;
+
+            const retentionSelect = document.createElement('select');
+            retentionSelect.style.cssText = `
+                flex: 1;
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                outline: none;
+                background: #fff;
+                color: #333;
+            `;
+            options.forEach(o => {
+                const opt = document.createElement('option');
+                opt.value = String(o.days);
+                opt.textContent = o.label;
+                retentionSelect.appendChild(opt);
+            });
+            retentionSelect.value = '365';
+
+            retentionRow.appendChild(retentionLabel);
+            retentionRow.appendChild(retentionSelect);
+
+            const currentLine = document.createElement('div');
+            currentLine.style.cssText = `
+                font-size: 12px;
+                color: #666;
+            `;
+            currentLine.textContent = `当前：${getLabel(365)}`;
+
+            const actionRow = document.createElement('div');
+            actionRow.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                margin-top: 8px;
+            `;
+
+            const deleteAllBtn = document.createElement('button');
+            deleteAllBtn.textContent = '全部删除';
+            deleteAllBtn.style.cssText = `
+                padding: 8px;
+                background: #f5222d;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            `;
+
+            const closeActionBtn = document.createElement('button');
+            closeActionBtn.textContent = '关闭';
+            closeActionBtn.style.cssText = `
+                padding: 8px;
+                background: #999;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            `;
+            closeActionBtn.onclick = () => {
+                if (pendingSaveTimer) {
+                    try { clearTimeout(pendingSaveTimer); } catch (e) { }
+                    pendingSaveTimer = null;
+                }
+                dialog.remove();
+            };
+
+            let pendingSaveTimer = null;
+            let lastSavedDays = 365;
+
+            retentionSelect.onchange = async () => {
+                const days = parseInt(retentionSelect.value || '365', 10);
+                currentLine.textContent = `当前：${getLabel(days)}`;
+                if (pendingSaveTimer) {
+                    try { clearTimeout(pendingSaveTimer); } catch (e) { }
+                }
+                pendingSaveTimer = setTimeout(async () => {
+                    try {
+                        const ok = await Sync.setSvgRetentionDays(days);
+                        if (ok) {
+                            lastSavedDays = days;
+                        } else {
+                            retentionSelect.value = String(lastSavedDays);
+                            currentLine.textContent = `当前：${getLabel(lastSavedDays)}`;
+                        }
+                    } catch (e) {
+                        retentionSelect.value = String(lastSavedDays);
+                        currentLine.textContent = `当前：${getLabel(lastSavedDays)}`;
+                    }
+                }, 300);
+            };
+
+            deleteAllBtn.onclick = async () => {
+                if (!confirm('确定要删除所有已上传的SVG吗？\n\n⚠️ 此操作不可恢复！')) {
+                    return;
+                }
+                deleteAllBtn.disabled = true;
+                const originalText = deleteAllBtn.textContent;
+                deleteAllBtn.textContent = '删除中...';
+                try {
+                    const deleted = await Sync.deleteSvgFiles({ all: true });
+                    if (deleted !== null && deleted > 0) {
+                        Utils.showMessage(`已删除 ${deleted} 个SVG`, 'success', false);
+                        if (storageInfoContainer) {
+                            await UI.loadStorageInfo(storageInfoContainer);
+                        } else {
+                            UI.refreshStorageInfo();
+                        }
+                        try { window.dispatchEvent(new CustomEvent('ns-storage-changed')); } catch (e) { }
+                    }
+                } finally {
+                    deleteAllBtn.disabled = false;
+                    deleteAllBtn.textContent = originalText;
+                }
+            };
+
+            actionRow.appendChild(deleteAllBtn);
+            actionRow.appendChild(closeActionBtn);
+
+            form.appendChild(tip);
+            form.appendChild(retentionRow);
+            form.appendChild(currentLine);
+            form.appendChild(actionRow);
+
+            dialog.appendChild(dragHandle);
+            dialog.appendChild(title);
+            dialog.appendChild(closeBtn);
+            dialog.appendChild(form);
+
+            document.body.appendChild(dialog);
+            this.makeDraggable(dialog);
+
+            (async () => {
+                try {
+                    const days = await Sync.getSvgRetentionDays();
+                    if (typeof days === 'number') {
+                        retentionSelect.value = String(days);
+                        currentLine.textContent = `当前：${getLabel(days)}`;
+                        lastSavedDays = days;
+                    }
+                } catch (e) { }
+            })();
         },
 
         // 创建修改密码对话框
@@ -3406,44 +3811,128 @@
         },
 
         // 加载存储空间信息
-        loadStorageInfo: async function (storageElement) {
+        loadStorageInfo: async function (storageElement, retryCount = 0) {
+            const LOCK_KEY = 'nodeseek_storage_fetch_lock';
+            const DATA_KEY = 'nodeseek_storage_data';
+            const CACHE_TIME_KEY = 'nodeseek_storage_data_time';
+
+            // 渲染UI的辅助函数
+            const renderUI = (storage) => {
+                const usageColor = storage.usage_percent >= 90 ? '#ff4d4f' :
+                    storage.usage_percent >= 70 ? '#faad14' : '#52c41a';
+
+                storageElement.innerHTML = `
+                    <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
+                    <div>已使用: ${storage.usage_mb}MB / ${storage.limit_mb}MB</div>
+                    <div style="color: ${usageColor}; font-weight: bold;">剩余: ${storage.remaining_mb}MB (${storage.usage_percent}%)</div>
+                `;
+            };
+
+            // 渲染错误的辅助函数
+            const renderError = (msg) => {
+                storageElement.innerHTML = `
+                    <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
+                    <div style="color: #999;">${msg}</div>
+                `;
+            };
+
             try {
-                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/user`, {
-                    method: 'GET'
+                // 首次尝试时检查锁和缓存
+                if (retryCount === 0) {
+                    const lastLock = parseInt(localStorage.getItem(LOCK_KEY) || '0');
+                    const now = Date.now();
+                    
+                    // 如果其他页面/标签页正在获取（锁在15秒内有效）
+                    if (now - lastLock < 15000) {
+                        storageElement.innerHTML = `
+                            <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
+                            <div style="color: #666;">同步中...</div>
+                        `;
+                        
+                        // 轮询等待结果
+                        const checkTimer = setInterval(() => {
+                            // 检查锁是否已释放或过期
+                            const currentLock = parseInt(localStorage.getItem(LOCK_KEY) || '0');
+                            if (Date.now() - currentLock > 15000 || !localStorage.getItem(LOCK_KEY)) {
+                                clearInterval(checkTimer);
+                                // 尝试读取最新数据
+                                try {
+                                    const cachedData = localStorage.getItem(DATA_KEY);
+                                    if (cachedData) {
+                                        renderUI(JSON.parse(cachedData));
+                                    } else {
+                                        // 如果没有数据，显示上次的状态或默认失败
+                                        renderError('获取失败');
+                                    }
+                                } catch (e) {
+                                    renderError('数据解析失败');
+                                }
+                            }
+                        }, 1000);
+                        return;
+                    }
+                    
+                    // 获取锁
+                    localStorage.setItem(LOCK_KEY, now.toString());
+                } else {
+                    // 重试期间更新锁，防止过期
+                    localStorage.setItem(LOCK_KEY, Date.now().toString());
+                }
+
+                // 请求数据（禁用内部重试，使用自定义重试逻辑）
+                const data = await Utils.request(`${CONFIG.SERVER_URL}/api/user?_=${Date.now()}`, {
+                    method: 'GET',
+                    cache: 'no-store',
+                    retries: 0 // 禁用Utils内部重试
                 });
 
                 if (data.success && data.user && data.user.storage) {
                     const storage = data.user.storage;
-                    const usageColor = storage.usage_percent >= 90 ? '#ff4d4f' :
-                        storage.usage_percent >= 70 ? '#faad14' : '#52c41a';
-
-                    storageElement.innerHTML = `
-                        <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
-                        <div>已使用: ${storage.usage_mb}MB / ${storage.limit_mb}MB</div>
-                        <div style="color: ${usageColor}; font-weight: bold;">剩余: ${storage.remaining_mb}MB (${storage.usage_percent}%)</div>
-                    `;
+                    // 保存数据和时间
+                    localStorage.setItem(DATA_KEY, JSON.stringify(storage));
+                    localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+                    // 释放锁
+                    localStorage.removeItem(LOCK_KEY);
+                    renderUI(storage);
                 } else {
-                    storageElement.innerHTML = `
-                        <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
-                        <div style="color: #999;">数据格式错误</div>
-                    `;
+                    throw new Error('数据格式错误');
                 }
             } catch (error) {
-                console.error('获取存储空间信息失败:', error);
-                let errorMessage = '获取失败';
-                if (error.message.includes('超时')) {
-                    errorMessage = '请求超时';
-                } else if (error.message.includes('网络')) {
-                    errorMessage = '网络错误';
-                } else if (error.message.includes('401') || error.message.includes('403')) {
-                    errorMessage = '认证失败';
+                // 重试逻辑：最多重试3次，间隔3秒
+                if (retryCount < 3) {
+                    const nextRetry = retryCount + 1;
+                    storageElement.innerHTML = `
+                        <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
+                        <div style="color: #faad14;">获取失败，正在重试 (${nextRetry}/3)...</div>
+                    `;
+                    
+                    setTimeout(() => {
+                        this.loadStorageInfo(storageElement, nextRetry);
+                    }, 3000);
+                } else {
+                    // 最终失败，释放锁
+                    localStorage.removeItem(LOCK_KEY);
+                    
+                    let errorMessage = '获取失败';
+                    if (error.message.includes('超时')) {
+                        errorMessage = '请求超时';
+                    } else if (error.message.includes('网络')) {
+                        errorMessage = '网络错误';
+                    } else if (error.message.includes('401') || error.message.includes('403')) {
+                        errorMessage = '认证失败';
+                    }
+    
+                    renderError(errorMessage);
                 }
-
-                storageElement.innerHTML = `
-                    <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
-                    <div style="color: #999;">${errorMessage}</div>
-                `;
             }
+        },
+
+        refreshStorageInfo: function () {
+            try {
+                const elements = document.querySelectorAll('.storage-info-container');
+                if (!elements || elements.length === 0) return;
+                elements.forEach((el) => UI.loadStorageInfo(el));
+            } catch (e) { }
         },
 
         // 使对话框可拖动（支持PC和移动端）
@@ -3569,11 +4058,15 @@
         showSelectionDialog: function (mode = 'upload') {
             try {
                 Sync.showConfigSelectionDialog(mode, () => { });
-            } catch (e) {
-                console.error('显示选择对话框失败:', e);
-            }
+            } catch (e) { }
         }
     };
+
+    try {
+        window.addEventListener('ns-storage-changed', () => {
+            UI.refreshStorageInfo();
+        });
+    } catch (e) { }
 
     // 导出到全局
     window.NodeSeekLogin = NodeSeekLogin;
