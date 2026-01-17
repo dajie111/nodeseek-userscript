@@ -1001,7 +1001,7 @@
                 } else if (!token) {
                     copyMdBtn.title = '需要登录才能使用';
                 } else {
-                    copyMdBtn.title = '点击复制 Markdown';
+                    copyMdBtn.title = '点击复制 SVG';
                 }
             }
         },
@@ -1083,7 +1083,7 @@
             const shareButtons = [
                 { label: '下载', w: 84 },
                 { label: '复制文本', w: 104 },
-                { label: '复制 MD', w: 96 }
+                { label: '复制 SVG', w: 100 }
             ];
 
             const footerText = '导出时间: ' + dateStr;
@@ -1188,7 +1188,7 @@
             const updatedShareButtons = [
                 { label: '下载', w: 100 },
                 { label: '复制文本', w: 120 },
-                { label: '复制 MD', w: 110 }
+                { label: '复制 SVG', w: 115 }
             ];
             const realTotalBtnW = updatedShareButtons.reduce((sum, b) => sum + b.w, 0) + (updatedShareButtons.length - 1) * 10;
             let bx = card2.x + (card2.w - realTotalBtnW) / 2;
@@ -2331,7 +2331,7 @@
                                         <span id="vps-markdown-copied" style="transition: opacity 0.2s; opacity: 0; position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center;">已复制</span>
                                     </button>
                                     <button id="vps-copy-md-btn" style="background: #ededed; color: #333; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; min-width: 70px; position: relative; overflow: hidden;">
-                                        <span id="vps-copy-md-text" style="transition: opacity 0.2s; opacity: 1; position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center;">复制 MD</span>
+                                        <span id="vps-copy-md-text" style="transition: opacity 0.2s; opacity: 1; position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center;">复制 SVG</span>
                                         <span id="vps-copy-md-copied" style="transition: opacity 0.2s; opacity: 0; position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center;">已复制</span>
                                     </button>
                                 </div>
