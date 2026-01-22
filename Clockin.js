@@ -175,8 +175,8 @@
                 localStorage.setItem(STORAGE_KEYS.hourlySignTime, now.getTime().toString());
                 
                 // 获取当前签到模式
-                const mode = localStorage.getItem(STORAGE_KEYS.signMode) || 'random';
-                const api = APIS[mode] || APIS.random;
+                const mode = localStorage.getItem(STORAGE_KEYS.signMode) || 'fixed';
+                const api = APIS[mode] || APIS.fixed;
                 
                 // this.addLog(`开始执行自动签到 (模式: ${mode === 'fixed' ? '固定' : '随机'})...`);
 
@@ -215,7 +215,7 @@
 
         // 获取当前签到模式
         getSignMode() {
-            return localStorage.getItem(STORAGE_KEYS.signMode) || 'random';
+            return localStorage.getItem(STORAGE_KEYS.signMode) || 'fixed';
         }
 
         // 页面卸载清理
