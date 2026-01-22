@@ -43,6 +43,8 @@
 
     // 新增：用户信息显示状态的存储键
     const USER_INFO_DISPLAY_KEY = 'nodeseek_user_info_display';
+    const VIEWED_HISTORY_ENABLED_KEY = 'nodeseek_viewed_history_enabled';
+    const VIEWED_COLOR_KEY = 'nodeseek_viewed_color';
 
     // 新增：浏览历史记录的存储键
     const BROWSE_HISTORY_KEY = 'nodeseek_browse_history';
@@ -55,6 +57,26 @@
     // 新增：保存用户信息显示状态
     function setUserInfoDisplayState(isEnabled) {
         localStorage.setItem(USER_INFO_DISPLAY_KEY, isEnabled.toString());
+    }
+
+    // 新增：获取阅读记忆开启状态
+    function getViewedHistoryEnabled() {
+        return localStorage.getItem(VIEWED_HISTORY_ENABLED_KEY) !== 'false'; // 默认开启
+    }
+
+    // 新增：保存阅读记忆开启状态
+    function setViewedHistoryEnabled(enabled) {
+        localStorage.setItem(VIEWED_HISTORY_ENABLED_KEY, enabled.toString());
+    }
+
+    // 新增：获取阅读后颜色
+    function getViewedColor() {
+        return localStorage.getItem(VIEWED_COLOR_KEY) || '#9aa0a6';
+    }
+
+    // 新增：保存阅读后颜色
+    function setViewedColor(color) {
+        localStorage.setItem(VIEWED_COLOR_KEY, color);
     }
 
     // 新增：浏览历史记录管理
@@ -536,7 +558,7 @@
                 timestamp: new Date().toISOString(),
                 pinned: false // 默认不置顶
             };
-            
+
             // 插入到第一个非置顶的位置，确保新收藏在非置顶区的顶部
             const firstUnpinnedIndex = list.findIndex(item => !item.pinned);
             if (firstUnpinnedIndex === -1) {
@@ -881,7 +903,7 @@
 
     // 红色高亮样式
     const style = document.createElement('style');
-    style.innerHTML = `.blacklisted-user { color: red !important; font-weight: bold; white-space: nowrap; } .friend-user { color: #2ea44f !important; font-weight: bold; white-space: nowrap; } .blacklist-remark { color: #d00; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; } .friend-remark { color: #2ea44f; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; }
+    style.innerHTML = `.friend-user { color: #2ea44f !important; font-weight: bold; white-space: nowrap; } .blacklisted-user { color: red !important; font-weight: bold; white-space: nowrap; } .blacklist-remark { color: #d00; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; } .friend-remark { color: #2ea44f; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; } .ns-viewed-title { color: var(--ns-viewed-color, #9aa0a6) !important; }
     .blacklist-btn {
         margin-left: 7px;
         cursor: pointer;
@@ -1002,7 +1024,7 @@
             max-width: 100% !important; /* 确保不超出容器 */
             white-space: nowrap !important; /* 防止文字换行 */
         }
-        
+
         /* 针对签到按钮的特殊适配 */
         #sign-in-btn {
             width: 100% !important; /* 签到按钮占满一行 */
@@ -1195,6 +1217,12 @@
     }`;
     document.head.appendChild(style);
 
+    // 初始化已读标题颜色变量
+    try {
+        const initialViewedColor = getViewedColor();
+        document.documentElement.style.setProperty('--ns-viewed-color', initialViewedColor);
+    } catch(e) {}
+
     // 处理所有用户名节点
     function processUsernames() {
         const SCRIPT_BUTTON_MARKER_CLASS = 'userscript-nodeseek-interaction-btn'; // 新增标记类
@@ -1278,13 +1306,17 @@
                     const remark = prompt('请输入备注（可选）：', '');
                     if (remark !== null) {
                         addToBlacklist(username, remark, a, btn);
+                        if (isFriend(username)) {
+                            removeFriend(username, true);
+                        }
 
                         // 不刷新页面，直接更新按钮和用户显示
                         btn.textContent = '移除黑名单';
                         btn.className = 'blacklist-btn ' + SCRIPT_BUTTON_MARKER_CLASS + ' red';
 
                         // 更新当前页面上该用户的所有显示
-                        highlightBlacklisted();
+                        highlightBlacklisted(username);
+                        try { ensureBlacklistNavEntryAndMeta(true); } catch (e) { }
 
                         // 更新好友按钮状态（如果存在）
                         if (friendBtn) {
@@ -1358,7 +1390,8 @@
                     friendBtn.style.background = '#aaa';
 
                     // 更新当前页面上该用户的所有显示
-                    highlightFriends();
+                    highlightBlacklisted(username);
+                    try { ensureBlacklistNavEntryAndMeta(true); } catch (e) { }
 
                     // 如果好友列表弹窗是打开的，立即更新弹窗内容
                     if (window.NodeSeekFriends && typeof window.NodeSeekFriends.updateFriendsDialogWithNewUser === 'function') {
@@ -1402,6 +1435,7 @@
                         if (window.NodeSeekFriends && typeof window.NodeSeekFriends.removeFriendFromDialog === 'function') {
                             window.NodeSeekFriends.removeFriendFromDialog(username);
                         }
+                        try { ensureBlacklistNavEntryAndMeta(true); } catch (e) { }
                     }
                 }
             };
@@ -1448,19 +1482,33 @@
         window.addEventListener('resize', scheduleBlacklistRemarkWidthUpdate);
     }
 
-    function highlightBlacklisted() {
+    function highlightBlacklisted(targetUsername) {
         const list = getBlacklist();
+        const friends = getFriends();
+        const friendMap = new Map();
+        if (Array.isArray(friends)) {
+            friends.forEach(f => {
+                if (f && f.username) friendMap.set(String(f.username).trim(), f);
+            });
+        }
+
+        const normalizedTarget = (typeof targetUsername === 'string' && targetUsername.trim())
+            ? targetUsername.trim()
+            : '';
 
         document.querySelectorAll('a.author-name').forEach(function (a) {
             const username = a.textContent.trim();
+            if (normalizedTarget && username !== normalizedTarget) return;
             // 先移除样式
-            a.classList.remove('blacklisted-user');
+            a.classList.remove('blacklisted-user', 'friend-user');
             // 移除备注和网址
             const oldRemark = a.parentNode.querySelector('.blacklist-remark');
             if (oldRemark) oldRemark.remove();
             const oldUrl = a.parentNode.querySelector('.blacklist-url');
             if (oldUrl) oldUrl.remove();
-            
+            const oldFriendRemark = a.parentNode.querySelector('.friend-remark');
+            if (oldFriendRemark) oldFriendRemark.remove();
+
             // 新增：移除旧的黑名单信息容器（在metaInfo下）
             let metaInfo = a.closest('.nsk-content-meta-info');
             if (metaInfo) {
@@ -1469,6 +1517,10 @@
                 // 兼容旧版本：移除单独的拉黑时间
                 const oldTime = metaInfo.querySelector('.blacklist-time');
                 if (oldTime) oldTime.remove();
+                const oldFriendContainer = metaInfo.querySelector('.friend-info-container');
+                if (oldFriendContainer) oldFriendContainer.remove();
+                const oldFriendTime = metaInfo.querySelector('.friend-time');
+                if (oldFriendTime) oldFriendTime.remove();
             }
 
             if (isBlacklisted(username)) {
@@ -1495,7 +1547,7 @@
                     span.title = remark; // 悬停显示完整备注
                     a.parentNode.appendChild(span);
                 }
-                
+
                 // 准备底部显示的信息：拉黑页面链接 和 拉黑时间
                 const url = getBlacklistUrl(username);
                 const timestamp = getBlacklistTime(username);
@@ -1504,27 +1556,27 @@
                     const isMobile = window.innerWidth <= 767;
                     // 让父容器相对定位，便于绝对定位子元素
                     metaInfo.style.position = 'relative';
-                    
+
                     // 创建容器
                     const container = document.createElement('div');
                     container.className = 'blacklist-info-container';
                     container.style.position = isMobile ? 'static' : 'absolute';
                     container.style.right = isMobile ? '' : '-6px';
-                    container.style.top = isMobile ? '' : '21px';
+                    container.style.top = isMobile ? '' : '23px';
                     container.style.display = 'flex';
                     container.style.alignItems = 'center';
                     container.style.zIndex = isMobile ? '' : '10';
-                    container.style.background = isMobile ? 'transparent' : '#fff';
+                    container.style.background = 'transparent';
                     container.style.padding = '0';
                     container.style.flexWrap = isMobile ? 'wrap' : 'nowrap';
                     container.style.gap = isMobile ? '6px' : '';
                     container.style.marginTop = isMobile ? '4px' : '';
-                    
+
                     // 1. 显示拉黑时的网址 (在左侧)
                     if (url) {
                         const link = document.createElement('a');
                         link.className = 'blacklist-url';
-                        
+
                         // 构建包含精确楼层的链接
                         let targetUrl = url;
                         // 检查是否有楼层信息
@@ -1555,7 +1607,7 @@
                     if (timestamp) {
                         const timeSpan = document.createElement('span');
                         timeSpan.className = 'blacklist-time';
-                        
+
                         const date = new Date(timestamp);
                         const timeStr = date.getFullYear() + '-' +
                             String(date.getMonth() + 1).padStart(2, '0') + '-' +
@@ -1563,15 +1615,65 @@
                             String(date.getHours()).padStart(2, '0') + ':' +
                             String(date.getMinutes()).padStart(2, '0') + ':' +
                             String(date.getSeconds()).padStart(2, '0');
-                            
+
                         timeSpan.textContent = '拉黑时间：' + timeStr;
                         timeSpan.style.color = '#d00';
                         timeSpan.style.fontSize = '10px';
                         timeSpan.style.whiteSpace = 'nowrap';
-                        
+
                         container.appendChild(timeSpan);
                     }
-                    
+
+                    metaInfo.appendChild(container);
+                }
+            } else if (friendMap.has(username)) {
+                const friend = friendMap.get(username);
+                a.classList.add('friend-user');
+
+                const remark = friend && friend.remark ? String(friend.remark) : '';
+                if (remark) {
+                    const span = document.createElement('span');
+                    span.className = 'friend-remark';
+                    span.textContent = remark;
+                    span.title = remark;
+                    a.parentNode.appendChild(span);
+                }
+
+                if (metaInfo && friend && friend.timestamp) {
+                    const isMobile = window.innerWidth <= 767;
+                    metaInfo.style.position = 'relative';
+
+                    const container = document.createElement('div');
+                    container.className = 'friend-info-container';
+                    container.style.position = isMobile ? 'static' : 'absolute';
+                    container.style.right = isMobile ? '' : '-6px';
+                    container.style.top = isMobile ? '' : '23px';
+                    container.style.display = 'flex';
+                    container.style.alignItems = 'center';
+                    container.style.zIndex = isMobile ? '' : '10';
+                    container.style.background = 'transparent';
+                    container.style.padding = '0';
+                    container.style.flexWrap = isMobile ? 'wrap' : 'nowrap';
+                    container.style.gap = isMobile ? '6px' : '';
+                    container.style.marginTop = isMobile ? '4px' : '';
+
+                    const timeSpan = document.createElement('span');
+                    timeSpan.className = 'friend-time';
+
+                    const date = new Date(friend.timestamp);
+                    const timeStr = date.getFullYear() + '-' +
+                        String(date.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(date.getDate()).padStart(2, '0') + ' ' +
+                        String(date.getHours()).padStart(2, '0') + ':' +
+                        String(date.getMinutes()).padStart(2, '0') + ':' +
+                        String(date.getSeconds()).padStart(2, '0');
+
+                    timeSpan.textContent = '添加时间：' + timeStr;
+                    timeSpan.style.color = '#2ea44f';
+                    timeSpan.style.fontSize = '10px';
+                    timeSpan.style.whiteSpace = 'nowrap';
+                    container.appendChild(timeSpan);
+
                     metaInfo.appendChild(container);
                 }
             }
@@ -1581,7 +1683,7 @@
 
     // 新增：高亮好友用户并显示备注
     // highlightFriends 函数已移动到 Friends.js 模块
-    const highlightFriends = () => window.NodeSeekFriends?.highlightFriends();
+    const highlightFriends = (username) => window.NodeSeekFriends?.highlightFriends(username);
 
     // 新增：为代码块添加复制按钮
     function addCopyButtonsToCodeBlocks() {
@@ -1673,6 +1775,195 @@
         });
     }
 
+    let lastViewedTitlesRunAt = 0;
+    let lastVisitedHistoryRaw = null;
+    let cachedVisitedUrlSet = new Set();
+
+    function normalizeVisitedUrl(urlStr) {
+        try {
+            const urlObj = new URL(urlStr, window.location.origin);
+            let pathname = urlObj.pathname;
+            const postMatch = pathname.match(/^\/post-(\d+)-\d+$/);
+            if (postMatch) {
+                pathname = `/post-${postMatch[1]}-1`;
+            }
+            return urlObj.origin + pathname + urlObj.search;
+        } catch (e) {
+            return (urlStr || '').toString().split('#')[0];
+        }
+    }
+
+    // 新增：已读标题记录管理（独立存储）
+    const VIEWED_TITLES_STORAGE_KEY = 'nodeseek_viewed_titles_data';
+    
+    function getViewedTitlesData() {
+        return JSON.parse(localStorage.getItem(VIEWED_TITLES_STORAGE_KEY) || '[]');
+    }
+
+    function setViewedTitlesData(list) {
+        localStorage.setItem(VIEWED_TITLES_STORAGE_KEY, JSON.stringify(list));
+    }
+
+    function addToViewedTitles(url) {
+        const history = getViewedTitlesData();
+        const normalizedUrl = normalizeVisitedUrl(url);
+        
+        // 检查是否存在
+        const existingIndex = history.indexOf(normalizedUrl);
+        if (existingIndex !== -1) {
+            // 移动到最前
+            history.splice(existingIndex, 1);
+        }
+        
+        history.unshift(normalizedUrl);
+        
+        // 限制最大条数 5000
+        if (history.length > 5000) {
+            history.length = 5000;
+        }
+        
+        setViewedTitlesData(history);
+        // 更新缓存
+        cachedVisitedUrlSet = new Set(history);
+    }
+
+    // 暴露接口给 History.js 和同步功能使用
+    window.NodeSeekViewedTitles = {
+        add: addToViewedTitles,
+        getData: getViewedTitlesData,
+        setData: setViewedTitlesData,
+        refresh: function() {
+            cachedVisitedUrlSet = null; // 强制清除缓存
+            markViewedTitles(true); // 重新渲染
+        }
+    };
+
+    function getVisitedUrlSet() {
+        // 优先使用新的独立存储
+        const raw = localStorage.getItem(VIEWED_TITLES_STORAGE_KEY);
+        if (raw) {
+            if (raw === lastVisitedHistoryRaw) return cachedVisitedUrlSet;
+            lastVisitedHistoryRaw = raw;
+            try {
+                const history = JSON.parse(raw);
+                cachedVisitedUrlSet = new Set(history);
+                return cachedVisitedUrlSet;
+            } catch(e) {
+                return new Set();
+            }
+        }
+
+        // 迁移旧数据（如果存在且新存储为空）
+        try {
+            const history = getBrowseHistory();
+            const set = new Set();
+            const list = [];
+            if (Array.isArray(history)) {
+                for (const item of history) {
+                    if (!item || !item.url) continue;
+                    const normalized = normalizeVisitedUrl(item.url);
+                    if (!set.has(normalized)) {
+                        set.add(normalized);
+                        list.push(normalized);
+                    }
+                }
+            }
+            // 保存迁移数据
+            if (list.length > 0) {
+                setViewedTitlesData(list);
+            }
+            cachedVisitedUrlSet = set;
+            return cachedVisitedUrlSet;
+        } catch (e) {
+            cachedVisitedUrlSet = new Set();
+            return cachedVisitedUrlSet;
+        }
+    }
+
+    function isLikelyTitleLink(a) {
+        if (!(a instanceof HTMLAnchorElement)) return false;
+        if (!a.href) return false;
+        if (a.closest('#nodeseek-plugin-container, #browse-history-dialog, #favorites-dialog, #blacklist-dialog, #friends-dialog, #logs-dialog')) return false;
+        if (a.closest('footer')) return false;
+        const path = window.location.pathname || '';
+        const isDetailPage = path.includes('/topic/') || path.includes('/article/') || /\/post-\d+/.test(path);
+        if (isDetailPage) {
+            if (a.closest('.topic-header, .thread-header, .article-header, .topic-detail-header')) return false;
+            if (a.closest('h1')) return false;
+        }
+        const text = (a.textContent || '').trim();
+        if (text.length < 3 || text.length > 140) return false;
+        const href = a.getAttribute('href') || '';
+        if (!/\/post-\d+|\/topic\/|\/article\//.test(href) && !/\/post-\d+|\/topic\/|\/article\//.test(a.href)) return false;
+        return true;
+    }
+
+    function markViewedTitles(force = false) {
+        const isEnabled = getViewedHistoryEnabled();
+        const now = Date.now();
+        if (!force && now - lastViewedTitlesRunAt < 1200) return;
+        lastViewedTitlesRunAt = now;
+
+        // 如果功能关闭，移除已有的样式并退出
+        if (!isEnabled) {
+            const marked = document.querySelectorAll('.ns-viewed-title');
+            for (const el of marked) {
+                el.classList.remove('ns-viewed-title');
+                el.style.removeProperty('color');
+            }
+            return;
+        }
+
+        const visitedSet = getVisitedUrlSet();
+
+        const selectors = [
+            'a.topic-title', '.topic-title a',
+            'a.thread-title', '.thread-title a',
+            'a.post-title', '.post-title a',
+            'a.article-title', '.article-title a',
+            '.subject a', '.title a',
+            'h2 a[href*="/post-"]', 'h3 a[href*="/post-"]',
+            'a[href*="/post-"][class*="title"]',
+            'a[href*="/topic/"][class*="title"]',
+            'a[href*="/article/"][class*="title"]'
+        ];
+
+        const candidates = new Set();
+        for (const selector of selectors) {
+            const list = document.querySelectorAll(selector);
+            for (const el of list) {
+                if (el instanceof HTMLAnchorElement) candidates.add(el);
+            }
+        }
+
+        if (candidates.size === 0) {
+            const fallback = document.querySelectorAll('a[href*="/post-"], a[href*="/topic/"], a[href*="/article/"]');
+            for (const el of fallback) {
+                if (el instanceof HTMLAnchorElement) candidates.add(el);
+            }
+        }
+
+        for (const a of candidates) {
+            if (!isLikelyTitleLink(a)) continue;
+            const normalized = normalizeVisitedUrl(a.href);
+            const isViewed = visitedSet.has(normalized);
+            
+            if (isViewed) {
+                a.classList.add('ns-viewed-title');
+                // 移除旧的内联样式
+                if (a.style.color) {
+                    a.style.removeProperty('color');
+                }
+            } else {
+                a.classList.remove('ns-viewed-title');
+                // 如果之前设置过颜色，移除它
+                if (a.style.color) {
+                    a.style.removeProperty('color');
+                }
+            }
+        }
+    }
+
     // 优化主更新函数，减少不必要的重复调用
     let lastUpdateTime = 0;
     function updateAll() {
@@ -1690,6 +1981,7 @@
         addFavoriteButton(); // 新增收藏按钮
         processUserAvatars(); // 新增：处理用户头像信息显示
         replaceRelativeTimeWithAbsolute(); // 新增：替换相对时间为完整时间
+        markViewedTitles();
     }
 
     // 兼容异步加载，定时检查
@@ -1842,6 +2134,20 @@
             console.error('导出笔记数据失败:', error);
         }
 
+        // 添加阅读记忆数据
+        let viewedTitles = {};
+        try {
+            const enabled = localStorage.getItem('nodeseek_viewed_titles_enabled');
+            const color = localStorage.getItem('nodeseek_viewed_title_color');
+            const data = localStorage.getItem('nodeseek_viewed_titles_data');
+
+            if (enabled !== null) viewedTitles.enabled = enabled === 'true';
+            if (color !== null) viewedTitles.color = color;
+            if (data !== null) viewedTitles.data = JSON.parse(data);
+        } catch (error) {
+            console.error('导出阅读记忆数据失败:', error);
+        }
+
         const data = JSON.stringify({
             blacklist: blacklist,
             friends: friends,
@@ -1856,6 +2162,7 @@
             chickenLegStats: chickenLegStats, // 添加鸡腿统计数据
             filterData: filterData, // 添加关键词过滤数据
             notesData: notesData, // 添加笔记数据
+            viewedTitles: viewedTitles, // 添加阅读记忆数据
             autoSync: autoSync
         }, null, 2);
         const blob = new Blob([data], { type: 'application/json' });
@@ -1875,6 +2182,7 @@
         const emojiFavCount = Array.isArray(emojiFavorites) ? emojiFavorites.length : 0;
         const hasFilterData = Object.keys(filterData).length > 0;
         const hasNotesData = Object.keys(notesData).length > 0;
+        const hasViewedTitles = Object.keys(viewedTitles).length > 0;
         let exportDesc = '导出数据备份 (黑名单、好友、收藏、操作日志、浏览历史';
         if (hasQuickReplies) {
             exportDesc += '、快捷回复';
@@ -1890,6 +2198,9 @@
         }
         if (hasNotesData) {
             exportDesc += '、笔记';
+        }
+        if (hasViewedTitles) {
+            exportDesc += '、阅读记忆';
         }
         // 不在导出日志中包含“自动同步设置”
         exportDesc += ')';
@@ -2215,6 +2526,32 @@
                         } catch (error) {
                             console.error('导入笔记数据失败:', error);
                             importInfo.push("笔记(失败)");
+                        }
+                    }
+
+                    // 处理阅读记忆数据
+                    if (json.viewedTitles && typeof json.viewedTitles === 'object') {
+                        try {
+                            if (typeof json.viewedTitles.enabled !== 'undefined') {
+                                localStorage.setItem('nodeseek_viewed_titles_enabled', json.viewedTitles.enabled ? 'true' : 'false');
+                            }
+                            if (json.viewedTitles.color) {
+                                localStorage.setItem('nodeseek_viewed_title_color', json.viewedTitles.color);
+                            }
+                            if (Array.isArray(json.viewedTitles.data)) {
+                                localStorage.setItem('nodeseek_viewed_titles_data', JSON.stringify(json.viewedTitles.data));
+                            }
+                            
+                            // 刷新缓存
+                            if (window.NodeSeekViewedTitles && typeof window.NodeSeekViewedTitles.refresh === 'function') {
+                                window.NodeSeekViewedTitles.refresh();
+                            }
+                            
+                            const count = Array.isArray(json.viewedTitles.data) ? json.viewedTitles.data.length : 0;
+                            importInfo.push(`阅读记忆(${json.viewedTitles.enabled ? '开启' : '关闭'}, ${count}条)`);
+                        } catch (error) {
+                            console.error('导入阅读记忆数据失败:', error);
+                            importInfo.push('阅读记忆(失败)');
                         }
                     }
 
@@ -2642,180 +2979,6 @@
         logBtn.style.background = '#795548';
         logBtn.onclick = showLogs;
 
-        // 签到按钮（界面保留但功能移除）
-        const signInBtn = document.createElement('button');
-        signInBtn.id = 'sign-in-btn';
-        signInBtn.className = 'blacklist-btn';
-
-        // 恢复签到状态
-        const signInEnabled = localStorage.getItem('nodeseek_sign_enabled') === 'true';
-
-        // 根据签到状态设置按钮文本和颜色
-        if (signInEnabled) {
-            // 获取当前模式
-            const mode = localStorage.getItem('nodeseek_sign_mode') || 'random';
-            const modeText = mode === 'fixed' ? '固定' : '随机';
-            signInBtn.textContent = `关闭签到(${modeText})`;
-            signInBtn.style.background = '#f44336'; // 红色表示可以关闭
-        } else {
-            signInBtn.textContent = '开启签到';
-            signInBtn.style.background = '#4CAF50'; // 绿色表示可以开启
-        }
-
-        // 设置按钮宽度一致
-        // signInBtn.style.width = '100px'; // 移除固定宽度，改用minWidth
-        signInBtn.style.minWidth = '100px';
-        signInBtn.style.whiteSpace = 'nowrap'; // 防止文字换行
-
-        // 签到按钮点击逻辑
-        signInBtn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            
-            // 当前状态
-            const isEnabled = localStorage.getItem('nodeseek_sign_enabled') === 'true';
-
-            if (isEnabled) {
-                // 如果已开启，则直接关闭
-                localStorage.setItem('nodeseek_sign_enabled', 'false');
-                
-                // 更新按钮状态
-                signInBtn.textContent = '开启签到';
-                signInBtn.style.background = '#4CAF50'; // 绿色表示可以开启
-                
-                // 记录日志
-                addLog('关闭签到功能');
-            } else {
-                // 如果未开启，则弹出模式选择对话框
-                showSignModeDialog();
-            }
-        });
-
-        // 显示签到模式选择弹窗
-        function showSignModeDialog() {
-            // 移除可能存在的旧弹窗
-            const existingDialog = document.getElementById('sign-mode-dialog');
-            if (existingDialog) existingDialog.remove();
-
-            const dialog = document.createElement('div');
-            dialog.id = 'sign-mode-dialog';
-            dialog.style.position = 'fixed';
-            dialog.style.top = '50%';
-            dialog.style.left = '50%';
-            dialog.style.transform = 'translate(-50%, -50%)';
-            dialog.style.zIndex = 10005;
-            dialog.style.background = '#fff';
-            dialog.style.border = '1px solid #ccc';
-            dialog.style.borderRadius = '8px';
-            dialog.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
-            dialog.style.padding = '20px';
-            dialog.style.width = '300px';
-            dialog.style.textAlign = 'center';
-
-            // 标题
-            const title = document.createElement('div');
-            title.textContent = '选择签到模式';
-            title.style.fontSize = '16px';
-            title.style.fontWeight = 'bold';
-            title.style.marginBottom = '20px';
-            dialog.appendChild(title);
-
-            // 按钮容器
-            const btnContainer = document.createElement('div');
-            btnContainer.style.display = 'flex';
-            btnContainer.style.justifyContent = 'space-around';
-            btnContainer.style.marginBottom = '15px';
-
-            // 随机签到按钮
-            const randomBtn = document.createElement('button');
-            randomBtn.textContent = '随机签到';
-            randomBtn.className = 'blacklist-btn';
-            randomBtn.style.background = '#2196F3';
-            randomBtn.style.padding = '8px 16px';
-            randomBtn.onclick = function() {
-                enableSign('random');
-                dialog.remove();
-            };
-
-            // 固定签到按钮
-            const fixedBtn = document.createElement('button');
-            fixedBtn.textContent = '固定签到';
-            fixedBtn.className = 'blacklist-btn';
-            fixedBtn.style.background = '#FF9800';
-            fixedBtn.style.padding = '8px 16px';
-            fixedBtn.onclick = function() {
-                enableSign('fixed');
-                dialog.remove();
-            };
-
-            btnContainer.appendChild(randomBtn);
-            btnContainer.appendChild(fixedBtn);
-            dialog.appendChild(btnContainer);
-
-            // 取消按钮
-            const cancelBtn = document.createElement('button');
-            cancelBtn.textContent = '取消';
-            cancelBtn.style.border = 'none';
-            cancelBtn.style.background = 'transparent';
-            cancelBtn.style.color = '#999';
-            cancelBtn.style.cursor = 'pointer';
-            cancelBtn.style.marginTop = '10px';
-            cancelBtn.onclick = function() {
-                dialog.remove();
-            };
-            dialog.appendChild(cancelBtn);
-
-            // 点击遮罩关闭
-            const overlay = document.createElement('div');
-            overlay.style.position = 'fixed';
-            overlay.style.top = '0';
-            overlay.style.left = '0';
-            overlay.style.width = '100%';
-            overlay.style.height = '100%';
-            overlay.style.background = 'rgba(0,0,0,0.3)';
-            overlay.style.zIndex = 10004;
-            overlay.onclick = function() {
-                dialog.remove();
-                overlay.remove();
-            };
-
-            document.body.appendChild(overlay);
-            document.body.appendChild(dialog);
-            
-            // 确保弹窗移除时遮罩也移除
-            const originalRemove = dialog.remove.bind(dialog);
-            dialog.remove = function() {
-                if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
-                originalRemove();
-            };
-        }
-
-        // 开启签到功能的具体实现
-        function enableSign(mode) {
-            localStorage.setItem('nodeseek_sign_enabled', 'true');
-            
-            // 设置模式
-            if (window.NodeSeekClockIn && window.NodeSeekClockIn.setSignMode) {
-                window.NodeSeekClockIn.setSignMode(mode);
-            } else {
-                // 如果 Clockin.js 还没加载好或者旧版本，尝试手动设置 localStorage
-                localStorage.setItem('nodeseek_sign_mode', mode);
-            }
-
-            // 更新按钮状态
-            const modeText = mode === 'fixed' ? '固定' : '随机';
-            signInBtn.textContent = `关闭签到(${modeText})`;
-            signInBtn.style.background = '#f44336'; // 红色表示可以关闭
-
-            // 记录日志
-            addLog(`开启签到功能 (${modeText}签到)`);
-
-            // 如果签到模块已加载，显示当前状态
-            if (window.NodeSeekClockIn) {
-                // 触发一次状态检查或更新
-                 const todaySigned = window.NodeSeekClockIn.isTodayAlreadySigned ? window.NodeSeekClockIn.isTodayAlreadySigned() : false;
-                 // ... (此处可保留原有状态检查逻辑，如果有的话)
-            }
-        }
 
         // 初始化签到功能模块
         function initClockInFeature() {
@@ -2982,14 +3145,14 @@
         // 移除所有按钮的固定宽度设置，改为 minWidth
         // logBtn.style.width = btnWidth;
         logBtn.style.minWidth = btnWidth;
-        
+
         // 导出和导入按钮已使用百分比宽度，不需要再设置
         // viewBtn.style.width = btnWidth;
         viewBtn.style.minWidth = btnWidth;
-        
+
         // viewFriendsBtn.style.width = btnWidth;
         viewFriendsBtn.style.minWidth = btnWidth;
-        
+
         // quickEditBtn.style.width = btnWidth; // 设置快捷编辑按钮宽度
         quickEditBtn.style.minWidth = btnWidth;
 
@@ -3064,24 +3227,23 @@
         filterBtnContainer.style.width = '100%';
         filterBtnContainer.appendChild(filterBtn);
 
-        // 新增：用户信息显示开关按钮
-        const userInfoToggleBtn = document.createElement('button');
-        userInfoToggleBtn.id = 'user-info-toggle-btn';
-        userInfoToggleBtn.className = 'blacklist-btn';
-        const isUserInfoEnabled = getUserInfoDisplayState();
-        userInfoToggleBtn.style.background = isUserInfoEnabled ? '#f44336' : '#4CAF50';
-        userInfoToggleBtn.textContent = isUserInfoEnabled ? '关闭信息' : '开启信息';
-        userInfoToggleBtn.style.width = '100%';
-        userInfoToggleBtn.style.marginTop = '1px';
-        userInfoToggleBtn.onclick = toggleUserInfoDisplay;
+        // 新增：设置按钮
+        const settingsBtn = document.createElement('button');
+        settingsBtn.id = 'settings-btn';
+        settingsBtn.className = 'blacklist-btn';
+        settingsBtn.style.background = '#607D8B'; // 蓝灰色背景
+        settingsBtn.textContent = '设置';
+        settingsBtn.style.width = '100%';
+        settingsBtn.style.marginTop = '1px';
+        settingsBtn.onclick = showSettingsDialog;
 
-        // 新增：用户信息开关按钮单独一行
-        const userInfoToggleContainer = document.createElement('div');
-        userInfoToggleContainer.style.display = 'flex';
-        userInfoToggleContainer.style.flexDirection = 'row';
-        userInfoToggleContainer.style.gap = '10px';
-        userInfoToggleContainer.style.width = '100%';
-        userInfoToggleContainer.appendChild(userInfoToggleBtn);
+        // 新增：设置按钮单独一行
+        const settingsContainer = document.createElement('div');
+        settingsContainer.style.display = 'flex';
+        settingsContainer.style.flexDirection = 'row';
+        settingsContainer.style.gap = '10px';
+        settingsContainer.style.width = '100%';
+        settingsContainer.appendChild(settingsBtn);
 
         // 新增：快捷回复按钮
         const quickReplyBtn = document.createElement('button');
@@ -3164,8 +3326,7 @@
         };
 
         // 按照指定顺序添加按钮
-        container.appendChild(signInBtn);     // 开启签到
-        container.appendChild(userInfoToggleContainer); // 用户信息开关按钮行
+        container.appendChild(settingsContainer); // 设置按钮行
         container.appendChild(dataContainer); // 导出和导入按钮
         container.appendChild(logBtn);        // 日志
         container.appendChild(viewBtn);       // 查看黑名单
@@ -3477,14 +3638,14 @@
             const [item] = list.splice(srcIndex, 1);
             // 重新获取目标索引，因为列表已变化
             let newTargetIndex = list.findIndex(item => item.url === targetUrl);
-            
+
             // 如果是向下拖拽（原索引 < 原目标索引），则插入到目标项之后
             if (srcIndex < targetIndex) {
                 newTargetIndex++;
             }
-            
+
             list.splice(newTargetIndex, 0, item);
-             
+
             setFavorites(list);
             performSearch();
         }
@@ -3626,7 +3787,7 @@
                 }
 
                 const tdTitle = document.createElement('td');
-                const rowPaddingY = '1px';
+                const rowPaddingY = '0px';
                 tdTitle.style.paddingTop = rowPaddingY;
                 tdTitle.style.paddingBottom = rowPaddingY;
                 const titleLink = document.createElement('a');
@@ -3688,12 +3849,12 @@
                     const span = document.createElement('span');
                     const hasRemark = !!(item.remark && item.remark.trim());
                     span.textContent = hasRemark ? item.remark : '\u00A0';
-                    
+
                     tdRemark.appendChild(span);
 
                     tdRemark.onclick = function (e) {
                         e.stopPropagation();
-                        
+
                         if (tdRemark.querySelector('input')) return;
 
                         const currentText = item.remark || '';
@@ -3709,18 +3870,18 @@
                         input.style.fontSize = '12px';
                         if (isMobile) { input.style.padding = '5px'; input.style.fontSize = '14px'; }
                         input.style.height = isMobile ? '28px' : '18px';
-                        
+
                         tdRemark.textContent = '';
                         tdRemark.style.cursor = 'default';
                         tdRemark.onclick = null;
                         tdRemark.appendChild(input);
                         input.focus();
-                        
+
                         const finishEdit = () => {
                             const newRemark = input.value;
                             input.remove();
                             item.remark = newRemark;
-                            
+
                             let favorites = getFavorites();
                             const index = favorites.findIndex(fav => fav.url === item.url);
                             if (index !== -1) {
@@ -3732,18 +3893,18 @@
                         };
 
                         input.onblur = finishEdit;
-                        
+
                         input.onkeydown = function (e) {
                             if (e.key === 'Enter') input.blur();
-                            else if (e.key === 'Escape') { 
+                            else if (e.key === 'Escape') {
                                 input.remove();
-                                renderRemark(); 
+                                renderRemark();
                             }
                         };
                         input.onclick = function(e) { e.stopPropagation(); };
                     };
                 };
-                
+
                 renderRemark();
                 tr.appendChild(tdRemark);
 
@@ -3772,21 +3933,21 @@
                     categoryText.textContent = displayText;
                     // 固定点击区域宽度为 4 个中文字符
                     categoryText.style.display = 'inline-block';
-                    categoryText.style.width = '4.5em'; 
+                    categoryText.style.width = '4.5em';
                     categoryText.style.overflow = 'hidden';
                     categoryText.style.textOverflow = 'ellipsis';
                     categoryText.style.whiteSpace = 'nowrap';
                     categoryText.style.cursor = 'pointer';
                     categoryText.style.verticalAlign = 'middle';
                     categoryText.title = '点击修改分类: ' + displayText;
-                    
+
                     categoryText.onclick = function (e) {
                         e.stopPropagation();
                         e.preventDefault();
                         if (tdCategory.querySelector('select')) return;
                         showCategorySelect();
                     };
-                    
+
                     tdCategory.appendChild(categoryText);
                 };
 
@@ -3923,7 +4084,7 @@
                 pinBtn.style.color = item.pinned ? '#faad14' : '#1890ff';
                 pinBtn.style.border = `1px solid ${item.pinned ? '#faad14' : '#1890ff'}`;
                 pinBtn.style.background = '#fff';
-                
+
                 pinBtn.onclick = function(e) {
                     e.stopPropagation();
                     togglePin(item.url);
@@ -4022,7 +4183,7 @@
                     title.textContent = `收藏列表 (${filtered.length}条)`;
                 }
             }
-            
+
             // 只有在无搜索词且无分类筛选（显示全部）时，才允许拖拽排序
             const isDragEnabled = !kw && !selectedCategory;
             renderTable(filtered, isDragEnabled);
@@ -4699,7 +4860,7 @@
             table.style.width = '100%';
             table.style.borderCollapse = 'collapse';
             table.style.verticalAlign = 'bottom';
-            table.innerHTML = '<thead><tr><th style="text-align:left;font-size:13px;vertical-align:bottom;">用户名</th><th style="text-align:left;font-size:13px;padding-left:5px;min-width:180px;vertical-align:bottom;">备注</th><th style="text-align:left;font-size:13px;padding-left:8px;vertical-align:bottom;">拉黑时间</th><th style="text-align:left;font-size:13px;padding-left:5px;vertical-align:bottom;">页面</th><th style="vertical-align:bottom;"></th></tr></thead>';
+            table.innerHTML = '<thead><tr><th style="text-align:left;font-size:13px;vertical-align:bottom;">用户名</th><th style="text-align:left;font-size:13px;padding-left:5px;min-width:135px;vertical-align:bottom;">备注</th><th style="text-align:left;font-size:13px;padding-left:0;position:relative;left:-2px;vertical-align:bottom;">拉黑时间</th><th style="text-align:left;font-size:13px;padding-left:5px;vertical-align:bottom;">页面</th><th style="vertical-align:bottom;"></th></tr></thead>';
 
             const tbody = document.createElement('tbody');
             table.appendChild(tbody);
@@ -4750,8 +4911,8 @@
         if (!isMobile) {
             tdRemark.textContent = info.remark || '　';
             tdRemark.style.fontSize = '12px';
-            tdRemark.style.minWidth = '180px';
-            tdRemark.style.maxWidth = '180px';
+            tdRemark.style.minWidth = '135px';
+            tdRemark.style.maxWidth = '135px';
             tdRemark.style.overflow = 'hidden';
             tdRemark.style.textOverflow = 'ellipsis';
             tdRemark.style.whiteSpace = 'nowrap';
@@ -4876,7 +5037,9 @@
         tdTime.style.fontSize = '11px';
         tdTime.style.whiteSpace = 'nowrap';
         tdTime.style.textAlign = 'left';
-        tdTime.style.paddingLeft = '8px';
+        tdTime.style.paddingLeft = '0';
+        tdTime.style.position = 'relative';
+        tdTime.style.left = '-2px';
         tr.appendChild(tdTime);
 
         // 拉黑页面列
@@ -4962,29 +5125,379 @@
         }, 50);
     }
 
-    // 新增：切换用户信息显示状态
-    function toggleUserInfoDisplay() {
-        const currentState = getUserInfoDisplayState();
-        const newState = !currentState;
-        setUserInfoDisplayState(newState);
-
-        // 更新按钮文本
-        const toggleBtn = document.getElementById('user-info-toggle-btn');
-        if (toggleBtn) {
-            toggleBtn.textContent = newState ? '关闭信息' : '开启信息';
-            toggleBtn.style.background = newState ? '#f44336' : '#4CAF50';
+    // 新增：显示设置弹窗
+    function showSettingsDialog() {
+        // 打开弹窗时先更新一次标题状态，确保样式类已添加且内联样式已清除，以便颜色预览生效
+        if (getViewedHistoryEnabled()) {
+            setTimeout(() => markViewedTitles(true), 0);
         }
 
-        if (newState) {
-            // 开启时重新处理用户信息显示
-            processUserAvatars();
-            addLog('用户信息显示：开启');
-        } else {
-            // 关闭时移除所有用户信息显示
-            const userInfoElements = document.querySelectorAll('.user-info-display');
-            userInfoElements.forEach(el => el.remove());
-            addLog('用户信息显示：关闭');
+        const existingDialog = document.getElementById('settings-dialog');
+        if (existingDialog) {
+            existingDialog.remove();
+            return;
         }
+
+        const dialog = document.createElement('div');
+        dialog.id = 'settings-dialog';
+        dialog.style.position = 'fixed';
+        dialog.style.top = '60px';
+        dialog.style.right = '16px';
+        dialog.style.zIndex = '10000';
+        dialog.style.background = '#fff';
+        dialog.style.border = '1px solid #ccc';
+        dialog.style.borderRadius = '8px';
+        dialog.style.boxShadow = '0 2px 12px rgba(0,0,0,0.15)';
+        dialog.style.padding = '18px 20px';
+        dialog.style.width = '300px';
+
+        // 移动端适配
+        const isMobile = (window.NodeSeekFilter && typeof window.NodeSeekFilter.isMobileDevice === 'function')
+            ? window.NodeSeekFilter.isMobileDevice()
+            : (window.innerWidth <= 767);
+        if (isMobile) {
+            dialog.style.width = '90%';
+            dialog.style.left = '50%';
+            dialog.style.top = '50%';
+            dialog.style.transform = 'translate(-50%, -50%)';
+            dialog.style.right = 'auto';
+        }
+
+        // 标题栏
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.marginBottom = '15px';
+        header.style.borderBottom = '1px solid #eee';
+        header.style.paddingBottom = '8px';
+        // if (!isMobile) {
+        //    header.style.cursor = 'move'; // PC端显示拖动光标
+        // }
+
+        const title = document.createElement('div');
+        title.textContent = '插件设置';
+        title.style.fontWeight = 'bold';
+        title.style.fontSize = '16px';
+        title.style.color = '#333';
+        // 阻止标题文字被选中，避免拖动时体验不佳
+        title.style.userSelect = 'none';
+
+        const closeBtn = document.createElement('span');
+        closeBtn.textContent = '×';
+        closeBtn.style.cursor = 'pointer';
+        closeBtn.style.fontSize = '24px';
+        closeBtn.style.lineHeight = '20px';
+        closeBtn.style.color = '#999';
+        closeBtn.onclick = function() { dialog.remove(); };
+
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        dialog.appendChild(header);
+
+        // 新增：左上角20px拖动区域
+        const dragHandle = document.createElement('div');
+        dragHandle.style.position = 'absolute';
+        dragHandle.style.top = '0';
+        dragHandle.style.left = '0';
+        dragHandle.style.width = '20px';
+        dragHandle.style.height = '20px';
+        dragHandle.style.cursor = 'move';
+        dragHandle.style.zIndex = '10001'; // 确保在最上层
+        dragHandle.title = '按住拖动';
+        // 可选：添加一点微弱的背景色或边框提示，或者完全透明
+        // dragHandle.style.background = 'rgba(0,0,0,0.05)'; 
+        dialog.appendChild(dragHandle);
+
+        // 拖动逻辑实现
+        if (!isMobile) {
+            let isDragging = false;
+            let startX, startY, initialLeft, initialTop;
+
+            dragHandle.onmousedown = function(e) {
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                
+                const rect = dialog.getBoundingClientRect();
+                initialLeft = rect.left;
+                initialTop = rect.top;
+                
+                // 防止选中文本
+                e.preventDefault();
+                
+                document.onmousemove = function(e) {
+                    if (isDragging) {
+                        const dx = e.clientX - startX;
+                        const dy = e.clientY - startY;
+                        
+                        // 移除 right 定位，改为 left/top 定位以支持拖动
+                        dialog.style.right = 'auto';
+                        dialog.style.left = (initialLeft + dx) + 'px';
+                        dialog.style.top = (initialTop + dy) + 'px';
+                    }
+                };
+
+                document.onmouseup = function() {
+                    isDragging = false;
+                    document.onmousemove = null;
+                    document.onmouseup = null;
+                };
+            };
+        }
+
+        // 设置项容器
+        const content = document.createElement('div');
+        content.style.display = 'flex';
+        content.style.flexDirection = 'column';
+        content.style.gap = '15px';
+
+        // 1. 用户信息显示开关
+        const userInfoRow = document.createElement('div');
+        userInfoRow.style.display = 'flex';
+        userInfoRow.style.justifyContent = 'space-between';
+        userInfoRow.style.alignItems = 'center';
+        if (isMobile) userInfoRow.style.flexWrap = 'wrap';
+
+        const userInfoLabel = document.createElement('label');
+        userInfoLabel.textContent = '显示用户信息';
+        userInfoLabel.style.fontWeight = '500';
+        userInfoLabel.style.color = '#555';
+
+        const userInfoSwitch = document.createElement('input');
+        userInfoSwitch.type = 'checkbox';
+        userInfoSwitch.checked = getUserInfoDisplayState();
+        userInfoSwitch.style.transform = 'scale(1.2)';
+        userInfoSwitch.onchange = function() {
+            const newState = this.checked;
+            setUserInfoDisplayState(newState);
+            if (newState) {
+                processUserAvatars();
+                addLog('用户信息显示：开启');
+            } else {
+                const userInfoElements = document.querySelectorAll('.user-info-display');
+                userInfoElements.forEach(el => el.remove());
+                addLog('用户信息显示：关闭');
+            }
+        };
+
+        userInfoRow.appendChild(userInfoLabel);
+        userInfoRow.appendChild(userInfoSwitch);
+        content.appendChild(userInfoRow);
+
+        // 2. 阅读记忆开关（含颜色选择）
+        const historyRow = document.createElement('div');
+        historyRow.style.display = 'flex';
+        historyRow.style.justifyContent = 'space-between';
+        historyRow.style.alignItems = 'center';
+
+        const historyLabel = document.createElement('label');
+        historyLabel.textContent = '开启阅读记忆';
+        historyLabel.style.fontWeight = '500';
+        historyLabel.style.color = '#555';
+
+        // 右侧容器：包含 颜色选择器 + 重置 + 开关
+        const rightContainer = document.createElement('div');
+        rightContainer.style.display = 'flex';
+        rightContainer.style.alignItems = 'center';
+        rightContainer.style.gap = '12px';
+
+        // 颜色选择部分
+        const colorInputContainer = document.createElement('div');
+        colorInputContainer.style.display = 'flex';
+        colorInputContainer.style.alignItems = 'center';
+        colorInputContainer.style.gap = '6px';
+
+        const colorPicker = document.createElement('input');
+        colorPicker.type = 'color';
+        colorPicker.value = getViewedColor();
+        colorPicker.style.border = 'none';
+        colorPicker.style.width = '24px';
+        colorPicker.style.height = '24px';
+        colorPicker.style.padding = '0';
+        colorPicker.style.cursor = 'pointer';
+        colorPicker.style.background = 'none';
+        colorPicker.title = '选择已读标题颜色';
+
+        const colorResetBtn = document.createElement('span');
+        colorResetBtn.textContent = '颜色重置';
+        colorResetBtn.style.fontSize = '12px';
+        colorResetBtn.style.color = '#1890ff';
+        colorResetBtn.style.cursor = 'pointer';
+        colorResetBtn.style.textDecoration = 'underline';
+        colorResetBtn.onclick = function() {
+            if (confirm('确定要重置阅读记忆颜色吗？')) {
+                colorPicker.value = '#9aa0a6';
+                colorPicker.dispatchEvent(new Event('input')); // 触发实时预览
+                colorPicker.dispatchEvent(new Event('change')); // 触发保存
+            }
+        };
+
+        // 实时预览颜色
+        colorPicker.oninput = function() {
+            const newColor = this.value;
+            document.documentElement.style.setProperty('--ns-viewed-color', newColor);
+        };
+
+        colorPicker.onchange = function() {
+            const newColor = this.value;
+            setViewedColor(newColor);
+            document.documentElement.style.setProperty('--ns-viewed-color', newColor);
+            if (getViewedHistoryEnabled()) {
+                markViewedTitles(true); // 立即应用
+            }
+        };
+
+        colorInputContainer.appendChild(colorPicker);
+        colorInputContainer.appendChild(colorResetBtn);
+
+        // 新增：清除阅读记录按钮
+        const clearHistoryBtn = document.createElement('span');
+        clearHistoryBtn.textContent = '清除';
+        clearHistoryBtn.style.fontSize = '12px';
+        clearHistoryBtn.style.color = '#ff4d4f';
+        clearHistoryBtn.style.cursor = 'pointer';
+        clearHistoryBtn.style.textDecoration = 'underline';
+        clearHistoryBtn.style.marginLeft = '4px'; // 增加一点间距
+        clearHistoryBtn.title = '清除所有已记录的阅读历史';
+        clearHistoryBtn.onclick = function() {
+            if (confirm('确定要清除所有阅读记忆吗？此操作不可恢复。')) {
+                // 清除本地存储
+                setViewedTitlesData([]);
+                // 清除内存缓存
+                cachedVisitedUrlSet = new Set();
+                // 刷新页面显示
+                markViewedTitles(true); // 传入 true 强制刷新，此时 Set 为空，会清除页面上的灰色样式
+                addLog('已清除所有阅读记忆');
+                // alert('阅读记忆已清除！');
+            }
+        };
+        colorInputContainer.appendChild(clearHistoryBtn);
+
+        // 开关部分
+        const historySwitch = document.createElement('input');
+        historySwitch.type = 'checkbox';
+        historySwitch.checked = getViewedHistoryEnabled();
+        historySwitch.style.transform = 'scale(1.2)';
+        historySwitch.onchange = function() {
+            const newState = this.checked;
+            setViewedHistoryEnabled(newState);
+            markViewedTitles(); // 立即应用
+            addLog('阅读记忆：' + (newState ? '开启' : '关闭'));
+        };
+
+        // 将组件加入右侧容器
+        rightContainer.appendChild(colorInputContainer);
+        rightContainer.appendChild(historySwitch);
+
+        historyRow.appendChild(historyLabel);
+        historyRow.appendChild(rightContainer);
+        content.appendChild(historyRow);
+
+        // 3. 自动签到设置
+        const signRow = document.createElement('div');
+        signRow.style.display = 'flex';
+        signRow.style.justifyContent = 'space-between';
+        signRow.style.alignItems = 'center';
+
+        const signLabel = document.createElement('label');
+        signLabel.textContent = '自动签到';
+        signLabel.style.fontWeight = '500';
+        signLabel.style.color = '#555';
+
+        const signRightContainer = document.createElement('div');
+        signRightContainer.style.display = 'flex';
+        signRightContainer.style.alignItems = 'center';
+        signRightContainer.style.gap = '12px';
+
+        // 模式选择容器
+        const signModeContainer = document.createElement('div');
+        signModeContainer.style.display = 'flex';
+        signModeContainer.style.alignItems = 'center';
+        signModeContainer.style.gap = '8px';
+        signModeContainer.style.fontSize = '12px';
+        signModeContainer.style.color = '#666';
+
+        // 获取当前模式，默认为 fixed
+        const currentSignMode = localStorage.getItem('nodeseek_sign_mode') || 'fixed';
+        // 确保如果是第一次使用，也存入 fixed
+        if (!localStorage.getItem('nodeseek_sign_mode')) {
+             localStorage.setItem('nodeseek_sign_mode', 'fixed');
+        }
+
+        // 固定签到单选
+        const fixedRadio = document.createElement('input');
+        fixedRadio.type = 'radio';
+        fixedRadio.name = 'sign-mode';
+        fixedRadio.value = 'fixed';
+        fixedRadio.checked = currentSignMode === 'fixed';
+        fixedRadio.style.cursor = 'pointer';
+        fixedRadio.onchange = function() {
+            if (this.checked) {
+                localStorage.setItem('nodeseek_sign_mode', 'fixed');
+                if (window.NodeSeekClockIn && window.NodeSeekClockIn.setSignMode) {
+                    window.NodeSeekClockIn.setSignMode('fixed');
+                }
+                addLog('签到模式：固定');
+            }
+        };
+
+        const fixedLabel = document.createElement('label');
+        fixedLabel.textContent = '固定';
+        fixedLabel.style.cursor = 'pointer';
+        fixedLabel.onclick = function() { fixedRadio.click(); };
+
+        // 随机签到单选
+        const randomRadio = document.createElement('input');
+        randomRadio.type = 'radio';
+        randomRadio.name = 'sign-mode';
+        randomRadio.value = 'random';
+        randomRadio.checked = currentSignMode === 'random';
+        randomRadio.style.cursor = 'pointer';
+        randomRadio.onchange = function() {
+            if (this.checked) {
+                localStorage.setItem('nodeseek_sign_mode', 'random');
+                if (window.NodeSeekClockIn && window.NodeSeekClockIn.setSignMode) {
+                    window.NodeSeekClockIn.setSignMode('random');
+                }
+                addLog('签到模式：随机');
+            }
+        };
+
+        const randomLabel = document.createElement('label');
+        randomLabel.textContent = '随机';
+        randomLabel.style.cursor = 'pointer';
+        randomLabel.onclick = function() { randomRadio.click(); };
+
+        signModeContainer.appendChild(fixedRadio);
+        signModeContainer.appendChild(fixedLabel);
+        signModeContainer.appendChild(randomRadio);
+        signModeContainer.appendChild(randomLabel);
+
+        // 签到开关
+        const signSwitch = document.createElement('input');
+        signSwitch.type = 'checkbox';
+        signSwitch.checked = localStorage.getItem('nodeseek_sign_enabled') === 'true';
+        signSwitch.style.transform = 'scale(1.2)';
+        signSwitch.onchange = function() {
+            const newState = this.checked;
+            localStorage.setItem('nodeseek_sign_enabled', newState.toString());
+            addLog('自动签到：' + (newState ? '开启' : '关闭'));
+            
+            // 立即触发一次状态更新（如果是开启）
+             if (newState && window.NodeSeekClockIn && window.NodeSeekClockIn.scheduleNextHourlySign) {
+                 window.NodeSeekClockIn.scheduleNextHourlySign();
+             }
+        };
+
+        signRightContainer.appendChild(signModeContainer);
+        signRightContainer.appendChild(signSwitch);
+
+        signRow.appendChild(signLabel);
+        signRow.appendChild(signRightContainer);
+        content.appendChild(signRow);
+
+        dialog.appendChild(content);
+        document.body.appendChild(dialog);
     }
 
     // ========== 快捷回复功能UI ==========
@@ -5092,7 +5605,7 @@
         }
     }
 
-    function ensureBlacklistNavEntryAndMeta() {
+    function ensureBlacklistNavEntryAndMeta(force = false) {
         const appSwitch = document.querySelector('.app-switch');
         if (!appSwitch) return;
 
@@ -5151,7 +5664,7 @@
         const lastRouteKey = ensureBlacklistNavEntryAndMeta._lastRouteKey || '';
         const lastCheckAt = ensureBlacklistNavEntryAndMeta._lastCheckAt || 0;
         const minInterval = (routeKey === lastRouteKey) ? 1500 : 0;
-        if (minInterval && (now - lastCheckAt) < minInterval) return;
+        if (!force && minInterval && (now - lastCheckAt) < minInterval) return;
         ensureBlacklistNavEntryAndMeta._lastCheckAt = now;
 
         const matched = getCurrentTalkBlacklistedMatch();
@@ -5181,11 +5694,11 @@
         }
 
         while (meta.firstChild) meta.removeChild(meta.firstChild);
-        
+
         // 优先显示黑名单
         if (matched && matched.info) {
             meta.style.color = '#fc5154ff';
-            
+
             const timeText = formatIsoToLocalText(matched.info.timestamp);
             const remark = matched.info.remark ? String(matched.info.remark) : '';
             const url = buildBlacklistTargetUrl(matched.info);
@@ -5237,10 +5750,10 @@
             }
         } else if (friendMatched) {
             meta.style.color = '#2ea44f';
-            
+
             const timeText = formatIsoToLocalText(friendMatched.timestamp);
             const remark = friendMatched.remark ? String(friendMatched.remark) : '';
-            
+
             const timeSpan = document.createElement('span');
             timeSpan.textContent = `添加时间：${timeText || '未知'}`;
             timeSpan.style.lineHeight = isMobile ? '12px' : '14px';
