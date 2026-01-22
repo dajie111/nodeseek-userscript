@@ -536,8 +536,8 @@
                         if (data) viewedTitles.data = JSON.parse(data);
                     }
                     
-                    const enabled = localStorage.getItem('nodeseek_viewed_titles_enabled');
-                    const color = localStorage.getItem('nodeseek_viewed_title_color');
+                    const enabled = localStorage.getItem('nodeseek_viewed_history_enabled');
+                    const color = localStorage.getItem('nodeseek_viewed_color');
                     
                     if (enabled !== null) viewedTitles.enabled = enabled === 'true';
                     if (color !== null) viewedTitles.color = color;
@@ -767,10 +767,10 @@
                 if (selectedItems.includes('viewedTitles') && config.viewedTitles && typeof config.viewedTitles === 'object') {
                     try {
                         if (typeof config.viewedTitles.enabled !== 'undefined') {
-                            localStorage.setItem('nodeseek_viewed_titles_enabled', config.viewedTitles.enabled ? 'true' : 'false');
+                            localStorage.setItem('nodeseek_viewed_history_enabled', config.viewedTitles.enabled ? 'true' : 'false');
                         }
                         if (config.viewedTitles.color) {
-                            localStorage.setItem('nodeseek_viewed_title_color', config.viewedTitles.color);
+                            localStorage.setItem('nodeseek_viewed_color', config.viewedTitles.color);
                         }
                         if (Array.isArray(config.viewedTitles.data)) {
                             if (window.NodeSeekViewedTitles && typeof window.NodeSeekViewedTitles.setData === 'function') {
