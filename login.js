@@ -273,7 +273,7 @@
             // 如果没有选择特定项目，默认获取所有配置
             if (!selectedItems || selectedItems.length === 0) {
                 // 移除热点统计数据，不参与服务器同步备份
-                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'filterData', 'notesData'];
+                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'filterData', 'notesData', 'viewedTitles'];
             }
 
             // 获取黑名单数据
@@ -525,6 +525,30 @@
                 }
             }
 
+            // 获取阅读记忆数据
+            if (selectedItems.includes('viewedTitles')) {
+                try {
+                    const viewedTitles = {};
+                    if (window.NodeSeekViewedTitles && typeof window.NodeSeekViewedTitles.getData === 'function') {
+                        viewedTitles.data = window.NodeSeekViewedTitles.getData();
+                    } else {
+                        const data = localStorage.getItem('nodeseek_viewed_titles_data');
+                        if (data) viewedTitles.data = JSON.parse(data);
+                    }
+                    
+                    const enabled = localStorage.getItem('nodeseek_viewed_titles_enabled');
+                    const color = localStorage.getItem('nodeseek_viewed_title_color');
+                    
+                    if (enabled !== null) viewedTitles.enabled = enabled === 'true';
+                    if (color !== null) viewedTitles.color = color;
+                    
+                    if (Object.keys(viewedTitles).length > 0) {
+                        config.viewedTitles = viewedTitles;
+                    }
+                } catch (error) {
+                }
+            }
+
             try {
                 const enabledRaw = localStorage.getItem('nodeseek_auto_sync_enabled');
                 const itemsRaw = localStorage.getItem('nodeseek_auto_sync_items');
@@ -552,7 +576,7 @@
             // 如果没有选择特定项目，默认应用所有配置
             if (!selectedItems || selectedItems.length === 0) {
                 // 移除热点统计数据，不参与服务器同步应用
-                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats'];
+                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'viewedTitles'];
             }
 
             try {
@@ -736,6 +760,34 @@
                         }
                     } catch (error) {
                         applied.push("鸡腿统计(失败)");
+                    }
+                }
+
+                // 应用阅读记忆数据
+                if (selectedItems.includes('viewedTitles') && config.viewedTitles && typeof config.viewedTitles === 'object') {
+                    try {
+                        if (typeof config.viewedTitles.enabled !== 'undefined') {
+                            localStorage.setItem('nodeseek_viewed_titles_enabled', config.viewedTitles.enabled ? 'true' : 'false');
+                        }
+                        if (config.viewedTitles.color) {
+                            localStorage.setItem('nodeseek_viewed_title_color', config.viewedTitles.color);
+                        }
+                        if (Array.isArray(config.viewedTitles.data)) {
+                            if (window.NodeSeekViewedTitles && typeof window.NodeSeekViewedTitles.setData === 'function') {
+                                window.NodeSeekViewedTitles.setData(config.viewedTitles.data);
+                            } else {
+                                localStorage.setItem('nodeseek_viewed_titles_data', JSON.stringify(config.viewedTitles.data));
+                            }
+                        }
+                        
+                        if (window.NodeSeekViewedTitles && typeof window.NodeSeekViewedTitles.refresh === 'function') {
+                            window.NodeSeekViewedTitles.refresh();
+                        }
+                        
+                        const count = Array.isArray(config.viewedTitles.data) ? config.viewedTitles.data.length : 0;
+                        applied.push(`阅读记忆(${count}条)`);
+                    } catch (error) {
+                        applied.push("阅读记忆(失败)");
                     }
                 }
 
@@ -1142,7 +1194,8 @@
                 { key: 'emojiFavorites', label: '常用表情' },
                 { key: 'chickenLegStats', label: '鸡腿统计' },
                 { key: 'filterData', label: '关键词过滤' },
-                { key: 'notesData', label: '笔记' }
+                { key: 'notesData', label: '笔记' },
+                { key: 'viewedTitles', label: '阅读记忆' }
             ];
 
             // 全选/取消全选
@@ -1717,6 +1770,7 @@
                             if (include('chickenLegStats') && config.chickenLegStats && typeof config.chickenLegStats === 'object') labels.push('鸡腿统计');
                             if (include('filterData') && config.filterData && typeof config.filterData === 'object') labels.push('关键词过滤');
                             if (include('notesData') && config.notesData && typeof config.notesData === 'object') labels.push('笔记');
+                            if (include('viewedTitles') && config.viewedTitles && typeof config.viewedTitles === 'object') labels.push('阅读记忆');
 
                             const syncDesc = `配置已上传到服务器 (${labels.join('、')})`;
                             // 仅输出到日志，不显示右上角弹窗
@@ -1781,6 +1835,7 @@
                     if (include('chickenLegStats') && config.chickenLegStats && typeof config.chickenLegStats === 'object') labels.push('鸡腿统计');
                     if (include('filterData') && config.filterData && typeof config.filterData === 'object') labels.push('关键词过滤');
                     if (include('notesData') && config.notesData && typeof config.notesData === 'object') labels.push('笔记');
+                    if (include('viewedTitles') && config.viewedTitles && typeof config.viewedTitles === 'object') labels.push('阅读记忆');
 
                     const syncDesc = `配置已上传到服务器 (${labels.join('、')})`;
                     Utils.showMessage(syncDesc, 'success', false);
@@ -2298,7 +2353,7 @@
                             if (applied.length > 0) {
                                 // 延迟显示确认对话框，让成功提示先显示
                                 setTimeout(() => {
-                                    const allowedLabels = ['黑名单', '好友', '收藏', '操作日志', '浏览历史', '快捷回复', '常用表情', '鸡腿统计', '关键词过滤', '笔记'];
+                                    const allowedLabels = ['黑名单', '好友', '收藏', '操作日志', '浏览历史', '快捷回复', '常用表情', '鸡腿统计', '关键词过滤', '笔记', '阅读记忆'];
                                     const simplifiedApplied = applied
                                         .map(s => s.replace(/\s*\([^)]*\)\s*/g, '').replace(/\s*（[^）]*）\s*/g, ''))
                                         .filter(s => allowedLabels.includes(s))
