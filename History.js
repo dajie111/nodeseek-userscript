@@ -14,6 +14,11 @@
     }
 
     function addToBrowseHistory(title, url) {
+        // 调用主脚本的已读记录功能（如果存在）
+        if (window.NodeSeekViewedTitles && window.NodeSeekViewedTitles.add) {
+            window.NodeSeekViewedTitles.add(url);
+        }
+
         const history = getBrowseHistory();
         const timestamp = new Date().toISOString();
 
@@ -70,8 +75,8 @@
             }
         }
 
-        if (uniqueHistory.length > 150) {
-            uniqueHistory.length = 150;
+        if (uniqueHistory.length > 200) {
+            uniqueHistory.length = 200;
         }
 
         setBrowseHistory(uniqueHistory);
@@ -221,8 +226,21 @@
             return t;
         };
 
+        // 注入样式以确保搜索框清除按钮显示手型光标
+        if (!document.getElementById('ns-history-style')) {
+            const style = document.createElement('style');
+            style.id = 'ns-history-style';
+            style.textContent = `
+                .ns-history-search-input::-webkit-search-cancel-button {
+                    cursor: pointer;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
         const searchInput = document.createElement('input');
         searchInput.type = 'search';
+        searchInput.className = 'ns-history-search-input';
         // 不显示提示占位文字
         searchInput.placeholder = '';
         searchInput.style.width = '100%';
