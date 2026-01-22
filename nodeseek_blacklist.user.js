@@ -2137,8 +2137,8 @@
         // 添加阅读记忆数据
         let viewedTitles = {};
         try {
-            const enabled = localStorage.getItem('nodeseek_viewed_titles_enabled');
-            const color = localStorage.getItem('nodeseek_viewed_title_color');
+            const enabled = localStorage.getItem('nodeseek_viewed_history_enabled');
+            const color = localStorage.getItem('nodeseek_viewed_color');
             const data = localStorage.getItem('nodeseek_viewed_titles_data');
 
             if (enabled !== null) viewedTitles.enabled = enabled === 'true';
@@ -2533,10 +2533,10 @@
                     if (json.viewedTitles && typeof json.viewedTitles === 'object') {
                         try {
                             if (typeof json.viewedTitles.enabled !== 'undefined') {
-                                localStorage.setItem('nodeseek_viewed_titles_enabled', json.viewedTitles.enabled ? 'true' : 'false');
+                                localStorage.setItem('nodeseek_viewed_history_enabled', json.viewedTitles.enabled ? 'true' : 'false');
                             }
                             if (json.viewedTitles.color) {
-                                localStorage.setItem('nodeseek_viewed_title_color', json.viewedTitles.color);
+                                localStorage.setItem('nodeseek_viewed_color', json.viewedTitles.color);
                             }
                             if (Array.isArray(json.viewedTitles.data)) {
                                 localStorage.setItem('nodeseek_viewed_titles_data', JSON.stringify(json.viewedTitles.data));
