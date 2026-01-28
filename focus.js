@@ -1378,7 +1378,7 @@
 
                             // 更新标题
             if (titleElement) {
-                titleElement.textContent = `NodeSeek热点统计`;
+                titleElement.textContent = `热点统计`;
             }
 
                 if (statsDiv) {
@@ -1686,7 +1686,7 @@
             `;
 
             const title = document.createElement('div');
-            title.textContent = `NodeSeek热点统计`;
+            title.textContent = `热点统计`;
             title.style.cssText = `
                 font-weight: bold;
                 font-size: 16px;
