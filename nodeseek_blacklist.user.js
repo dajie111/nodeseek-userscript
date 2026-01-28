@@ -1898,6 +1898,13 @@
         return true;
     }
 
+    function isUserSpaceDiscussionsPage() {
+        const path = window.location.pathname || '';
+        if (!/^\/space\/\d+/.test(path)) return false;
+        const hash = window.location.hash || '';
+        return /^#\/discussions(\b|\/|\?|$)/.test(hash);
+    }
+
     function markViewedTitles(force = false) {
         const isEnabled = getViewedHistoryEnabled();
         const now = Date.now();
@@ -1906,6 +1913,15 @@
 
         // 如果功能关闭，移除已有的样式并退出
         if (!isEnabled) {
+            const marked = document.querySelectorAll('.ns-viewed-title');
+            for (const el of marked) {
+                el.classList.remove('ns-viewed-title');
+                el.style.removeProperty('color');
+            }
+            return;
+        }
+
+        if (isUserSpaceDiscussionsPage()) {
             const marked = document.querySelectorAll('.ns-viewed-title');
             for (const el of marked) {
                 el.classList.remove('ns-viewed-title');
