@@ -210,12 +210,11 @@
         // 标准化标题（去除特殊字符、统一大小写）
         normalizeTitle(title) {
             if (!title) return '';
-            const normalized = title.trim().toLowerCase()
+            return title.trim().toLowerCase()
                 .replace(/[【】\[\]()（）]/g, '') // 去除括号
                 .replace(/[^\u4e00-\u9fff\w\s]/g, ' ') // 去除特殊符号，保留中文、字母、数字
                 .replace(/\s+/g, ' ') // 统一空格
                 .trim();
-            return this.normalizeTraditionalToSimplified(normalized);
         },
 
         // 计算两个标题的相似度（使用简单的词汇重叠度）
@@ -755,7 +754,7 @@
                         // 检查当前字符是否为常见后缀
                         if (currentWord.length === 1) {
                             // 单个中文字符，但不是停止词的话可以作为词
-                            if (!this.stopWords.has(this.getWordKey(currentWord))) {
+                            if (!this.stopWords.has(currentWord)) {
                             words.push(currentWord);
                             }
                             currentWord = '';
@@ -767,7 +766,7 @@
                     if (currentWord && currentWord.length >= 2) {
                         // 添加累积的中文词汇
                         words.push(currentWord);
-                    } else if (currentWord.length === 1 && !this.stopWords.has(this.getWordKey(currentWord))) {
+                    } else if (currentWord.length === 1 && !this.stopWords.has(currentWord)) {
                         // 单个中文字符，如果不是停止词则保留
                         words.push(currentWord);
                     }
@@ -791,7 +790,7 @@
             if (currentWord) {
                 if (currentWord.length >= 2) {
                     words.push(currentWord);
-                } else if (currentWord.length === 1 && !this.stopWords.has(this.getWordKey(currentWord))) {
+                } else if (currentWord.length === 1 && !this.stopWords.has(currentWord)) {
                 words.push(currentWord);
                 }
             }
@@ -883,24 +882,10 @@
             return normalized;
         },
 
-        normalizeTraditionalToSimplified(text) {
-            const converter = window.NodeSeekFilter && window.NodeSeekFilter.convertTraditionalToSimplified;
-            if (typeof converter === 'function') return converter(text);
-            return text;
-        },
-
-        normalizeWordForDisplay(word) {
-            const text = (word || '').trim();
-            if (!text) return '';
-            return this.normalizeTraditionalToSimplified(text);
-        },
-
         // 获取词汇的标准化键值（用于统计）
         getWordKey(word) {
-            const raw = (word || '').trim();
-            if (!raw) return '';
-            const normalized = this.normalizeTraditionalToSimplified(raw).toLowerCase().replace(/\s+/g, '');
-            return this.normalizeNumbers(normalized);
+            // 先转小写，再标准化数字
+            return this.normalizeNumbers(word.toLowerCase());
         },
 
         // 词频统计（基于本地保存的7天标题数据）
@@ -946,7 +931,7 @@
 
             allTitles.forEach(title => {
                 // 预处理：移除特殊字符，但保留中文、英文、数字
-                const cleanTitle = this.normalizeTraditionalToSimplified(title).replace(/[^\u4e00-\u9fff\w\s]/g, ' ');
+                const cleanTitle = title.replace(/[^\u4e00-\u9fff\w\s]/g, ' ');
                 
                 // 当前标题中已处理的词汇集合
                 const titleProcessedWords = new Set();
@@ -971,16 +956,15 @@
                         this.log(`🔍 追踪词汇 "${word}" (${isPhxWord ? 'PHX目标' : isTargetWord ? 'alist目标' : isEnglishWord ? '英文词汇' : isCargoWord ? '放货相关' : isHgcWord ? 'hgc相关' : 'push相关'}):`);
                         this.log(`  - 来源标题: "${title}"`);
                         this.log(`  - 长度: ${word.length}`);
-                        this.log(`  - 停止词检查: ${this.stopWords.has(this.getWordKey(word))}`);
+                        this.log(`  - 停止词检查: ${this.stopWords.has(word.toLowerCase())}`);
                         this.log(`  - 数字符号检查: ${this.numberSymbolRegex.test(word)}`);
                         this.log(`  - 有效性检查: ${this.isValidWord(word)}`);
-                        this.log(`  - 完全匹配键值: "${this.getWordKey(word)}"`);
+                        this.log(`  - 完全匹配键值: "${word.toLowerCase()}"`);
                     }
 
                     if (this.isValidWord(word)) {
                         // 使用完全匹配模式：只按小写进行分组，不进行其他标准化
-                        const exactKey = this.getWordKey(word);
-                        if (!exactKey) return;
+                        const exactKey = word.toLowerCase();
                         
                         // 确保每个标题中的相同词汇只统计一次
                         if (titleProcessedWords.has(exactKey)) {
@@ -991,7 +975,7 @@
                         titleProcessedWords.add(exactKey);
 
                         if (!exactWordCount.has(exactKey)) {
-                            exactWordCount.set(exactKey, {word: this.normalizeWordForDisplay(word), count: 0});
+                            exactWordCount.set(exactKey, {word: word, count: 0});
                             wordSourceMap.set(exactKey, []);
                         }
 
@@ -1003,9 +987,8 @@
 
                         // 更新显示形式（优先保存更"标准"的形式）
                         const current = exactWordCount.get(exactKey);
-                        const displayWord = this.normalizeWordForDisplay(word);
-                        if (this.isPreferredCase(displayWord, current.word)) {
-                            current.word = displayWord;
+                        if (this.isPreferredCase(word, current.word)) {
+                            current.word = word;
                         }
 
                         if (isPhxWord || isTargetWord || (isEnglishWord && word.length >= 4) || isCargoWord || isHgcWord || isPushWord) {
@@ -1032,7 +1015,7 @@
             if (sortedWords.length > 0) {
                 this.log('=== 热词统计调试信息（完全匹配模式）===');
                 sortedWords.slice(0, 10).forEach(([word, count], index) => {
-                    const exactKey = this.getWordKey(word);
+                    const exactKey = word.toLowerCase();
                     this.log(`#${index + 1}: "${word}" (完全匹配键值: "${exactKey}") = ${count}次`);
 
                     // 特别显示hgc、alist、放货等关键词的来源
@@ -1073,7 +1056,7 @@
                     word.toLowerCase().includes('hgc'));
                 if (hgcResult) {
                     this.log(`🎯 找到hgc相关词汇: "${hgcResult[0]}" = ${hgcResult[1]}次`);
-                    const exactKey = this.getWordKey(hgcResult[0]);
+                    const exactKey = hgcResult[0].toLowerCase();
                     const sources = wordSourceMap.get(exactKey) || [];
                     this.log(`  📝 hgc的所有来源标题:`);
                     sources.forEach((source, idx) => {
@@ -1106,7 +1089,7 @@
                     word.includes('包push') || word.includes('push'));
                 if (pushResult) {
                     this.log(`🎯 找到push相关词汇: "${pushResult[0]}" = ${pushResult[1]}次`);
-                    const exactKey = this.getWordKey(pushResult[0]);
+                    const exactKey = pushResult[0].toLowerCase();
                     const sources = wordSourceMap.get(exactKey) || [];
                     this.log(`  📝 push相关词汇的所有来源标题:`);
                     sources.forEach((source, idx) => {
@@ -1196,7 +1179,7 @@
 
             allTitles.forEach(title => {
                 // 预处理：移除特殊字符，但保留中文、英文、数字
-                const cleanTitle = this.normalizeTraditionalToSimplified(title).replace(/[^\u4e00-\u9fff\w\s]/g, ' ');
+                const cleanTitle = title.replace(/[^\u4e00-\u9fff\w\s]/g, ' ');
                 
                 // 当前标题中已处理的词汇集合
                 const titleProcessedWords = new Set();
@@ -1207,8 +1190,7 @@
                 words.forEach(word => {
                     if (this.isValidWord(word)) {
                         // 使用完全匹配模式：只按小写进行分组，不进行其他标准化
-                        const exactKey = this.getWordKey(word);
-                        if (!exactKey) return;
+                        const exactKey = word.toLowerCase();
                         
                         // 确保每个标题中的相同词汇只统计一次
                         if (titleProcessedWords.has(exactKey)) {
@@ -1219,7 +1201,7 @@
                         titleProcessedWords.add(exactKey);
 
                         if (!exactWordCount.has(exactKey)) {
-                            exactWordCount.set(exactKey, {word: this.normalizeWordForDisplay(word), count: 0});
+                            exactWordCount.set(exactKey, {word: word, count: 0});
                             wordSourceMap.set(exactKey, []);
                         }
 
@@ -1231,9 +1213,8 @@
 
                         // 更新显示形式（优先保存更"标准"的形式）
                         const current = exactWordCount.get(exactKey);
-                        const displayWord = this.normalizeWordForDisplay(word);
-                        if (this.isPreferredCase(displayWord, current.word)) {
-                            current.word = displayWord;
+                        if (this.isPreferredCase(word, current.word)) {
+                            current.word = word;
                         }
                     }
                 });
@@ -2410,9 +2391,7 @@
         // 判断是否为有效词汇（用于最终词频统计）
         isValidWord(word) {
             if (!word || word.length < 2) return false;
-            const key = this.getWordKey(word);
-            if (!key || key.length < 2) return false;
-            if (this.stopWords.has(key)) return false;
+            if (this.stopWords.has(word.toLowerCase())) return false; // 停止词检查使用小写比较
             if (this.numberSymbolRegex.test(word)) return false;
 
             // 一些常见的有效词汇模式
