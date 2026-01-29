@@ -904,6 +904,13 @@
     // 红色高亮样式
     const style = document.createElement('style');
     style.innerHTML = `.friend-user { color: #2ea44f !important; font-weight: bold; white-space: nowrap; } .blacklisted-user { color: red !important; font-weight: bold; white-space: nowrap; } .blacklist-remark { color: #d00; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; } .friend-remark { color: #2ea44f; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; } .ns-viewed-title { color: var(--ns-viewed-color, #9aa0a6) !important; }
+    .ns-page-notification .app-switch a,
+    .ns-page-notification .app-switch a.btn,
+    .ns-page-notification .app-switch a[class*="btn-"] {
+        background: transparent !important;
+        background-image: none !important;
+        box-shadow: none !important;
+    }
     .blacklist-btn {
         margin-left: 7px;
         cursor: pointer;
@@ -1905,6 +1912,17 @@
         return /^#\/discussions(\b|\/|\?|$)/.test(hash);
     }
 
+    function isNotificationPage() {
+        const path = window.location.pathname || '';
+        return path === '/notification' || path.startsWith('/notification/');
+    }
+
+    function updatePageScopeClasses() {
+        const root = document.documentElement;
+        if (!root) return;
+        root.classList.toggle('ns-page-notification', isNotificationPage());
+    }
+
     function markViewedTitles(force = false) {
         const isEnabled = getViewedHistoryEnabled();
         const now = Date.now();
@@ -1922,6 +1940,15 @@
         }
 
         if (isUserSpaceDiscussionsPage()) {
+            const marked = document.querySelectorAll('.ns-viewed-title');
+            for (const el of marked) {
+                el.classList.remove('ns-viewed-title');
+                el.style.removeProperty('color');
+            }
+            return;
+        }
+
+        if (isNotificationPage()) {
             const marked = document.querySelectorAll('.ns-viewed-title');
             for (const el of marked) {
                 el.classList.remove('ns-viewed-title');
@@ -1990,6 +2017,7 @@
         }
         lastUpdateTime = now;
 
+        updatePageScopeClasses();
         processUsernames();
         highlightBlacklisted();
         highlightFriends(); // 新增调用
