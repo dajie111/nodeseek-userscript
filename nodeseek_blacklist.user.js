@@ -1912,6 +1912,13 @@
         return /^#\/discussions(\b|\/|\?|$)/.test(hash);
     }
 
+    function isUserSpaceCommentsPage() {
+        const path = window.location.pathname || '';
+        if (!/^\/space\/\d+/.test(path)) return false;
+        const hash = window.location.hash || '';
+        return /^#\/comments(\b|\/|\?|$)/.test(hash);
+    }
+
     function isNotificationPage() {
         const path = window.location.pathname || '';
         return path === '/notification' || path.startsWith('/notification/');
@@ -1940,6 +1947,15 @@
         }
 
         if (isUserSpaceDiscussionsPage()) {
+            const marked = document.querySelectorAll('.ns-viewed-title');
+            for (const el of marked) {
+                el.classList.remove('ns-viewed-title');
+                el.style.removeProperty('color');
+            }
+            return;
+        }
+
+        if (isUserSpaceCommentsPage()) {
             const marked = document.querySelectorAll('.ns-viewed-title');
             for (const el of marked) {
                 el.classList.remove('ns-viewed-title');
