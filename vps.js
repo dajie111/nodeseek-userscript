@@ -1449,6 +1449,74 @@
             NodeSeekVPS.updateShareButtonsState();
         },
 
+        bindAuthHintLiveUpdates: (dialog) => {
+            try {
+                if (!dialog) return;
+                let lastLoggedIn = null;
+                let timerId = null;
+                let observer = null;
+                const update = () => {
+                    let loggedIn = false;
+                    try {
+                        loggedIn = !!localStorage.getItem('nodeseek_login_token');
+                    } catch (e) {
+                        loggedIn = false;
+                    }
+                    if (lastLoggedIn === loggedIn) return;
+                    lastLoggedIn = loggedIn;
+                    const hint = dialog.querySelector('#vps-svg-login-hint');
+                    if (hint) hint.style.display = loggedIn ? 'none' : 'inline';
+                    try { NodeSeekVPS.updateShareButtonsState(); } catch (e) { }
+                };
+
+                update();
+
+                const onAuthChanged = () => update();
+                const onStorage = (e) => {
+                    try {
+                        if (!e || !e.key) return;
+                        if (e.key === 'nodeseek_login_token' || e.key === 'nodeseek_login_user') update();
+                    } catch (err) { }
+                };
+
+                window.addEventListener('ns-auth-changed', onAuthChanged);
+                window.addEventListener('storage', onStorage);
+
+                const cleanup = () => {
+                    try { window.removeEventListener('ns-auth-changed', onAuthChanged); } catch (e) { }
+                    try { window.removeEventListener('storage', onStorage); } catch (e) { }
+                    try { if (timerId) clearInterval(timerId); } catch (e) { }
+                    try { if (observer) observer.disconnect(); } catch (e) { }
+                };
+
+                const closeBtn = dialog.querySelector('.close-btn');
+                if (closeBtn) {
+                    closeBtn.onclick = (ev) => {
+                        try { if (ev && typeof ev.preventDefault === 'function') ev.preventDefault(); } catch (e) { }
+                        cleanup();
+                        try { dialog.remove(); } catch (e) { }
+                    };
+                }
+
+                observer = new MutationObserver(() => {
+                    try {
+                        if (!document.body.contains(dialog)) cleanup();
+                    } catch (e) { }
+                });
+                try { observer.observe(document.body, { childList: true, subtree: true }); } catch (e) { }
+
+                timerId = setInterval(() => {
+                    try {
+                        if (!document.body.contains(dialog)) {
+                            cleanup();
+                            return;
+                        }
+                        update();
+                    } catch (e) { }
+                }, 200);
+            } catch (e) { }
+        },
+
         // 打开货币转换器
         openCurrencyConverter: () => {
             const dialogId = 'vps-converter-dialog';
@@ -2313,7 +2381,7 @@
 
                             <!-- 分享功能 -->
                             <div id="vps-share" style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #eef2f7;">
-                                <h4 style="margin: 0 0 15px 0; text-align: center;">分享功能<span style="font-size: 12px; font-weight: normal; color: #666; margin-left: 5px;">（SVG需要登录使用）</span></h4>
+                                 <h4 style="margin: 0 0 15px 0; text-align: center;">分享功能<span id="vps-svg-login-hint" style="font-size: 12px; font-weight: normal; color: #666; margin-left: 5px;">（SVG需要登录使用）</span></h4>
                                 <input id="vps-is-calculated" type="hidden" value="">
 
                                 <div class="button-container" style="display: flex; gap: 8px; justify-content: center;">
@@ -2529,6 +2597,8 @@
             NodeSeekVPS.initDatePickers();
             NodeSeekVPS.fetchExchangeRates();
             NodeSeekVPS.bindEventListeners();
+
+            NodeSeekVPS.bindAuthHintLiveUpdates(dialog);
 
             // 使弹窗可拖动
             if (window.UI && typeof window.UI.makeDraggable === 'function') {
