@@ -973,6 +973,7 @@
             currentUser = user;
             localStorage.setItem(CONFIG.STORAGE_KEY, token);
             localStorage.setItem(CONFIG.USER_KEY, JSON.stringify(user));
+            try { window.dispatchEvent(new CustomEvent('ns-auth-changed', { detail: { loggedIn: true } })); } catch (e) { }
         },
 
         // 清除认证信息
@@ -981,6 +982,7 @@
             currentUser = null;
             localStorage.removeItem(CONFIG.STORAGE_KEY);
             localStorage.removeItem(CONFIG.USER_KEY);
+            try { window.dispatchEvent(new CustomEvent('ns-auth-changed', { detail: { loggedIn: false } })); } catch (e) { }
         },
 
         // 检查是否已登录
@@ -1790,8 +1792,11 @@
                             resolve(false);
                         }
                     } catch (error) {
-                        // 仅输出到日志，不显示右上角弹窗
-                        Utils.showMessage(`配置同步失败: ${error.message}`, 'error', false);
+                        if (error && typeof error.message === 'string' && error.message.includes('同步频率限制')) {
+                            Utils.showMessage('超过上传次数限制，请稍后再试。', 'warning', false);
+                        } else {
+                            Utils.showMessage(`配置同步失败: ${error.message}`, 'error', false);
+                        }
                         reject(error); // 重新抛出错误，让进度条能够显示失败状态
                     }
                 }, () => {
@@ -1843,7 +1848,11 @@
                 }
                 return false;
             } catch (e) {
-                Utils.showMessage(`配置同步失败: ${e.message}`, 'error', false);
+                if (e && typeof e.message === 'string' && e.message.includes('同步频率限制')) {
+                    Utils.showMessage('超过上传次数限制，请稍后再试。', 'warning', false);
+                } else {
+                    Utils.showMessage(`配置同步失败: ${e.message}`, 'error', false);
+                }
                 return false;
             }
         },
@@ -2331,7 +2340,6 @@
             confirmInput.focus();
         },
 
-        // 从服务器下载配置
         download: async function () {
             if (!Auth.isLoggedIn()) {
                 Utils.showMessage('请先登录', 'error');
