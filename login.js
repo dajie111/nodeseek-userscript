@@ -1753,7 +1753,12 @@
                         const config = Utils.getAllConfig(selectedItems);
 
                         // 获取备份保留数量设置
-                        const backupLimit = typeof GM_getValue === 'function' ? GM_getValue('backup_limit', 3) : 3;
+                        let backupLimit = 1; // 默认为1份
+                        if (config.backupLimit !== undefined) {
+                            backupLimit = config.backupLimit;
+                        } else {
+                            backupLimit = typeof GM_getValue === 'function' ? GM_getValue('backup_limit', 1) : 1;
+                        }
 
                         // 计算配置数据大小并动态调整超时时间
                         const configJson = JSON.stringify({ config, syncMode: 'manual', backupLimit });
@@ -1833,7 +1838,12 @@
             if (!Auth.isLoggedIn()) return false;
             try {
                 const config = Utils.getAllConfig(selectedItems);
-                const backupLimit = typeof GM_getValue === 'function' ? GM_getValue('backup_limit', 3) : 3;
+                let backupLimit = 1; // 默认为1份
+                if (config.backupLimit !== undefined) {
+                    backupLimit = config.backupLimit;
+                } else {
+                    backupLimit = typeof GM_getValue === 'function' ? GM_getValue('backup_limit', 1) : 1;
+                }
                 const configJson = JSON.stringify({ config, syncMode: 'auto', backupLimit });
                 const size = new Blob([configJson]).size;
                 const mb = size / (1024 * 1024);
