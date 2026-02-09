@@ -2208,6 +2208,17 @@
             console.error('导出阅读记忆数据失败:', error);
         }
 
+        // 添加备份设置
+        let backupLimit = 3;
+        try {
+            const limit = localStorage.getItem('nodeseek_backup_limit');
+            if (limit) {
+                backupLimit = parseInt(limit);
+            }
+        } catch (error) {
+            console.error('导出备份设置失败:', error);
+        }
+
         const data = JSON.stringify({
             blacklist: blacklist,
             friends: friends,
@@ -2223,7 +2234,8 @@
             filterData: filterData, // 添加关键词过滤数据
             notesData: notesData, // 添加笔记数据
             viewedTitles: viewedTitles, // 添加阅读记忆数据
-            autoSync: autoSync
+            autoSync: autoSync,
+            backupLimit: backupLimit // 添加备份设置
         }, null, 2);
         const blob = new Blob([data], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -2263,6 +2275,8 @@
             exportDesc += '、阅读记忆';
         }
         // 不在导出日志中包含“自动同步设置”
+        // 始终包含备份设置
+        exportDesc += '、备份设置';
         exportDesc += ')';
         addLog(exportDesc);
     }
@@ -2631,6 +2645,16 @@
                         }
                     }
 
+                    // 导入备份设置
+                    if (json.backupLimit) {
+                        try {
+                            localStorage.setItem('nodeseek_backup_limit', json.backupLimit.toString());
+                            importInfo.push(`备份设置(保留${json.backupLimit}份)`);
+                        } catch (e) {
+                            importInfo.push('备份设置(失败)');
+                        }
+                    }
+
                     if (!json.blacklist && !json.friends && !json.logs && !json.favorites && !json.hotTopicsData && !json.quickReplies && !json.chickenLegStats && !json.filterData && !json.notesData) {
                         // 旧格式，直接作为黑名单
                         setBlacklist(json);
@@ -2648,6 +2672,8 @@
                     if (hasChickenLegStatsLog) importDesc += '、鸡腿统计';
                     if (hasFilterDataLog) importDesc += '、关键词过滤';
                     if (hasNotesDataLog) importDesc += '、笔记';
+                    // 始终包含备份设置
+                    if (json.backupLimit) importDesc += '、备份设置';
                     importDesc += ')';
                     addLog(importDesc);
 
