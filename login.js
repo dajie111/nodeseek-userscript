@@ -7,7 +7,8 @@
     const CONFIG = {
         SERVER_URL: 'https://hb.396663.xyz',
         STORAGE_KEY: 'nodeseek_login_token',
-        USER_KEY: 'nodeseek_login_user'
+        USER_KEY: 'nodeseek_login_user',
+        BACKUP_LIMIT_KEY: 'nodeseek_backup_limit'
     };
 
     // 全局变量
@@ -273,7 +274,7 @@
             // 如果没有选择特定项目，默认获取所有配置
             if (!selectedItems || selectedItems.length === 0) {
                 // 移除热点统计数据，不参与服务器同步备份
-                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'filterData', 'notesData', 'viewedTitles'];
+                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'filterData', 'notesData', 'viewedTitles', 'backupLimit'];
             }
 
             // 获取黑名单数据
@@ -549,6 +550,15 @@
                 }
             }
 
+            // 获取备份保留数量（强制包含）
+            try {
+                const limit = localStorage.getItem(CONFIG.BACKUP_LIMIT_KEY);
+                if (limit) {
+                    config.backupLimit = parseInt(limit);
+                }
+            } catch (error) {
+            }
+
             try {
                 const enabledRaw = localStorage.getItem('nodeseek_auto_sync_enabled');
                 const itemsRaw = localStorage.getItem('nodeseek_auto_sync_items');
@@ -576,7 +586,7 @@
             // 如果没有选择特定项目，默认应用所有配置
             if (!selectedItems || selectedItems.length === 0) {
                 // 移除热点统计数据，不参与服务器同步应用
-                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'viewedTitles'];
+                selectedItems = ['blacklist', 'friends', 'favorites', 'favoriteCategories', 'logs', 'browseHistory', 'quickReplies', 'emojiFavorites', 'chickenLegStats', 'viewedTitles', 'backupLimit'];
             }
 
             try {
@@ -788,6 +798,16 @@
                         applied.push(`阅读记忆(${count}条)`);
                     } catch (error) {
                         applied.push("阅读记忆(失败)");
+                    }
+                }
+
+                // 应用备份保留数量（强制应用）
+                if (config.backupLimit) {
+                    try {
+                        localStorage.setItem(CONFIG.BACKUP_LIMIT_KEY, config.backupLimit);
+                        applied.push(`备份设置(${config.backupLimit}份)`);
+                    } catch (error) {
+                        applied.push("备份设置(失败)");
                     }
                 }
 
@@ -1732,8 +1752,11 @@
                         // 收集配置数据
                         const config = Utils.getAllConfig(selectedItems);
 
+                        // 获取备份保留数量设置
+                        const backupLimit = typeof GM_getValue === 'function' ? GM_getValue('backup_limit', 3) : 3;
+
                         // 计算配置数据大小并动态调整超时时间
-                        const configJson = JSON.stringify({ config, syncMode: 'manual' });
+                        const configJson = JSON.stringify({ config, syncMode: 'manual', backupLimit });
                         const configSize = new Blob([configJson]).size; // 字节数
                         const configSizeMB = configSize / (1024 * 1024);
 
@@ -1810,7 +1833,8 @@
             if (!Auth.isLoggedIn()) return false;
             try {
                 const config = Utils.getAllConfig(selectedItems);
-                const configJson = JSON.stringify({ config, syncMode: 'auto' });
+                const backupLimit = typeof GM_getValue === 'function' ? GM_getValue('backup_limit', 3) : 3;
+                const configJson = JSON.stringify({ config, syncMode: 'auto', backupLimit });
                 const size = new Blob([configJson]).size;
                 const mb = size / (1024 * 1024);
                 let dynamicTimeout = 60000;
@@ -2340,72 +2364,186 @@
             confirmInput.focus();
         },
 
+        showVersionSelectionDialog: function (backups, callback, onCancel) {
+            const existingDialog = document.getElementById('version-selection-dialog');
+            if (existingDialog) existingDialog.remove();
+
+            const dialog = document.createElement('div');
+            dialog.id = 'version-selection-dialog';
+            const isMobile = window.innerWidth <= 768;
+
+            dialog.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: ${isMobile ? '90vw' : '400px'};
+                max-width: ${isMobile ? '90vw' : '400px'};
+                z-index: 10002;
+                background: #fff;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+                padding: 20px;
+                max-height: 80vh;
+                overflow-y: auto;
+                box-sizing: border-box;
+            `;
+
+            const title = document.createElement('div');
+            title.textContent = '选择备份版本';
+            title.style.cssText = 'font-weight: bold; font-size: 16px; margin-bottom: 15px; text-align: center;';
+
+            const list = document.createElement('div');
+            list.style.cssText = 'margin-bottom: 20px; border: 1px solid #eee; border-radius: 4px; padding: 10px;';
+
+            let selectedId = backups[0].id;
+
+            backups.forEach((b, index) => {
+                const item = document.createElement('div');
+                item.style.cssText = 'padding: 8px 0; border-bottom: 1px solid #eee; display: flex; align-items: center; cursor: pointer;';
+                if (index === backups.length - 1) item.style.borderBottom = 'none';
+
+                const radio = document.createElement('input');
+                radio.type = 'radio';
+                radio.name = 'backup_version';
+                radio.value = b.id;
+                radio.checked = index === 0;
+                radio.style.marginRight = '10px';
+
+                const label = document.createElement('div');
+                const sizeKB = (b.size / 1024).toFixed(2);
+                label.innerHTML = `<div>${b.created_at}</div><div style="font-size: 12px; color: #666;">大小: ${sizeKB} KB ${index === 0 ? '(最新)' : ''}</div>`;
+
+                item.onclick = () => {
+                    radio.checked = true;
+                    selectedId = b.id;
+                };
+                radio.onclick = (e) => {
+                    e.stopPropagation();
+                    selectedId = b.id;
+                };
+
+                item.prepend(radio);
+                item.appendChild(label);
+                list.appendChild(item);
+            });
+
+            const btnContainer = document.createElement('div');
+            btnContainer.style.cssText = 'display: flex; justify-content: space-between; gap: 10px;';
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = '取消';
+            cancelBtn.style.cssText = 'padding: 8px 15px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; flex: 1;';
+            cancelBtn.onclick = () => {
+                dialog.remove();
+                if (onCancel) onCancel();
+            };
+
+            const confirmBtn = document.createElement('button');
+            confirmBtn.textContent = '下一步';
+            confirmBtn.style.cssText = 'padding: 8px 15px; border: none; background: #1890ff; color: #fff; border-radius: 4px; cursor: pointer; flex: 1;';
+            confirmBtn.onclick = () => {
+                dialog.remove();
+                if (callback) callback(selectedId);
+            };
+
+            btnContainer.appendChild(cancelBtn);
+            btnContainer.appendChild(confirmBtn);
+
+            dialog.appendChild(title);
+            dialog.appendChild(list);
+            dialog.appendChild(btnContainer);
+            document.body.appendChild(dialog);
+
+            if (UI.makeDraggable) UI.makeDraggable(dialog);
+        },
+
         download: async function () {
             if (!Auth.isLoggedIn()) {
                 Utils.showMessage('请先登录', 'error');
                 return false;
             }
 
-            // 返回一个Promise，等待配置选择对话框完成
-            return new Promise((resolve, reject) => {
-                // 显示配置选择对话框
-                this.showConfigSelectionDialog('download', async (selectedItems) => {
-                    try {
-                        // 获取服务器配置数据
-                        const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`);
+            try {
+                // 1. 获取备份列表
+                const listData = await Utils.request(`${CONFIG.SERVER_URL}/api/sync?action=list`);
+                if (!listData.success) {
+                    throw new Error(listData.message || '获取备份列表失败');
+                }
 
-                        if (data.success && data.config) {
-                            // 应用配置
-                            const applied = Utils.applyConfig(data.config, selectedItems);
+                const backups = listData.backups || [];
+                if (backups.length === 0) {
+                    console.log('服务器上没有备份数据');
+                    // Utils.showMessage('服务器上没有备份数据', 'warning');
+                    return false;
+                }
 
-                            if (applied.length > 0) {
-                                // 延迟显示确认对话框，让成功提示先显示
-                                setTimeout(() => {
-                                    const allowedLabels = ['黑名单', '好友', '收藏', '操作日志', '浏览历史', '快捷回复', '常用表情', '鸡腿统计', '关键词过滤', '笔记', '阅读记忆'];
-                                    const simplifiedApplied = applied
-                                        .map(s => s.replace(/\s*\([^)]*\)\s*/g, '').replace(/\s*（[^）]*）\s*/g, ''))
-                                        .filter(s => allowedLabels.includes(s))
-                                        .filter((s, idx, arr) => arr.indexOf(s) === idx);
-                                    const shouldReload = confirm(`下载配置成功！\n\n已下载: ${simplifiedApplied.join('、')}\n\n是否刷新页面以应用更改？`);
-                                    if (shouldReload) {
-                                        location.reload();
-                                    } else {
-                                        // 仅记录日志，不显示弹窗
-                                        Utils.showMessage('配置已同步，建议刷新页面以完全应用更改', 'info', false);
+                // 2. 选择版本
+                let selectedId = null;
+                if (backups.length >= 1) {
+                    selectedId = await new Promise((resolve) => {
+                        this.showVersionSelectionDialog(backups, resolve, () => resolve(null));
+                    });
+                    if (selectedId === null) return false;
+                } else {
+                    selectedId = backups[0].id;
+                }
 
-                                        // 更新存储空间信息
-                                        const currentStorageInfo = document.querySelector('#login-auth-dialog .storage-info-container');
-                                        if (currentStorageInfo) {
-                                            UI.loadStorageInfo(currentStorageInfo);
+                // 3. 选择配置内容并下载
+                return new Promise((resolve, reject) => {
+                    this.showConfigSelectionDialog('download', async (selectedItems) => {
+                        try {
+                            const url = selectedId ? `${CONFIG.SERVER_URL}/api/sync?id=${selectedId}` : `${CONFIG.SERVER_URL}/api/sync`;
+                            const data = await Utils.request(url);
+
+                            if (data.success && data.config) {
+                                const applied = Utils.applyConfig(data.config, selectedItems);
+
+                                if (applied.length > 0) {
+                                    setTimeout(() => {
+                                        const allowedLabels = ['黑名单', '好友', '收藏', '操作日志', '浏览历史', '快捷回复', '常用表情', '鸡腿统计', '关键词过滤', '笔记', '阅读记忆'];
+                                        const simplifiedApplied = applied
+                                            .map(s => s.replace(/\s*\([^)]*\)\s*/g, '').replace(/\s*（[^）]*）\s*/g, ''))
+                                            .filter(s => allowedLabels.includes(s))
+                                            .filter((s, idx, arr) => arr.indexOf(s) === idx);
+                                        const shouldReload = confirm(`下载配置成功！\n\n已下载: ${simplifiedApplied.join('、')}\n\n是否刷新页面以应用更改？`);
+                                        if (shouldReload) {
+                                            location.reload();
+                                        } else {
+                                            Utils.showMessage('配置已同步，建议刷新页面以完全应用更改', 'info', false);
+                                            const currentStorageInfo = document.querySelector('#login-auth-dialog .storage-info-container');
+                                            if (currentStorageInfo) {
+                                                UI.loadStorageInfo(currentStorageInfo);
+                                            }
                                         }
-                                    }
-                                }, 500);
-                                resolve(true);
+                                    }, 500);
+                                    resolve(true);
+                                } else {
+                                    Utils.showMessage('从服务器获取配置成功，但没有数据需要应用', 'info', false);
+                                    resolve(false);
+                                }
                             } else {
-                                // 仅记录日志，不显示弹窗
-                                Utils.showMessage('从服务器获取配置成功，但没有数据需要应用', 'info', false);
-                                resolve(false);
+                                Utils.showMessage('服务器返回的配置数据格式错误', 'error', false);
+                                reject(new Error('配置数据格式错误'));
                             }
-                        } else {
-                            // 仅记录日志，不显示弹窗
-                            Utils.showMessage('服务器返回的配置数据格式错误', 'error', false);
-                            reject(new Error('配置数据格式错误'));
+                        } catch (error) {
+                            if (error.message.includes('404')) {
+                                Utils.showMessage('服务器上没有配置数据，请先上传配置', 'warning', false);
+                            } else {
+                                Utils.showMessage(`配置下载失败: ${error.message}`, 'error', false);
+                            }
+                            reject(error);
                         }
-                    } catch (error) {
-                        if (error.message.includes('404')) {
-                            // 仅记录日志，不显示弹窗
-                            Utils.showMessage('服务器上没有配置数据，请先上传配置', 'warning', false);
-                        } else {
-                            // 仅记录日志，不显示弹窗
-                            Utils.showMessage(`配置下载失败: ${error.message}`, 'error', false);
-                        }
-                        reject(error); // 重新抛出错误，让进度条能够显示失败状态
-                    }
-                }, () => {
-                    // 取消/关闭对话框
-                    try { resolve(false); } catch (e) { /* no-op */ }
+                    }, () => {
+                        try { resolve(false); } catch (e) { }
+                    });
                 });
-            });
+
+            } catch (error) {
+                Utils.showMessage(`获取备份列表失败: ${error.message}`, 'error', false);
+                return false;
+            }
         }
     };
 
@@ -3301,7 +3439,7 @@
 
             // SVG上传设置按钮
             const svgSettingsBtn = document.createElement('button');
-            svgSettingsBtn.textContent = 'SVG上传设置';
+            svgSettingsBtn.textContent = 'SVG设置';
             svgSettingsBtn.style.cssText = `
                 padding: 8px;
                 background: #fa8c16;
@@ -3314,30 +3452,20 @@
                 this.createSvgUploadSettingsDialog(storageInfo);
             };
 
-            // 删除同步数据按钮
-            const deleteConfigBtn = document.createElement('button');
-            deleteConfigBtn.textContent = '清除上传数据';
-            deleteConfigBtn.style.cssText = `
+            // 备份设置按钮
+            const backupSettingsBtn = document.createElement('button');
+            backupSettingsBtn.textContent = '备份设置';
+            backupSettingsBtn.style.cssText = `
                 padding: 8px;
-                background: #f44336;
+                background: #fa541c; /* 火山红 */
                 color: white;
                 border: none;
                 border-radius: 4px;
                 cursor: pointer;
                 min-width: 120px;
             `;
-            deleteConfigBtn.onclick = async () => {
-                deleteConfigBtn.disabled = true;
-                const originalText = deleteConfigBtn.textContent;
-                deleteConfigBtn.textContent = '清除中...';
-                try {
-                    await Sync.deleteServerConfig();
-                    // 清除成功后刷新存储空间信息
-                    UI.loadStorageInfo(storageInfo);
-                } finally {
-                    deleteConfigBtn.disabled = false;
-                    deleteConfigBtn.textContent = originalText;
-                }
+            backupSettingsBtn.onclick = () => {
+                this.createBackupSettingsDialog(storageInfo);
             };
 
             // 退出登录按钮
@@ -3363,17 +3491,303 @@
             this.optimizeButtonForMobile(downloadBtn, isMobile);
             this.optimizeButtonForMobile(changePasswordBtn, isMobile);
             this.optimizeButtonForMobile(svgSettingsBtn, isMobile);
-            this.optimizeButtonForMobile(deleteConfigBtn, isMobile);
+            this.optimizeButtonForMobile(backupSettingsBtn, isMobile);
             this.optimizeButtonForMobile(logoutBtn, isMobile);
 
             syncContainer.appendChild(uploadBtn);
             syncContainer.appendChild(downloadBtn);
             syncContainer.appendChild(changePasswordBtn);
             syncContainer.appendChild(svgSettingsBtn);
-            syncContainer.appendChild(deleteConfigBtn);
+            syncContainer.appendChild(backupSettingsBtn);
 
             container.appendChild(syncContainer);
             container.appendChild(logoutBtn);
+        },
+
+        createBackupSettingsDialog: function (storageInfoContainer) {
+            const dialogId = 'nodeseek-backup-settings-dialog';
+            const existingDialog = document.getElementById(dialogId);
+            if (existingDialog) {
+                existingDialog.remove();
+                return;
+            }
+
+            const isMobile = window.innerWidth <= 768;
+            const dialog = document.createElement('div');
+            dialog.id = dialogId;
+            dialog.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: ${isMobile ? '90vw' : '400px'};
+                max-width: ${isMobile ? '90vw' : '400px'};
+                z-index: 10002;
+                background: #fff;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+                padding: 20px;
+                max-height: 80vh;
+                overflow-y: auto;
+                box-sizing: border-box;
+            `;
+
+            // 拖拽手柄
+            const dragHandle = document.createElement('div');
+            dragHandle.className = 'dialog-title-draggable';
+            dragHandle.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 30px;
+                height: 30px;
+                cursor: move;
+                background: transparent;
+                z-index: 1;
+                user-select: none;
+            `;
+
+            const title = document.createElement('div');
+            title.textContent = '备份设置';
+            title.style.cssText = 'font-weight: bold; font-size: 16px; margin-bottom: 20px; text-align: center; color: #fa541c;';
+
+            const closeBtn = document.createElement('span');
+            closeBtn.textContent = '×';
+            closeBtn.style.cssText = `
+                position: absolute;
+                right: 12px;
+                top: 8px;
+                cursor: pointer;
+                font-size: 20px;
+                color: #999;
+            `;
+            closeBtn.onclick = () => dialog.remove();
+
+            const content = document.createElement('div');
+
+            // 1. 备份数量设置
+            const settingGroup = document.createElement('div');
+            settingGroup.style.cssText = 'margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee;';
+            
+            const limitContainer = document.createElement('div');
+            limitContainer.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;';
+            
+            const limitLabel = document.createElement('div');
+            limitLabel.textContent = '备份保留数量:';
+            limitLabel.style.fontWeight = 'bold';
+            
+            const limitSelect = document.createElement('select');
+            limitSelect.style.cssText = 'padding: 4px; border: 1px solid #d9d9d9; border-radius: 4px;';
+            [1, 2, 3].forEach(num => {
+                const opt = document.createElement('option');
+                opt.value = num;
+                opt.textContent = `${num}份`;
+                limitSelect.appendChild(opt);
+            });
+            
+            // 加载保存的设置
+            const savedLimit = parseInt(localStorage.getItem(CONFIG.BACKUP_LIMIT_KEY) || '1');
+            limitSelect.value = savedLimit;
+            
+            // 保存当前值为旧值，以便取消时恢复
+            limitSelect.setAttribute('data-current', savedLimit);
+
+            limitSelect.onchange = async () => {
+                const newLimit = parseInt(limitSelect.value);
+                const oldLimit = parseInt(limitSelect.getAttribute('data-current') || 1);
+                
+                limitSelect.disabled = true;
+
+                try {
+                    // 获取当前备份列表
+                    const res = await Utils.request(`${CONFIG.SERVER_URL}/api/sync?action=list`);
+                    const backups = (res.success && res.backups) ? res.backups : [];
+                    
+                    if (backups.length > newLimit) {
+                        const deleteCount = backups.length - newLimit;
+                        const confirmMsg = `即将修改保留数量为 ${newLimit} 份。\n` +
+                                           `检测到服务器已有 ${backups.length} 份备份。\n` +
+                                           `此操作将立即删除 ${deleteCount} 份最旧的备份数据（无法恢复）。\n\n` +
+                                           `确定要继续吗？`;
+                        
+                        if (confirm(confirmMsg)) {
+                            // 用户确认删除
+                            const toDelete = backups.slice(newLimit); // 取出多余的旧备份（假设backups按时间倒序）
+                            
+                            let successCount = 0;
+                            for (const b of toDelete) {
+                                try {
+                                    await Utils.request(`${CONFIG.SERVER_URL}/api/sync?id=${b.id}`, { method: 'DELETE' });
+                                    successCount++;
+                                } catch (e) {
+                                    console.error("删除备份失败", b.id, e);
+                                }
+                            }
+                            
+                            localStorage.setItem(CONFIG.BACKUP_LIMIT_KEY, newLimit);
+                            limitSelect.setAttribute('data-current', newLimit);
+                            // Utils.showMessage(`设置已更新，清理了 ${successCount} 份旧备份`, 'success');
+                            loadBackups(); // 刷新列表
+                            if (storageInfoContainer) UI.loadStorageInfo(storageInfoContainer);
+                        } else {
+                            // 用户取消，恢复旧值
+                            limitSelect.value = oldLimit;
+                        }
+                    } else {
+                        // 无需清理，直接保存
+                        localStorage.setItem(CONFIG.BACKUP_LIMIT_KEY, newLimit);
+                        limitSelect.setAttribute('data-current', newLimit);
+                        // Utils.showMessage('设置已更新', 'success');
+                    }
+                } catch (e) {
+                    // console.error(e);
+                    Utils.showMessage('操作失败: 无法获取备份列表', 'error');
+                    limitSelect.value = oldLimit;
+                } finally {
+                    limitSelect.disabled = false;
+                }
+            };
+
+            limitContainer.appendChild(limitLabel);
+            limitContainer.appendChild(limitSelect);
+            
+            const limitHint = document.createElement('div');
+            limitHint.textContent = '提示：修改设置将立即生效，如有溢出备份会即刻清理。';
+            limitHint.style.cssText = 'font-size: 12px; color: #8c8c8c;';
+
+            settingGroup.appendChild(limitContainer);
+            settingGroup.appendChild(limitHint);
+
+            // 2. 现有备份列表
+            const listGroup = document.createElement('div');
+            listGroup.style.cssText = 'margin-bottom: 20px;';
+            
+            const listTitle = document.createElement('div');
+            listTitle.textContent = '已备份数据';
+            listTitle.style.cssText = 'font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;';
+            
+            // 刷新按钮
+            const refreshBtn = document.createElement('span');
+            refreshBtn.textContent = '↻';
+            refreshBtn.title = '刷新列表';
+            refreshBtn.style.cssText = 'cursor: pointer; color: #1890ff; font-size: 18px;';
+            refreshBtn.onclick = () => loadBackups();
+            listTitle.appendChild(refreshBtn);
+
+            const listContainer = document.createElement('div');
+            listContainer.style.cssText = 'border: 1px solid #eee; border-radius: 4px; max-height: 200px; overflow-y: auto; background: #fafafa;';
+
+            const loadBackups = async () => {
+                listContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">加载中...</div>';
+                try {
+                    const res = await Utils.request(`${CONFIG.SERVER_URL}/api/sync?action=list`);
+                    if (res.success && res.backups) {
+                        renderList(res.backups);
+                    } else {
+                        listContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">暂无备份数据</div>';
+                    }
+                } catch (e) {
+                    listContainer.innerHTML = `<div style="padding: 20px; text-align: center; color: #ff4d4f;">加载失败: ${e.message}</div>`;
+                }
+            };
+
+            const renderList = (backups) => {
+                listContainer.innerHTML = '';
+                if (backups.length === 0) {
+                    listContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">暂无备份数据</div>';
+                    return;
+                }
+                
+                backups.forEach((b, index) => {
+                    const item = document.createElement('div');
+                    item.style.cssText = `
+                        padding: 10px;
+                        border-bottom: 1px solid #eee;
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        background: #fff;
+                    `;
+                    if (index === backups.length - 1) item.style.borderBottom = 'none';
+
+                    const info = document.createElement('div');
+                    const sizeKB = (b.size / 1024).toFixed(2);
+                    info.innerHTML = `
+                        <div style="font-size: 13px; color: #333;">${b.created_at}</div>
+                        <div style="font-size: 12px; color: #999;">大小: ${sizeKB} KB ${index === 0 ? '<span style="color:#52c41a;margin-left:5px">(最新)</span>' : ''}</div>
+                    `;
+
+                    const delBtn = document.createElement('button');
+                    delBtn.textContent = '删除';
+                    delBtn.style.cssText = `
+                        padding: 4px 8px;
+                        font-size: 12px;
+                        color: #ff4d4f;
+                        background: #fff;
+                        border: 1px solid #ffccc7;
+                        border-radius: 4px;
+                        cursor: pointer;
+                    `;
+                    delBtn.onmouseover = () => { delBtn.style.background = '#fff1f0'; delBtn.style.borderColor = '#ff4d4f'; };
+                    delBtn.onmouseout = () => { delBtn.style.background = '#fff'; delBtn.style.borderColor = '#ffccc7'; };
+                    
+                    delBtn.onclick = async () => {
+                        if (!confirm(`确定要删除 ${b.created_at} 的备份吗？`)) return;
+                        
+                        delBtn.textContent = '...';
+                        delBtn.disabled = true;
+                        
+                        try {
+                            // 调用单个删除接口
+                            // 注意：DELETE请求参数传递方式取决于 Utils.request 实现，通常 fetch 接受 query params
+                            // 这里我们构造 URL query
+                            const res = await Utils.request(`${CONFIG.SERVER_URL}/api/sync?id=${b.id}`, {
+                                method: 'DELETE'
+                            });
+                            
+                            if (res.success) {
+                                item.remove();
+                                if (listContainer.children.length === 0) {
+                                    listContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">暂无备份数据</div>';
+                                }
+                                Utils.showMessage(`删除成功:已备份数据 ${b.created_at}`, 'success', false);
+                                // 刷新存储空间显示
+                                if (storageInfoContainer) UI.loadStorageInfo(storageInfoContainer);
+                            } else {
+                                Utils.showMessage(res.message || '删除失败', 'error', false);
+                                delBtn.textContent = '删除';
+                                delBtn.disabled = false;
+                            }
+                        } catch (e) {
+                            Utils.showMessage(`删除出错: ${e.message}`, 'error', false);
+                            delBtn.textContent = '删除';
+                            delBtn.disabled = false;
+                        }
+                    };
+
+                    item.appendChild(info);
+                    item.appendChild(delBtn);
+                    listContainer.appendChild(item);
+                });
+            };
+
+            listGroup.appendChild(listTitle);
+            listGroup.appendChild(listContainer);
+
+            content.appendChild(settingGroup);
+            content.appendChild(listGroup);
+
+            dialog.appendChild(dragHandle);
+            dialog.appendChild(title);
+            dialog.appendChild(closeBtn);
+            dialog.appendChild(content);
+            document.body.appendChild(dialog);
+
+            if (this.makeDraggable) this.makeDraggable(dialog);
+            
+            // 初始加载
+            loadBackups();
         },
 
         createSvgUploadSettingsDialog: function (storageInfoContainer) {
@@ -3508,23 +3922,28 @@
                 background: #fff;
                 color: #333;
             `;
+            
+            // 添加加载中选项
+            const loadingOption = document.createElement('option');
+            loadingOption.value = 'loading';
+            loadingOption.textContent = '正在读取服务器设置...';
+            retentionSelect.appendChild(loadingOption);
+            
             options.forEach(o => {
                 const opt = document.createElement('option');
                 opt.value = String(o.days);
                 opt.textContent = o.label;
                 retentionSelect.appendChild(opt);
             });
-            retentionSelect.value = '365';
+            
+            retentionSelect.value = 'loading';
+            // 默认禁用，等待读取服务器数据
+            retentionSelect.disabled = true;
+            retentionSelect.style.backgroundColor = '#f5f5f5';
+            retentionSelect.style.cursor = 'not-allowed';
 
             retentionRow.appendChild(retentionLabel);
             retentionRow.appendChild(retentionSelect);
-
-            const currentLine = document.createElement('div');
-            currentLine.style.cssText = `
-                font-size: 12px;
-                color: #666;
-            `;
-            currentLine.textContent = `当前：${getLabel(365)}`;
 
             const actionRow = document.createElement('div');
             actionRow.style.cssText = `
@@ -3568,7 +3987,6 @@
 
             retentionSelect.onchange = async () => {
                 const days = parseInt(retentionSelect.value || '365', 10);
-                currentLine.textContent = `当前：${getLabel(days)}`;
                 if (pendingSaveTimer) {
                     try { clearTimeout(pendingSaveTimer); } catch (e) { }
                 }
@@ -3579,11 +3997,9 @@
                             lastSavedDays = days;
                         } else {
                             retentionSelect.value = String(lastSavedDays);
-                            currentLine.textContent = `当前：${getLabel(lastSavedDays)}`;
                         }
                     } catch (e) {
                         retentionSelect.value = String(lastSavedDays);
-                        currentLine.textContent = `当前：${getLabel(lastSavedDays)}`;
                     }
                 }, 300);
             };
@@ -3617,7 +4033,6 @@
 
             form.appendChild(tip);
             form.appendChild(retentionRow);
-            form.appendChild(currentLine);
             form.appendChild(actionRow);
 
             dialog.appendChild(dragHandle);
@@ -3631,12 +4046,24 @@
             (async () => {
                 try {
                     const days = await Sync.getSvgRetentionDays();
+                    // 移除加载提示选项
+                    if (loadingOption.parentNode) loadingOption.remove();
+                    
                     if (typeof days === 'number') {
                         retentionSelect.value = String(days);
-                        currentLine.textContent = `当前：${getLabel(days)}`;
                         lastSavedDays = days;
+                    } else {
+                        retentionSelect.value = '365';
                     }
-                } catch (e) { }
+                } catch (e) {
+                    // 移除加载提示选项
+                    if (loadingOption.parentNode) loadingOption.remove();
+                    retentionSelect.value = '365';
+                } finally {
+                    retentionSelect.disabled = false;
+                    retentionSelect.style.backgroundColor = '#fff';
+                    retentionSelect.style.cursor = 'default';
+                }
             })();
         },
 
