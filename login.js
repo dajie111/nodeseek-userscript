@@ -2788,6 +2788,7 @@
                 color: #666;
                 font-size: 12px;
                 margin-bottom: 15px;
+                white-space: pre-wrap;
             `;
 
             // 按钮容器
@@ -2887,7 +2888,7 @@
                     // 切换到注册模式
                     securityCodeLabel.style.display = 'block';
                     securityCodeContainer.style.display = 'block';
-                    modeHint.textContent = '注册模式 - 请设置安全码用于找回密码';
+                    modeHint.textContent = '注册模式 - 请设置安全码用于找回密码\n非常不推荐用论坛用户名注册';
                     switchToRegisterBtn.style.display = 'none';
                     switchToLoginBtn.style.display = 'block';
                     // 只显示注册按钮
