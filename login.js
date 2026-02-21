@@ -1910,7 +1910,7 @@
                         };
                     }
                 } catch (e) { }
-                const tick = () => {
+                const tick = async () => {
                     try {
                         const enabled = JSON.parse(localStorage.getItem('nodeseek_auto_sync_enabled') || 'false');
                         if (!enabled) return;
@@ -1918,29 +1918,74 @@
                         const itemsRaw = localStorage.getItem('nodeseek_auto_sync_items');
                         const items = itemsRaw ? JSON.parse(itemsRaw) : null;
                         if (!Array.isArray(items) || items.length === 0) return;
+                        
                         const now = Date.now();
+                        // 检查是否到达同步时间
+                        const lastAttempt = parseInt(localStorage.getItem('nodeseek_auto_sync_last_attempt_time') || '0');
+                        const intervalMs = 24 * 60 * 60 * 1000;
+                        // 减少缓冲时间，避免每天推迟1分钟
+                        const startAfterMs = intervalMs + 5000; 
+                        if (lastAttempt && now - lastAttempt < startAfterMs) return;
+
+                        // 检查锁
                         const lockUntil = parseInt(localStorage.getItem('nodeseek_auto_sync_lock_until') || '0');
                         if (lockUntil && lockUntil > now) return;
                         if (this._externalLockUntil && this._externalLockUntil > now) return;
                         if (this._autoSyncInFlight) return;
-                        const lastAttempt = parseInt(localStorage.getItem('nodeseek_auto_sync_last_attempt_time') || '0');
-                        const intervalMs = 24 * 60 * 60 * 1000;
-                        const startAfterMs = intervalMs + 60000;
-                        if (lastAttempt && now - lastAttempt < startAfterMs) return;
-                        const shortLockMs = 60000;
-                        const shortLockUntil = now + shortLockMs;
-                        try { localStorage.setItem('nodeseek_auto_sync_lock_until', shortLockUntil.toString()); } catch (e) { }
-                        try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'start', lockUntil: shortLockUntil }); } catch (e) { }
-                        this._autoSyncInFlight = true;
-                        try { localStorage.setItem('nodeseek_auto_sync_last_attempt_time', now.toString()); } catch (e) { }
-                        this.uploadSelected(items).finally(() => {
-                            this._autoSyncInFlight = false;
-                            try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'end' }); } catch (e) { }
-                        });
+
+                        // 使用 Web Locks API 解决多标签页竞争问题
+                        if (navigator.locks) {
+                            await navigator.locks.request('nodeseek_auto_sync_lock', { ifAvailable: true }, async (lock) => {
+                                if (!lock) return; // 锁被占用，其他标签页正在处理
+                                
+                                // 再次检查时间（防止等待锁的过程中其他标签页已完成）
+                                const currentLastAttempt = parseInt(localStorage.getItem('nodeseek_auto_sync_last_attempt_time') || '0');
+                                if (currentLastAttempt && Date.now() - currentLastAttempt < startAfterMs) return;
+
+                                this._autoSyncInFlight = true;
+                                try {
+                                    const shortLockMs = 60000;
+                                    const shortLockUntil = Date.now() + shortLockMs;
+                                    try { localStorage.setItem('nodeseek_auto_sync_lock_until', shortLockUntil.toString()); } catch (e) { }
+                                    try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'start', lockUntil: shortLockUntil }); } catch (e) { }
+                                    
+                                    // 更新尝试时间，避免立即重复
+                                    try { localStorage.setItem('nodeseek_auto_sync_last_attempt_time', Date.now().toString()); } catch (e) { }
+                                    
+                                    await this.uploadSelected(items);
+                                } finally {
+                                    this._autoSyncInFlight = false;
+                                    try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'end' }); } catch (e) { }
+                                    try { localStorage.removeItem('nodeseek_auto_sync_lock_until'); } catch (e) { }
+                                }
+                            });
+                        } else {
+                            // 降级方案：随机延迟后再次检查锁
+                            const delay = Math.floor(Math.random() * 2000);
+                            setTimeout(async () => {
+                                if (this._autoSyncInFlight) return;
+                                const currentLock = parseInt(localStorage.getItem('nodeseek_auto_sync_lock_until') || '0');
+                                if (currentLock && currentLock > Date.now()) return;
+                                
+                                const shortLockMs = 60000;
+                                const shortLockUntil = Date.now() + shortLockMs;
+                                try { localStorage.setItem('nodeseek_auto_sync_lock_until', shortLockUntil.toString()); } catch (e) { }
+                                try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'start', lockUntil: shortLockUntil }); } catch (e) { }
+                                this._autoSyncInFlight = true;
+                                try { localStorage.setItem('nodeseek_auto_sync_last_attempt_time', Date.now().toString()); } catch (e) { }
+                                
+                                this.uploadSelected(items).finally(() => {
+                                    this._autoSyncInFlight = false;
+                                    try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'end' }); } catch (e) { }
+                                });
+                            }, delay);
+                        }
                     } catch (e) { }
                 };
-                this._autoSyncTimerId = setInterval(tick, 1000);
-                tick();
+                // 延长检查间隔到10秒，减少后台资源占用
+                this._autoSyncTimerId = setInterval(tick, 10000);
+                // 启动时随机延迟，避免所有打开的标签页同时触发
+                setTimeout(tick, 2000 + Math.random() * 3000);
             } catch (e) { }
         },
 
