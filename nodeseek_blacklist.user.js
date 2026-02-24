@@ -37,6 +37,7 @@
 
     // 新增：折叠状态的存储键
     const COLLAPSED_STATE_KEY = 'nodeseek_buttons_collapsed';
+    const PANEL_THEME_MODE_KEY = 'nodeseek_panel_theme_mode';
 
     // 新增：用户数据缓存的存储键
     const USER_DATA_CACHE_KEY = 'nodeseek_user_data_cache';
@@ -262,6 +263,48 @@
     function setCollapsedState(isCollapsed) {
         localStorage.setItem(COLLAPSED_STATE_KEY, isCollapsed.toString());
     }
+
+    function getPanelThemeMode() {
+        const saved = localStorage.getItem(PANEL_THEME_MODE_KEY);
+        if (saved === 'dark' || saved === 'light') return saved;
+        const root = document.documentElement;
+        const pageTheme = root.getAttribute('data-theme');
+        const isDarkByAttr = pageTheme === 'dark';
+        const isDarkByClass = root.classList.contains('dark') || document.body?.classList?.contains('dark') || document.body?.classList?.contains('theme-dark');
+        const isDarkByMedia = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const inferred = (isDarkByAttr || isDarkByClass || isDarkByMedia) ? 'dark' : 'light';
+        localStorage.setItem(PANEL_THEME_MODE_KEY, inferred);
+        return inferred;
+    }
+
+    function setPanelThemeMode(mode) {
+        const safe = (mode === 'dark' || mode === 'light') ? mode : getPanelThemeMode();
+        localStorage.setItem(PANEL_THEME_MODE_KEY, safe);
+    }
+
+    function applyPanelThemeMode(mode) {
+        const root = document.documentElement;
+        root.setAttribute('data-ns-theme', mode === 'dark' ? 'dark' : 'light');
+    }
+
+    function cyclePanelThemeMode() {
+        const current = getPanelThemeMode();
+        const next = current === 'dark' ? 'light' : 'dark';
+        setPanelThemeMode(next);
+        applyPanelThemeMode(next);
+        return next;
+    }
+
+    function panelThemeModeLabel(mode) {
+        return mode === 'dark' ? '暗' : '亮';
+    }
+
+    function panelThemeModeTitle(mode) {
+        const text = mode === 'dark' ? '暗黑' : '亮色';
+        return `主题：${text}，点击切换`;
+    }
+
+    try { applyPanelThemeMode(getPanelThemeMode()); } catch (e) { }
 
     // 新增：用户数据缓存管理
     function getUserDataCache() {
@@ -911,6 +954,84 @@
         background-image: none !important;
         box-shadow: none !important;
     }
+    :root {
+        --ns-panel-bg: rgba(255, 255, 255, 0.95);
+        --ns-panel-border: rgba(0, 0, 0, 0.08);
+        --ns-panel-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        --ns-panel-surface-bg: #fff;
+        --ns-panel-surface-border: #eee;
+        --ns-panel-surface-text: #111;
+        --ns-panel-collapse-bg: #f0f0f0;
+        --ns-panel-collapse-border: #ccc;
+        --ns-panel-collapse-color: #666;
+        --ns-panel-collapse-hover-bg: #e0e0e0;
+    }
+    #nodeseek-plugin-buttons-container {
+        background: var(--ns-panel-bg) !important;
+        border: 1px solid var(--ns-panel-border) !important;
+        box-shadow: var(--ns-panel-shadow) !important;
+    }
+    #ns-highlight-stats-container {
+        background: var(--ns-panel-surface-bg) !important;
+        border: 1px solid var(--ns-panel-surface-border) !important;
+        color: var(--ns-panel-surface-text) !important;
+    }
+    .collapse-btn {
+        background: var(--ns-panel-collapse-bg) !important;
+        border-color: var(--ns-panel-collapse-border) !important;
+        color: var(--ns-panel-collapse-color) !important;
+    }
+    .collapse-btn:hover { background: var(--ns-panel-collapse-hover-bg) !important; }
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --ns-panel-bg: rgba(28, 28, 30, 0.92);
+            --ns-panel-border: rgba(255, 255, 255, 0.12);
+            --ns-panel-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+            --ns-panel-surface-bg: rgba(17, 17, 19, 0.88);
+            --ns-panel-surface-border: rgba(255, 255, 255, 0.12);
+            --ns-panel-surface-text: rgba(255, 255, 255, 0.86);
+            --ns-panel-collapse-bg: rgba(44, 44, 46, 0.95);
+            --ns-panel-collapse-border: rgba(255, 255, 255, 0.12);
+            --ns-panel-collapse-color: rgba(255, 255, 255, 0.78);
+            --ns-panel-collapse-hover-bg: rgba(58, 58, 60, 0.95);
+        }
+    }
+    html[data-theme="dark"], html.dark, body.dark, body.theme-dark {
+        --ns-panel-bg: rgba(28, 28, 30, 0.92);
+        --ns-panel-border: rgba(255, 255, 255, 0.12);
+        --ns-panel-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+        --ns-panel-surface-bg: rgba(17, 17, 19, 0.88);
+        --ns-panel-surface-border: rgba(255, 255, 255, 0.12);
+        --ns-panel-surface-text: rgba(255, 255, 255, 0.86);
+        --ns-panel-collapse-bg: rgba(44, 44, 46, 0.95);
+        --ns-panel-collapse-border: rgba(255, 255, 255, 0.12);
+        --ns-panel-collapse-color: rgba(255, 255, 255, 0.78);
+        --ns-panel-collapse-hover-bg: rgba(58, 58, 60, 0.95);
+    }
+    html[data-ns-theme="dark"] {
+        --ns-panel-bg: rgba(28, 28, 30, 0.92);
+        --ns-panel-border: rgba(255, 255, 255, 0.12);
+        --ns-panel-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+        --ns-panel-surface-bg: rgba(17, 17, 19, 0.88);
+        --ns-panel-surface-border: rgba(255, 255, 255, 0.12);
+        --ns-panel-surface-text: rgba(255, 255, 255, 0.86);
+        --ns-panel-collapse-bg: rgba(44, 44, 46, 0.95);
+        --ns-panel-collapse-border: rgba(255, 255, 255, 0.12);
+        --ns-panel-collapse-color: rgba(255, 255, 255, 0.78);
+        --ns-panel-collapse-hover-bg: rgba(58, 58, 60, 0.95);
+    }
+    html[data-ns-theme="light"] {
+        --ns-panel-bg: rgba(255, 255, 255, 0.95);
+        --ns-panel-border: rgba(0, 0, 0, 0.08);
+        --ns-panel-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        --ns-panel-surface-bg: #fff;
+        --ns-panel-surface-border: #eee;
+        --ns-panel-surface-text: #111;
+        --ns-panel-collapse-bg: #f0f0f0;
+        --ns-panel-collapse-border: #ccc;
+        --ns-panel-collapse-color: #666;
+        --ns-panel-collapse-hover-bg: #e0e0e0;
+    }
     .blacklist-btn {
         margin-left: 7px;
         cursor: pointer;
@@ -981,6 +1102,7 @@
         z-index: 9998;
         transition: transform 0.3s ease;
     }
+    .theme-toggle-btn { top: 36px; }
     .collapse-btn:hover { background: #e0e0e0; }
     .nodeseek-plugin-container-collapsed { width: 0 !important; padding: 0 !important; overflow: hidden !important; }
 
@@ -3046,8 +3168,22 @@
         collapseBtn.innerHTML = '&lt;'; // 默认显示 <
         collapseBtn.title = '点击折叠/展开';
 
+        const themeToggleBtn = document.createElement('button');
+        themeToggleBtn.id = 'theme-toggle-btn';
+        themeToggleBtn.className = 'collapse-btn theme-toggle-btn';
+        const initialThemeMode = getPanelThemeMode();
+        themeToggleBtn.textContent = panelThemeModeLabel(initialThemeMode);
+        themeToggleBtn.title = panelThemeModeTitle(initialThemeMode);
+        themeToggleBtn.onclick = function (e) {
+            e.stopPropagation();
+            const mode = cyclePanelThemeMode();
+            themeToggleBtn.textContent = panelThemeModeLabel(mode);
+            themeToggleBtn.title = panelThemeModeTitle(mode);
+        };
+
         // 组装UI - 先添加折叠按钮，再添加内容容器
         mainContainer.appendChild(collapseBtn);
+        mainContainer.appendChild(themeToggleBtn);
         mainContainer.appendChild(container);
 
         // 处理折叠状态
