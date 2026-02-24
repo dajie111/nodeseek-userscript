@@ -2992,7 +2992,7 @@ function highlightPostContent() {
                                 const span = document.createElement('span');
                                 span.className = 'ns-post-highlight';
                                 span.style.backgroundColor = color;
-                                span.style.color = '#333';
+                                span.style.color = 'inherit';
                                 span.style.borderRadius = '2px';
                                 span.style.padding = '0';
                                 span.style.margin = '0';
@@ -3059,12 +3059,40 @@ function highlightPostContent() {
     });
 
     // 渲染统计数据（如果容器存在）
+    fixAdjacentPostHighlightSeams();
     renderHighlightStatsToContainer();
 }
 
 // 获取统计数据
 function getHighlightStats() {
     return highlightStats.sort((a, b) => a.floor - b.floor);
+}
+
+function fixAdjacentPostHighlightSeams() {
+    const spans = document.querySelectorAll('span.ns-post-highlight');
+    const getBg = (el) => {
+        try { return window.getComputedStyle(el).backgroundColor; } catch (e) { return el.style.backgroundColor; }
+    };
+    const isEmptyText = (node) => {
+        return node && node.nodeType === Node.TEXT_NODE && !String(node.nodeValue || '').replace(/\s+/g, '');
+    };
+
+    for (let i = 0; i < spans.length; i++) {
+        const cur = spans[i];
+        let prevNode = cur.previousSibling;
+        while (prevNode && isEmptyText(prevNode)) prevNode = prevNode.previousSibling;
+        if (!prevNode || prevNode.nodeType !== Node.ELEMENT_NODE) continue;
+        if (!prevNode.classList || !prevNode.classList.contains('ns-post-highlight')) continue;
+
+        const prev = prevNode;
+        if (prev.parentNode !== cur.parentNode) continue;
+        if (getBg(prev) !== getBg(cur)) continue;
+
+        prev.style.borderTopRightRadius = '0';
+        prev.style.borderBottomRightRadius = '0';
+        cur.style.borderTopLeftRadius = '0';
+        cur.style.borderBottomLeftRadius = '0';
+    }
 }
 
 // 滚动到指定楼层
@@ -3136,6 +3164,9 @@ function scrollToHighlight(targetFloor, keyword) {
     if (!scrollToHighlight.indices) {
         scrollToHighlight.indices = {};
     }
+    if (!scrollToHighlight._activeBlink) {
+        scrollToHighlight._activeBlink = null;
+    }
 
     const spans = document.querySelectorAll('span.ns-post-highlight');
     const matches = [];
@@ -3198,19 +3229,44 @@ function scrollToHighlight(targetFloor, keyword) {
          window.addLog(`定位到 #${targetFloor} “${keyword}” (第 ${currentIndex + 1}/${matches.length} 处)`);
     }
 
-    // 清除可能存在的旧动画状态（如果用户快速点击切换）
-    if (target.dataset.animating === 'true') {
-        const oldId = target.dataset.animTimer;
-        if (oldId) clearInterval(parseInt(oldId));
-        delete target.dataset.animating;
-        delete target.dataset.animTimer;
-        // 移除临时样式
-        target.style.removeProperty('transform');
-        target.style.removeProperty('transition');
-        target.style.removeProperty('display');
-        target.style.removeProperty('position');
-        target.style.removeProperty('zIndex');
+    const active = scrollToHighlight._activeBlink;
+    if (active && active.el) {
+        try { clearInterval(active.timerId); } catch (e) { }
+        try {
+            if (typeof active.originalBg !== 'undefined') active.el.style.backgroundColor = active.originalBg;
+            if (typeof active.originalBoxShadow !== 'undefined') active.el.style.boxShadow = active.originalBoxShadow;
+            if (typeof active.originalColor !== 'undefined') active.el.style.color = active.originalColor;
+        } catch (e) { }
+        scrollToHighlight._activeBlink = null;
     }
+
+    const originalBg = target.style.backgroundColor;
+    const originalBoxShadow = target.style.boxShadow;
+    const originalColor = target.style.color;
+    let phase = 0;
+    const timerId = setInterval(() => {
+        phase += 1;
+        const hide = phase % 2 === 1;
+        if (hide) {
+            target.style.backgroundColor = 'transparent';
+            target.style.boxShadow = 'none';
+            target.style.color = '';
+        } else {
+            target.style.backgroundColor = originalBg;
+            target.style.boxShadow = originalBoxShadow;
+            target.style.color = originalColor;
+        }
+        if (phase >= 6) {
+            clearInterval(timerId);
+            target.style.backgroundColor = originalBg;
+            target.style.boxShadow = originalBoxShadow;
+            target.style.color = originalColor;
+            if (scrollToHighlight._activeBlink && scrollToHighlight._activeBlink.timerId === timerId) {
+                scrollToHighlight._activeBlink = null;
+            }
+        }
+    }, 500);
+    scrollToHighlight._activeBlink = { el: target, timerId, originalBg, originalBoxShadow, originalColor };
 }
 
 // 渲染高亮统计到指定容器
