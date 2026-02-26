@@ -3225,10 +3225,6 @@ function scrollToHighlight(targetFloor, keyword) {
     const target = matches[currentIndex];
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-    if (matches.length > 1 && window.addLog) {
-         window.addLog(`定位到 #${targetFloor} “${keyword}” (第 ${currentIndex + 1}/${matches.length} 处)`);
-    }
-
     const active = scrollToHighlight._activeBlink;
     if (active && active.el) {
         try { clearInterval(active.timerId); } catch (e) { }
@@ -3293,7 +3289,7 @@ function renderHighlightStatsToContainer() {
         const floorSpan = document.createElement('span');
         floorSpan.style.cssText = 'color:#2196F3;flex-shrink:0;margin-right:2px;cursor:pointer;text-decoration:underline;';
         floorSpan.textContent = `#${item.floor}`;
-        floorSpan.title = '点击定位到该楼层的高亮词';
+        floorSpan.title = '点击定位到高亮词';
         floorSpan.onclick = function () {
             scrollToHighlight(item.floor, item.keyword);
         };
