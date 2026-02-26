@@ -118,8 +118,8 @@
                     'Content-Type': 'application/json',
                 },
                 timeout: isSyncOperation ? 60000 : 15000, // 同步操作60秒，其他15秒
-                retries: isSyncOperation ? 5 : 2, // 同步操作更多重试次数
-                retryDelay: isSyncOperation ? 2000 : 1000, // 同步操作更长延迟
+                retries: isSyncOperation ? 3 : 2, // 同步操作重试3次（原为5次），减少网络负担
+                retryDelay: isSyncOperation ? 5000 : 1000, // 同步操作延迟5秒（原为2秒），给予更多恢复时间
             };
 
             if (authToken) {
@@ -536,13 +536,13 @@
                         const data = localStorage.getItem('nodeseek_viewed_titles_data');
                         if (data) viewedTitles.data = JSON.parse(data);
                     }
-                    
+
                     const enabled = localStorage.getItem('nodeseek_viewed_history_enabled');
                     const color = localStorage.getItem('nodeseek_viewed_color');
-                    
+
                     if (enabled !== null) viewedTitles.enabled = enabled === 'true';
                     if (color !== null) viewedTitles.color = color;
-                    
+
                     if (Object.keys(viewedTitles).length > 0) {
                         config.viewedTitles = viewedTitles;
                     }
@@ -667,7 +667,7 @@
                                 localStorage.setItem('nodeseek_sign_enabled', JSON.stringify(!!enabled));
                                 // applied.push(`签到设置(${enabled ? '开启' : '关闭'})`);
                             }
-                            
+
                             // 新增：应用签到模式
                             const mode = config.logs.settings ? config.logs.settings.mode : undefined;
                             if (typeof mode !== 'undefined') {
@@ -789,11 +789,11 @@
                                 localStorage.setItem('nodeseek_viewed_titles_data', JSON.stringify(config.viewedTitles.data));
                             }
                         }
-                        
+
                         if (window.NodeSeekViewedTitles && typeof window.NodeSeekViewedTitles.refresh === 'function') {
                             window.NodeSeekViewedTitles.refresh();
                         }
-                        
+
                         const count = Array.isArray(config.viewedTitles.data) ? config.viewedTitles.data.length : 0;
                         applied.push(`阅读记忆(${count}条)`);
                     } catch (error) {
@@ -1099,9 +1099,27 @@
             }
         },
 
-        // 验证token（增强错误处理）
+        // 验证token（增强错误处理 + 缓存机制）
         validateToken: async function () {
             if (!authToken) return false;
+
+            // 缓存检查：如果5分钟内已验证过，则跳过网络请求
+            try {
+                const lastValidate = parseInt(localStorage.getItem('nodeseek_last_token_validate_time') || '0');
+                if (Date.now() - lastValidate < 5 * 60 * 1000) {
+                    // 再次确认本地是否有用户信息
+                    const userStr = localStorage.getItem(CONFIG.USER_KEY);
+                    if (userStr) {
+                        try {
+                            currentUser = JSON.parse(userStr);
+                            return true;
+                        } catch (e) { }
+                    }
+                }
+            } catch (e) { }
+
+            // 添加随机延迟，避免多标签页同时并发请求
+            await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 2000)));
 
             try {
                 const data = await Utils.request(`${CONFIG.SERVER_URL}/api/user`, {
@@ -1112,6 +1130,7 @@
                 if (data.success) {
                     currentUser = data.user;
                     localStorage.setItem(CONFIG.USER_KEY, JSON.stringify(currentUser));
+                    localStorage.setItem('nodeseek_last_token_validate_time', Date.now().toString());
                     return true;
                 }
             } catch (error) {
@@ -1121,6 +1140,7 @@
                     Utils.showMessage('登录已过期，请重新登录', 'warning');
                 } else {
                     // 网络错误时不清除认证信息，保持登录状态
+                    // 但也不更新验证时间，以便下次重试
                 }
             }
             return false;
@@ -1918,13 +1938,13 @@
                         const itemsRaw = localStorage.getItem('nodeseek_auto_sync_items');
                         const items = itemsRaw ? JSON.parse(itemsRaw) : null;
                         if (!Array.isArray(items) || items.length === 0) return;
-                        
+
                         const now = Date.now();
                         // 检查是否到达同步时间
                         const lastAttempt = parseInt(localStorage.getItem('nodeseek_auto_sync_last_attempt_time') || '0');
                         const intervalMs = 24 * 60 * 60 * 1000;
                         // 减少缓冲时间，避免每天推迟1分钟
-                        const startAfterMs = intervalMs + 5000; 
+                        const startAfterMs = intervalMs + 5000;
                         if (lastAttempt && now - lastAttempt < startAfterMs) return;
 
                         // 检查锁
@@ -1937,7 +1957,7 @@
                         if (navigator.locks) {
                             await navigator.locks.request('nodeseek_auto_sync_lock', { ifAvailable: true }, async (lock) => {
                                 if (!lock) return; // 锁被占用，其他标签页正在处理
-                                
+
                                 // 再次检查时间（防止等待锁的过程中其他标签页已完成）
                                 const currentLastAttempt = parseInt(localStorage.getItem('nodeseek_auto_sync_last_attempt_time') || '0');
                                 if (currentLastAttempt && Date.now() - currentLastAttempt < startAfterMs) return;
@@ -1948,10 +1968,10 @@
                                     const shortLockUntil = Date.now() + shortLockMs;
                                     try { localStorage.setItem('nodeseek_auto_sync_lock_until', shortLockUntil.toString()); } catch (e) { }
                                     try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'start', lockUntil: shortLockUntil }); } catch (e) { }
-                                    
+
                                     // 更新尝试时间，避免立即重复
                                     try { localStorage.setItem('nodeseek_auto_sync_last_attempt_time', Date.now().toString()); } catch (e) { }
-                                    
+
                                     await this.uploadSelected(items);
                                 } finally {
                                     this._autoSyncInFlight = false;
@@ -1960,23 +1980,29 @@
                                 }
                             });
                         } else {
-                            // 降级方案：随机延迟后再次检查锁
-                            const delay = Math.floor(Math.random() * 2000);
+                            // 降级方案：随机延迟（大幅增加范围至10秒）后再次检查锁
+                            const delay = Math.floor(Math.random() * 10000); // 增加随机性分散并发
                             setTimeout(async () => {
                                 if (this._autoSyncInFlight) return;
+
+                                // === 关键修复：再次检查时间，防止多个标签页先后触发 ===
+                                const currentLastAttempt = parseInt(localStorage.getItem('nodeseek_auto_sync_last_attempt_time') || '0');
+                                if (currentLastAttempt && Date.now() - currentLastAttempt < startAfterMs) return;
+
                                 const currentLock = parseInt(localStorage.getItem('nodeseek_auto_sync_lock_until') || '0');
                                 if (currentLock && currentLock > Date.now()) return;
-                                
+
                                 const shortLockMs = 60000;
                                 const shortLockUntil = Date.now() + shortLockMs;
                                 try { localStorage.setItem('nodeseek_auto_sync_lock_until', shortLockUntil.toString()); } catch (e) { }
                                 try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'start', lockUntil: shortLockUntil }); } catch (e) { }
                                 this._autoSyncInFlight = true;
                                 try { localStorage.setItem('nodeseek_auto_sync_last_attempt_time', Date.now().toString()); } catch (e) { }
-                                
+
                                 this.uploadSelected(items).finally(() => {
                                     this._autoSyncInFlight = false;
                                     try { if (this._autoSyncBC) this._autoSyncBC.postMessage({ type: 'end' }); } catch (e) { }
+                                    try { localStorage.removeItem('nodeseek_auto_sync_lock_until'); } catch (e) { } // 任务完成后释放锁
                                 });
                             }, delay);
                         }
@@ -1984,8 +2010,8 @@
                 };
                 // 延长检查间隔到10秒，减少后台资源占用
                 this._autoSyncTimerId = setInterval(tick, 10000);
-                // 启动时随机延迟，避免所有打开的标签页同时触发
-                setTimeout(tick, 2000 + Math.random() * 3000);
+                // 启动时随机延迟加大，避免所有打开的标签页同时触发
+                setTimeout(tick, 5000 + Math.random() * 10000);
             } catch (e) { }
         },
 
@@ -3625,14 +3651,14 @@
             // 1. 备份数量设置
             const settingGroup = document.createElement('div');
             settingGroup.style.cssText = 'margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee;';
-            
+
             const limitContainer = document.createElement('div');
             limitContainer.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;';
-            
+
             const limitLabel = document.createElement('div');
             limitLabel.textContent = '备份保留数量:';
             limitLabel.style.fontWeight = 'bold';
-            
+
             const limitSelect = document.createElement('select');
             limitSelect.style.cssText = 'padding: 4px; border: 1px solid #d9d9d9; border-radius: 4px;';
             [1, 2, 3].forEach(num => {
@@ -3641,36 +3667,36 @@
                 opt.textContent = `${num}份`;
                 limitSelect.appendChild(opt);
             });
-            
+
             // 加载保存的设置
             const savedLimit = parseInt(localStorage.getItem(CONFIG.BACKUP_LIMIT_KEY) || '1');
             limitSelect.value = savedLimit;
-            
+
             // 保存当前值为旧值，以便取消时恢复
             limitSelect.setAttribute('data-current', savedLimit);
 
             limitSelect.onchange = async () => {
                 const newLimit = parseInt(limitSelect.value);
                 const oldLimit = parseInt(limitSelect.getAttribute('data-current') || 1);
-                
+
                 limitSelect.disabled = true;
 
                 try {
                     // 获取当前备份列表
                     const res = await Utils.request(`${CONFIG.SERVER_URL}/api/sync?action=list`);
                     const backups = (res.success && res.backups) ? res.backups : [];
-                    
+
                     if (backups.length > newLimit) {
                         const deleteCount = backups.length - newLimit;
                         const confirmMsg = `即将修改保留数量为 ${newLimit} 份。\n` +
                                            `检测到服务器已有 ${backups.length} 份备份。\n` +
                                            `此操作将立即删除 ${deleteCount} 份最旧的备份数据（无法恢复）。\n\n` +
                                            `确定要继续吗？`;
-                        
+
                         if (confirm(confirmMsg)) {
                             // 用户确认删除
                             const toDelete = backups.slice(newLimit); // 取出多余的旧备份（假设backups按时间倒序）
-                            
+
                             let successCount = 0;
                             for (const b of toDelete) {
                                 try {
@@ -3680,7 +3706,7 @@
                                     console.error("删除备份失败", b.id, e);
                                 }
                             }
-                            
+
                             localStorage.setItem(CONFIG.BACKUP_LIMIT_KEY, newLimit);
                             limitSelect.setAttribute('data-current', newLimit);
                             // Utils.showMessage(`设置已更新，清理了 ${successCount} 份旧备份`, 'success');
@@ -3707,7 +3733,7 @@
 
             limitContainer.appendChild(limitLabel);
             limitContainer.appendChild(limitSelect);
-            
+
             const limitHint = document.createElement('div');
             limitHint.textContent = '提示：修改设置将立即生效，如有溢出备份会即刻清理。';
             limitHint.style.cssText = 'font-size: 12px; color: #8c8c8c;';
@@ -3718,11 +3744,11 @@
             // 2. 现有备份列表
             const listGroup = document.createElement('div');
             listGroup.style.cssText = 'margin-bottom: 20px;';
-            
+
             const listTitle = document.createElement('div');
             listTitle.textContent = '已备份数据';
             listTitle.style.cssText = 'font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;';
-            
+
             // 刷新按钮
             const refreshBtn = document.createElement('span');
             refreshBtn.textContent = '↻';
@@ -3754,7 +3780,7 @@
                     listContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">暂无备份数据</div>';
                     return;
                 }
-                
+
                 backups.forEach((b, index) => {
                     const item = document.createElement('div');
                     item.style.cssText = `
@@ -3787,13 +3813,13 @@
                     `;
                     delBtn.onmouseover = () => { delBtn.style.background = '#fff1f0'; delBtn.style.borderColor = '#ff4d4f'; };
                     delBtn.onmouseout = () => { delBtn.style.background = '#fff'; delBtn.style.borderColor = '#ffccc7'; };
-                    
+
                     delBtn.onclick = async () => {
                         if (!confirm(`确定要删除 ${b.created_at} 的备份吗？`)) return;
-                        
+
                         delBtn.textContent = '...';
                         delBtn.disabled = true;
-                        
+
                         try {
                             // 调用单个删除接口
                             // 注意：DELETE请求参数传递方式取决于 Utils.request 实现，通常 fetch 接受 query params
@@ -3801,7 +3827,7 @@
                             const res = await Utils.request(`${CONFIG.SERVER_URL}/api/sync?id=${b.id}`, {
                                 method: 'DELETE'
                             });
-                            
+
                             if (res.success) {
                                 item.remove();
                                 if (listContainer.children.length === 0) {
@@ -3841,7 +3867,7 @@
             document.body.appendChild(dialog);
 
             if (this.makeDraggable) this.makeDraggable(dialog);
-            
+
             // 初始加载
             loadBackups();
         },
@@ -3978,20 +4004,20 @@
                 background: #fff;
                 color: #333;
             `;
-            
+
             // 添加加载中选项
             const loadingOption = document.createElement('option');
             loadingOption.value = 'loading';
             loadingOption.textContent = '正在读取服务器设置...';
             retentionSelect.appendChild(loadingOption);
-            
+
             options.forEach(o => {
                 const opt = document.createElement('option');
                 opt.value = String(o.days);
                 opt.textContent = o.label;
                 retentionSelect.appendChild(opt);
             });
-            
+
             retentionSelect.value = 'loading';
             // 默认禁用，等待读取服务器数据
             retentionSelect.disabled = true;
@@ -4104,7 +4130,7 @@
                     const days = await Sync.getSvgRetentionDays();
                     // 移除加载提示选项
                     if (loadingOption.parentNode) loadingOption.remove();
-                    
+
                     if (typeof days === 'number') {
                         retentionSelect.value = String(days);
                         lastSavedDays = days;
@@ -4387,14 +4413,14 @@
                 if (retryCount === 0) {
                     const lastLock = parseInt(localStorage.getItem(LOCK_KEY) || '0');
                     const now = Date.now();
-                    
+
                     // 如果其他页面/标签页正在获取（锁在15秒内有效）
                     if (now - lastLock < 15000) {
                         storageElement.innerHTML = `
                             <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
                             <div style="color: #666;">同步中...</div>
                         `;
-                        
+
                         // 轮询等待结果
                         const checkTimer = setInterval(() => {
                             // 检查锁是否已释放或过期
@@ -4417,7 +4443,7 @@
                         }, 1000);
                         return;
                     }
-                    
+
                     // 获取锁
                     localStorage.setItem(LOCK_KEY, now.toString());
                 } else {
@@ -4451,14 +4477,14 @@
                         <div style="font-weight: bold; margin-bottom: 4px;">存储空间</div>
                         <div style="color: #faad14;">获取失败，正在重试 (${nextRetry}/3)...</div>
                     `;
-                    
+
                     setTimeout(() => {
                         this.loadStorageInfo(storageElement, nextRetry);
                     }, 3000);
                 } else {
                     // 最终失败，释放锁
                     localStorage.removeItem(LOCK_KEY);
-                    
+
                     let errorMessage = '获取失败';
                     if (error.message.includes('超时')) {
                         errorMessage = '请求超时';
@@ -4467,7 +4493,7 @@
                     } else if (error.message.includes('401') || error.message.includes('403')) {
                         errorMessage = '认证失败';
                     }
-    
+
                     renderError(errorMessage);
                 }
             }
