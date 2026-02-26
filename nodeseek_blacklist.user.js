@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NodeSeek 综合插件
 // @namespace    http://tampermonkey.net/
-// @version      2026.02.26
+// @version      2026.02.27
 // @description  NodeSeek 论坛黑名单，拉黑后红色高亮并可备注，增加域名检测控制按钮显隐，支持折叠功能，显示用户详细信息，快捷回复功能
 // @author       YourName
 // @match        https://www.nodeseek.com/*
@@ -1104,7 +1104,17 @@
     }
     .theme-toggle-btn { top: 36px; }
     .collapse-btn:hover { background: #e0e0e0; }
-    .nodeseek-plugin-container-collapsed { width: 0 !important; padding: 0 !important; overflow: hidden !important; }
+    .nodeseek-plugin-container-collapsed {
+        width: 0 !important;
+        height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow: hidden !important;
+        border: none !important;
+        box-shadow: none !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }
 
     /* 新增：确保用户弹窗能完全遮盖用户信息显示 */
     .hover-user-card, .user-card {
@@ -3191,6 +3201,7 @@
         if (isCollapsed) {
             container.classList.add('nodeseek-plugin-container-collapsed');
             collapseBtn.innerHTML = '&gt;'; // 折叠状态显示 >
+            themeToggleBtn.style.display = 'none'; // 折叠时隐藏主题按钮
         }
 
         // 日志按钮
@@ -3538,11 +3549,13 @@
                 // 展开
                 container.classList.remove('nodeseek-plugin-container-collapsed');
                 collapseBtn.innerHTML = '&lt;';
+                themeToggleBtn.style.display = 'flex'; // 展开时显示主题按钮
                 setCollapsedState(false);
             } else {
                 // 折叠
                 container.classList.add('nodeseek-plugin-container-collapsed');
                 collapseBtn.innerHTML = '&gt;';
+                themeToggleBtn.style.display = 'none'; // 折叠时隐藏主题按钮
                 setCollapsedState(true);
             }
         };
