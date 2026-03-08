@@ -526,7 +526,7 @@
                 }
             }
 
-            // 获取阅读记忆数据
+            // 获取阅读记忆及其他设置数据
             if (selectedItems.includes('viewedTitles')) {
                 try {
                     const viewedTitles = {};
@@ -542,6 +542,22 @@
 
                     if (enabled !== null) viewedTitles.enabled = enabled === 'true';
                     if (color !== null) viewedTitles.color = color;
+
+                    // 新增：收集其他设置项
+                    // 用户信息显示
+                    const userInfoDisplay = localStorage.getItem('nodeseek_user_info_display');
+                    if (userInfoDisplay !== null) viewedTitles.userInfoDisplay = userInfoDisplay;
+                    
+                    // 自动签到设置
+                    const signEnabled = localStorage.getItem('nodeseek_sign_enabled');
+                    if (signEnabled !== null) viewedTitles.signEnabled = signEnabled;
+                    
+                    const signMode = localStorage.getItem('nodeseek_sign_mode');
+                    if (signMode !== null) viewedTitles.signMode = signMode;
+                    
+                    // 屏蔽URL跳转提醒设置
+                    const skipJumpPage = localStorage.getItem('nodeseek_skip_jump_page');
+                    if (skipJumpPage !== null) viewedTitles.skipJumpPage = skipJumpPage;
 
                     if (Object.keys(viewedTitles).length > 0) {
                         config.viewedTitles = viewedTitles;
@@ -773,162 +789,6 @@
                     }
                 }
 
-                // 应用阅读记忆数据
-                if (selectedItems.includes('viewedTitles') && config.viewedTitles && typeof config.viewedTitles === 'object') {
-                    try {
-                        if (typeof config.viewedTitles.enabled !== 'undefined') {
-                            localStorage.setItem('nodeseek_viewed_history_enabled', config.viewedTitles.enabled ? 'true' : 'false');
-                        }
-                        if (config.viewedTitles.color) {
-                            localStorage.setItem('nodeseek_viewed_color', config.viewedTitles.color);
-                        }
-                        if (Array.isArray(config.viewedTitles.data)) {
-                            if (window.NodeSeekViewedTitles && typeof window.NodeSeekViewedTitles.setData === 'function') {
-                                window.NodeSeekViewedTitles.setData(config.viewedTitles.data);
-                            } else {
-                                localStorage.setItem('nodeseek_viewed_titles_data', JSON.stringify(config.viewedTitles.data));
-                            }
-                        }
-
-                        if (window.NodeSeekViewedTitles && typeof window.NodeSeekViewedTitles.refresh === 'function') {
-                            window.NodeSeekViewedTitles.refresh();
-                        }
-
-                        const count = Array.isArray(config.viewedTitles.data) ? config.viewedTitles.data.length : 0;
-                        applied.push(`阅读记忆(${count}条)`);
-                    } catch (error) {
-                        applied.push("阅读记忆(失败)");
-                    }
-                }
-
-                // 应用备份保留数量（强制应用）
-                if (config.backupLimit) {
-                    try {
-                        localStorage.setItem(CONFIG.BACKUP_LIMIT_KEY, config.backupLimit);
-                        applied.push(`备份设置(${config.backupLimit}份)`);
-                    } catch (error) {
-                        applied.push("备份设置(失败)");
-                    }
-                }
-
-                // 应用热点统计数据
-                if (selectedItems.includes('hotTopicsData') && config.hotTopicsData && typeof config.hotTopicsData === 'object') {
-                    try {
-                        const hotData = config.hotTopicsData;
-                        let hotImportCount = 0;
-
-                        // 导入RSS历史数据
-                        if (hotData.rssHistory && Array.isArray(hotData.rssHistory)) {
-                            localStorage.setItem('nodeseek_rss_history', JSON.stringify(hotData.rssHistory));
-                            hotImportCount++;
-                        }
-
-                        // 导入热词历史数据
-                        if (hotData.hotWordsHistory && Array.isArray(hotData.hotWordsHistory)) {
-                            localStorage.setItem('nodeseek_hot_words_history', JSON.stringify(hotData.hotWordsHistory));
-                            hotImportCount++;
-                        }
-
-                        // 导入时间分布数据
-                        if (hotData.timeDistributionHistory && Array.isArray(hotData.timeDistributionHistory)) {
-                            localStorage.setItem('nodeseek_time_distribution_history', JSON.stringify(hotData.timeDistributionHistory));
-                            hotImportCount++;
-                        }
-
-                        // 导入用户统计数据
-                        if (hotData.userStatsHistory && Array.isArray(hotData.userStatsHistory)) {
-                            localStorage.setItem('nodeseek_user_stats_history', JSON.stringify(hotData.userStatsHistory));
-                            hotImportCount++;
-                        }
-
-                        // 导入全局状态数据
-                        if (hotData.globalState && typeof hotData.globalState === 'object') {
-                            localStorage.setItem('nodeseek_focus_global_state', JSON.stringify(hotData.globalState));
-                            hotImportCount++;
-                        }
-
-                        if (hotImportCount > 0) {
-                            applied.push(`热点统计(${hotImportCount}项)`);
-                        }
-                    } catch (error) {
-                        applied.push("热点统计(失败)");
-                    }
-                }
-
-                // 应用关键词过滤数据
-                if (selectedItems.includes('filterData') && config.filterData && typeof config.filterData === 'object') {
-                    try {
-                        let filterImportCount = 0;
-
-                        // 导入屏蔽关键词
-                        if (config.filterData.customKeywords && Array.isArray(config.filterData.customKeywords)) {
-                            localStorage.setItem('ns-filter-custom-keywords', JSON.stringify(config.filterData.customKeywords));
-                            filterImportCount += config.filterData.customKeywords.length;
-                        }
-
-                        // 导入显示关键词
-                        if (config.filterData.displayKeywords && Array.isArray(config.filterData.displayKeywords)) {
-                            localStorage.setItem('ns-filter-keywords', JSON.stringify(config.filterData.displayKeywords));
-                        }
-
-                        // 导入高亮关键词
-                        let highlightImportCount = 0;
-                        if (config.filterData.highlightKeywords && Array.isArray(config.filterData.highlightKeywords)) {
-                            localStorage.setItem('ns-filter-highlight-keywords', JSON.stringify(config.filterData.highlightKeywords));
-                            highlightImportCount = config.filterData.highlightKeywords.length;
-                        }
-
-                        // 导入帖子内容高亮关键词
-                        let highlightPostImportCount = 0;
-                        if (config.filterData.highlightPostKeywords && Array.isArray(config.filterData.highlightPostKeywords)) {
-                            localStorage.setItem('ns-filter-highlight-post-keywords', JSON.stringify(config.filterData.highlightPostKeywords));
-                            highlightPostImportCount = config.filterData.highlightPostKeywords.length;
-                        }
-
-                        // 导入高亮作者选项
-                        if (config.filterData.highlightAuthorEnabled !== undefined) {
-                            localStorage.setItem('ns-filter-highlight-author-enabled', JSON.stringify(config.filterData.highlightAuthorEnabled));
-                        }
-
-                        // 导入高亮颜色
-                        if (config.filterData.highlightColor) {
-                            localStorage.setItem('ns-filter-highlight-color', config.filterData.highlightColor);
-                        }
-
-                        // 导入弹窗位置
-                        if (config.filterData.dialogPosition && typeof config.filterData.dialogPosition === 'object') {
-                            localStorage.setItem('ns-filter-dialog-position', JSON.stringify(config.filterData.dialogPosition));
-                        }
-
-                        // 导入不屏蔽用户
-                        let whitelistUserCount = 0;
-                        if (config.filterData.whitelistUsers && Array.isArray(config.filterData.whitelistUsers)) {
-                            localStorage.setItem('ns-filter-whitelist-users', JSON.stringify(config.filterData.whitelistUsers));
-                            whitelistUserCount = config.filterData.whitelistUsers.length;
-                        }
-
-                        if (filterImportCount > 0 || highlightImportCount > 0 || highlightPostImportCount > 0 || whitelistUserCount > 0) {
-                            const parts = [];
-                            if (filterImportCount > 0) parts.push(`${filterImportCount}个屏蔽词`);
-                            if (highlightImportCount > 0) parts.push(`${highlightImportCount}个高亮词`);
-                            if (highlightPostImportCount > 0) parts.push(`${highlightPostImportCount}个帖内高亮词`);
-                            if (whitelistUserCount > 0) parts.push(`${whitelistUserCount}个不屏蔽用户`);
-                            applied.push(`关键词过滤(${parts.join('、')})`);
-                        } else {
-                            applied.push("关键词过滤");
-                        }
-
-                        // 重新应用帖子内容高亮（仅在帖子详情页有效）
-                        try {
-                            if (window.NodeSeekFilter && typeof window.NodeSeekFilter.highlightPostContent === 'function') {
-                                window.NodeSeekFilter.highlightPostContent();
-                            }
-                        } catch (e) { }
-                    } catch (error) {
-                        applied.push("关键词过滤(失败)");
-                    }
-                }
-
                 // 应用笔记数据
                 if (selectedItems.includes('notesData') && config.notesData && typeof config.notesData === 'object') {
                     try {
@@ -961,6 +821,49 @@
                         }
                     } catch (error) {
                         applied.push("笔记(失败)");
+                    }
+                }
+
+                // 应用阅读记忆及其他设置数据
+                if (selectedItems.includes('viewedTitles') && config.viewedTitles && typeof config.viewedTitles === 'object') {
+                    try {
+                        if (typeof config.viewedTitles.enabled !== 'undefined') {
+                            localStorage.setItem('nodeseek_viewed_history_enabled', config.viewedTitles.enabled ? 'true' : 'false');
+                        }
+                        if (config.viewedTitles.color) {
+                            localStorage.setItem('nodeseek_viewed_color', config.viewedTitles.color);
+                        }
+                        
+                        // 应用其他设置
+                        if (config.viewedTitles.userInfoDisplay) {
+                            localStorage.setItem('nodeseek_user_info_display', config.viewedTitles.userInfoDisplay);
+                        }
+                        if (config.viewedTitles.signEnabled) {
+                            localStorage.setItem('nodeseek_sign_enabled', config.viewedTitles.signEnabled);
+                        }
+                        if (config.viewedTitles.signMode) {
+                            localStorage.setItem('nodeseek_sign_mode', config.viewedTitles.signMode);
+                        }
+                        if (config.viewedTitles.skipJumpPage) {
+                            localStorage.setItem('nodeseek_skip_jump_page', config.viewedTitles.skipJumpPage);
+                        }
+
+                        if (Array.isArray(config.viewedTitles.data)) {
+                            if (window.NodeSeekViewedTitles && typeof window.NodeSeekViewedTitles.setData === 'function') {
+                                window.NodeSeekViewedTitles.setData(config.viewedTitles.data);
+                            } else {
+                                localStorage.setItem('nodeseek_viewed_titles_data', JSON.stringify(config.viewedTitles.data));
+                            }
+                        }
+
+                        if (window.NodeSeekViewedTitles && typeof window.NodeSeekViewedTitles.refresh === 'function') {
+                            window.NodeSeekViewedTitles.refresh();
+                        }
+
+                        const count = Array.isArray(config.viewedTitles.data) ? config.viewedTitles.data.length : 0;
+                        applied.push(`设置(阅读记忆${count}条)`);
+                    } catch (error) {
+                        applied.push("设置(失败)");
                     }
                 }
 
@@ -1237,7 +1140,7 @@
                 { key: 'chickenLegStats', label: '鸡腿统计' },
                 { key: 'filterData', label: '关键词过滤' },
                 { key: 'notesData', label: '笔记' },
-                { key: 'viewedTitles', label: '阅读记忆' }
+                { key: 'viewedTitles', label: '设置' }
             ];
 
             // 全选/取消全选
@@ -1820,7 +1723,7 @@
                             if (include('chickenLegStats') && config.chickenLegStats && typeof config.chickenLegStats === 'object') labels.push('鸡腿统计');
                             if (include('filterData') && config.filterData && typeof config.filterData === 'object') labels.push('关键词过滤');
                             if (include('notesData') && config.notesData && typeof config.notesData === 'object') labels.push('笔记');
-                            if (include('viewedTitles') && config.viewedTitles && typeof config.viewedTitles === 'object') labels.push('阅读记忆');
+                            if (include('viewedTitles') && config.viewedTitles && typeof config.viewedTitles === 'object') labels.push('设置');
 
                             const syncDesc = `配置已上传到服务器 (${labels.join('、')})`;
                             // 仅输出到日志，不显示右上角弹窗
@@ -1894,7 +1797,7 @@
                     if (include('chickenLegStats') && config.chickenLegStats && typeof config.chickenLegStats === 'object') labels.push('鸡腿统计');
                     if (include('filterData') && config.filterData && typeof config.filterData === 'object') labels.push('关键词过滤');
                     if (include('notesData') && config.notesData && typeof config.notesData === 'object') labels.push('笔记');
-                    if (include('viewedTitles') && config.viewedTitles && typeof config.viewedTitles === 'object') labels.push('阅读记忆');
+                    if (include('viewedTitles') && config.viewedTitles && typeof config.viewedTitles === 'object') labels.push('设置');
 
                     const syncDesc = `配置已上传到服务器 (${labels.join('、')})`;
                     Utils.showMessage(syncDesc, 'success', false);
@@ -2583,7 +2486,7 @@
 
                                 if (applied.length > 0) {
                                     setTimeout(() => {
-                                        const allowedLabels = ['黑名单', '好友', '收藏', '操作日志', '浏览历史', '快捷回复', '常用表情', '鸡腿统计', '关键词过滤', '笔记', '阅读记忆'];
+                                        const allowedLabels = ['黑名单', '好友', '收藏', '操作日志', '浏览历史', '快捷回复', '常用表情', '鸡腿统计', '关键词过滤', '笔记', '设置'];
                                         const simplifiedApplied = applied
                                             .map(s => s.replace(/\s*\([^)]*\)\s*/g, '').replace(/\s*（[^）]*）\s*/g, ''))
                                             .filter(s => allowedLabels.includes(s))
