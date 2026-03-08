@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         NodeSeek 综合插件
+// @name         NS综合插件
 // @namespace    http://tampermonkey.net/
-// @version      2026.02.27
+// @version      2026.03.09
 // @description  NodeSeek 论坛黑名单，拉黑后红色高亮并可备注，增加域名检测控制按钮显隐，支持折叠功能，显示用户详细信息，快捷回复功能
 // @author       YourName
 // @match        https://www.nodeseek.com/*
@@ -25,6 +25,24 @@
 (function () {
     'use strict';
 
+    // --------------------------------------------------------
+    // 新增功能：跳过跳转提示页面
+    // 检查开关状态 (默认为 false)
+    if (localStorage.getItem('nodeseek_skip_jump_page') === 'true') {
+        if (location.pathname === '/jump' && location.search.includes('to=')) {
+            const params = new URLSearchParams(location.search);
+            if (params.has('to')) {
+                const target = params.get('to');
+                if (target) {
+                    // 立即跳转
+                    window.location.replace(target);
+                    return; // 停止执行后续脚本
+                }
+            }
+        }
+    }
+    // --------------------------------------------------------
+
     // 黑名单数据结构：{ username: {remark: 'xxx'} }
     const STORAGE_KEY = 'nodeseek_blacklist';
 
@@ -46,6 +64,8 @@
     const USER_INFO_DISPLAY_KEY = 'nodeseek_user_info_display';
     const VIEWED_HISTORY_ENABLED_KEY = 'nodeseek_viewed_history_enabled';
     const VIEWED_COLOR_KEY = 'nodeseek_viewed_color';
+    // 新增：跳过跳转页面开关
+    const SKIP_JUMP_PAGE_KEY = 'nodeseek_skip_jump_page';
 
     // 新增：浏览历史记录的存储键
     const BROWSE_HISTORY_KEY = 'nodeseek_browse_history';
@@ -58,6 +78,16 @@
     // 新增：保存用户信息显示状态
     function setUserInfoDisplayState(isEnabled) {
         localStorage.setItem(USER_INFO_DISPLAY_KEY, isEnabled.toString());
+    }
+
+    // 新增：获取是否开启跳过跳转页面
+    function getSkipJumpPageEnabled() {
+        return localStorage.getItem(SKIP_JUMP_PAGE_KEY) === 'true'; // 默认关闭
+    }
+
+    // 新增：设置是否开启跳过跳转页面
+    function setSkipJumpPageEnabled(enabled) {
+        localStorage.setItem(SKIP_JUMP_PAGE_KEY, enabled.toString());
     }
 
     // 新增：获取阅读记忆开启状态
@@ -2351,6 +2381,28 @@
             console.error('导出备份设置失败:', error);
         }
 
+        // 新增：用户信息显示设置
+        let userInfoSettings = {};
+        try {
+            const userInfoDisplay = localStorage.getItem('nodeseek_user_info_display');
+            if (userInfoDisplay !== null) {
+                userInfoSettings.display = userInfoDisplay !== 'false';
+            }
+        } catch (error) {
+            console.error('导出用户信息显示设置失败:', error);
+        }
+
+        // 新增：屏蔽URL跳转提醒设置
+        let skipJumpSettings = {};
+        try {
+            const skipJumpPage = localStorage.getItem('nodeseek_skip_jump_page');
+            if (skipJumpPage !== null) {
+                skipJumpSettings.enabled = skipJumpPage === 'true';
+            }
+        } catch (error) {
+            console.error('导出屏蔽URL跳转提醒设置失败:', error);
+        }
+
         const data = JSON.stringify({
             blacklist: blacklist,
             friends: friends,
@@ -2362,6 +2414,8 @@
             quickReplies: quickReplies, // 添加快捷回复数据
             quickReplySettings: quickReplySettings, // 新增：快捷回复设置
             signSettings: signSettings, // 新增：签到设置
+            userInfoSettings: userInfoSettings, // 新增：用户信息显示设置
+            skipJumpSettings: skipJumpSettings, // 新增：屏蔽URL跳转提醒设置
             chickenLegStats: chickenLegStats, // 添加鸡腿统计数据
             filterData: filterData, // 添加关键词过滤数据
             notesData: notesData, // 添加笔记数据
@@ -2588,6 +2642,32 @@
                         }
                     }
 
+                    // 新增：处理用户信息显示设置
+                    if (json.userInfoSettings && typeof json.userInfoSettings === 'object') {
+                        try {
+                            if (typeof json.userInfoSettings.display !== 'undefined') {
+                                setUserInfoDisplayState(json.userInfoSettings.display);
+                                importInfo.push(`用户信息显示设置(${json.userInfoSettings.display ? '开启' : '关闭'})`);
+                            }
+                        } catch (error) {
+                            console.error('导入用户信息显示设置失败:', error);
+                            importInfo.push('用户信息显示设置(失败)');
+                        }
+                    }
+
+                    // 新增：处理屏蔽URL跳转提醒设置
+                    if (json.skipJumpSettings && typeof json.skipJumpSettings === 'object') {
+                        try {
+                            if (typeof json.skipJumpSettings.enabled !== 'undefined') {
+                                setSkipJumpPageEnabled(json.skipJumpSettings.enabled);
+                                importInfo.push(`屏蔽URL跳转提醒设置(${json.skipJumpSettings.enabled ? '开启' : '关闭'})`);
+                            }
+                        } catch (error) {
+                            console.error('导入屏蔽URL跳转提醒设置失败:', error);
+                            importInfo.push('屏蔽URL跳转提醒设置(失败)');
+                        }
+                    }
+
                     // 处理鸡腿统计数据
                     if (json.chickenLegStats && typeof json.chickenLegStats === 'object') {
                         try {
@@ -2805,7 +2885,7 @@
                     if (hasFilterDataLog) importDesc += '、关键词过滤';
                     if (hasNotesDataLog) importDesc += '、笔记';
                     // 始终包含备份设置
-                    if (json.backupLimit) importDesc += '、备份设置';
+                    if (json.backupLimit) importDesc += '、设置';
                     importDesc += ')';
                     addLog(importDesc);
 
@@ -5731,6 +5811,37 @@
         signRow.appendChild(signRightContainer);
         content.appendChild(signRow);
 
+        // 4. 跳过跳转页面开关 -> 改为 屏蔽URL跳转提醒
+        const skipJumpRow = document.createElement('div');
+        skipJumpRow.style.display = 'flex';
+        skipJumpRow.style.justifyContent = 'space-between';
+        skipJumpRow.style.alignItems = 'center';
+
+        const skipJumpLabel = document.createElement('label');
+        skipJumpLabel.textContent = '屏蔽URL跳转提醒';
+        skipJumpLabel.style.fontWeight = '500';
+        skipJumpLabel.style.color = '#555';
+        // skipJumpLabel.title = '开启后将自动跳过外链跳转提示页'; // 用户要求移除
+
+        const skipJumpSwitch = document.createElement('input');
+        skipJumpSwitch.type = 'checkbox';
+        skipJumpSwitch.checked = getSkipJumpPageEnabled();
+        skipJumpSwitch.style.transform = 'scale(1.2)';
+        skipJumpSwitch.onchange = function() {
+            const newState = this.checked;
+            setSkipJumpPageEnabled(newState);
+            addLog('屏蔽URL跳转提醒：' + (newState ? '开启' : '关闭'));
+            if (newState) {
+                rewriteJumpLinks(); // 立即尝试重写当前页面的链接
+            } else {
+                restoreJumpLinks(); // 立即恢复原始链接
+            }
+        };
+
+        skipJumpRow.appendChild(skipJumpLabel);
+        skipJumpRow.appendChild(skipJumpSwitch);
+        content.appendChild(skipJumpRow);
+
         dialog.appendChild(content);
         document.body.appendChild(dialog);
     }
@@ -6015,12 +6126,53 @@
         meta.style.display = 'inline-flex';
     }
 
+    function rewriteJumpLinks() {
+        if (!getSkipJumpPageEnabled()) return;
+        document.querySelectorAll('a[href*="/jump?to="]').forEach(link => {
+            try {
+                if (link.href.includes('/jump?to=')) {
+                    // 保存原始链接以便恢复
+                    if (!link.getAttribute('data-ns-jump-url')) {
+                        link.setAttribute('data-ns-jump-url', link.href);
+                    }
+                    
+                    const url = new URL(link.href);
+                    const target = url.searchParams.get('to');
+                    if (target) {
+                        link.href = decodeURIComponent(target);
+                        if (!link.target) link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                    }
+                }
+            } catch (e) {
+                console.error('Error rewriting jump link', e);
+            }
+        });
+    }
+
+    function restoreJumpLinks() {
+        document.querySelectorAll('a[data-ns-jump-url]').forEach(link => {
+            try {
+                const originalUrl = link.getAttribute('data-ns-jump-url');
+                if (originalUrl) {
+                    link.href = originalUrl;
+                    link.removeAttribute('data-ns-jump-url');
+                    // 可选：如果需要恢复 target/rel 属性，可以在这里处理
+                    // 但通常外部链接保持 _blank 是合适的，所以这里只恢复 href
+                }
+            } catch (e) {
+                console.error('Error restoring jump link', e);
+            }
+        });
+    }
+
     let nsBlacklistNavTimer = null;
     function scheduleEnsureBlacklistNav() {
         if (nsBlacklistNavTimer) return;
         nsBlacklistNavTimer = setTimeout(() => {
             nsBlacklistNavTimer = null;
             ensureBlacklistNavEntryAndMeta();
+            rewriteJumpLinks();
         }, 200);
     }
 
