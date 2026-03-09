@@ -557,7 +557,19 @@
                     
                     // 屏蔽URL跳转提醒设置
                     const skipJumpPage = localStorage.getItem('nodeseek_skip_jump_page');
-                    if (skipJumpPage !== null) viewedTitles.skipJumpPage = skipJumpPage;
+                    viewedTitles.skipJumpPage = skipJumpPage === null ? 'true' : skipJumpPage;
+                    const skipJumpMode = localStorage.getItem('nodeseek_skip_jump_mode');
+                    viewedTitles.skipJumpMode = skipJumpMode === null ? 'all' : skipJumpMode;
+                    const skipJumpList = localStorage.getItem('nodeseek_skip_jump_list');
+                    if (skipJumpList) {
+                        try {
+                            viewedTitles.skipJumpList = JSON.parse(skipJumpList);
+                        } catch (e) {
+                            viewedTitles.skipJumpList = [];
+                        }
+                    } else {
+                        viewedTitles.skipJumpList = [];
+                    }
 
                     if (Object.keys(viewedTitles).length > 0) {
                         config.viewedTitles = viewedTitles;
@@ -844,8 +856,23 @@
                         if (config.viewedTitles.signMode) {
                             localStorage.setItem('nodeseek_sign_mode', config.viewedTitles.signMode);
                         }
-                        if (config.viewedTitles.skipJumpPage) {
-                            localStorage.setItem('nodeseek_skip_jump_page', config.viewedTitles.skipJumpPage);
+                        if (typeof config.viewedTitles.skipJumpPage !== 'undefined') {
+                            const v = config.viewedTitles.skipJumpPage;
+                            localStorage.setItem('nodeseek_skip_jump_page', typeof v === 'boolean' ? (v ? 'true' : 'false') : String(v));
+                        }
+                        if (typeof config.viewedTitles.skipJumpMode !== 'undefined') {
+                            localStorage.setItem('nodeseek_skip_jump_mode', String(config.viewedTitles.skipJumpMode));
+                        }
+                        if (typeof config.viewedTitles.skipJumpList !== 'undefined') {
+                            let list = config.viewedTitles.skipJumpList;
+                            if (typeof list === 'string') {
+                                try {
+                                    list = JSON.parse(list);
+                                } catch (e) {
+                                    list = [];
+                                }
+                            }
+                            localStorage.setItem('nodeseek_skip_jump_list', JSON.stringify(Array.isArray(list) ? list : []));
                         }
 
                         if (Array.isArray(config.viewedTitles.data)) {
