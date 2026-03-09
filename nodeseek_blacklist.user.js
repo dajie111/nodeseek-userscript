@@ -3030,13 +3030,22 @@
             ? window.NodeSeekFilter.isMobileDevice()
             : (window.innerWidth <= 767);
 
+        if (isMobile) {
+            dialog.style.width = '90%';
+            dialog.style.maxWidth = '420px';
+            dialog.style.left = '50%';
+            dialog.style.top = '50%';
+            dialog.style.transform = 'translate(-50%, -50%)';
+            dialog.style.padding = '16px';
+        }
+
         const dragHandle = document.createElement('div');
         dragHandle.style.position = 'absolute';
         dragHandle.style.top = '0';
         dragHandle.style.left = '0';
         dragHandle.style.width = '20px';
         dragHandle.style.height = '20px';
-        dragHandle.style.cursor = 'move';
+        dragHandle.style.cursor = isMobile ? 'default' : 'move';
         dragHandle.style.zIndex = '10002';
         dialog.appendChild(dragHandle);
 
