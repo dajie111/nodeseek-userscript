@@ -27,16 +27,46 @@
 
     // --------------------------------------------------------
     // 新增功能：跳过跳转提示页面
-    // 检查开关状态 (默认为 false)
-    if (localStorage.getItem('nodeseek_skip_jump_page') === 'true') {
+    // 检查开关状态 (默认为 true)
+    const skipJumpVal = localStorage.getItem('nodeseek_skip_jump_page');
+    const isSkipJumpEnabled = skipJumpVal === null ? true : skipJumpVal === 'true';
+    if (isSkipJumpEnabled) {
         if (location.pathname === '/jump' && location.search.includes('to=')) {
             const params = new URLSearchParams(location.search);
             if (params.has('to')) {
                 const target = params.get('to');
                 if (target) {
-                    // 立即跳转
-                    window.location.replace(target);
-                    return; // 停止执行后续脚本
+                    try {
+                        const targetUrlStr = decodeURIComponent(target);
+                        const targetUrl = new URL(targetUrlStr);
+                        const targetDomain = targetUrl.hostname;
+
+                        const modeRaw = localStorage.getItem('nodeseek_skip_jump_mode');
+                        const mode = (modeRaw === 'whitelist') ? 'whitelist' : 'all';
+                        const listSaved = localStorage.getItem('nodeseek_skip_jump_list');
+                        const list = listSaved ? JSON.parse(listSaved) : [];
+
+                        let shouldSkip = true;
+                        if (mode === 'whitelist') {
+                            // 如果是白名单模式，且名单为空，则不跳过（即显示跳转提醒）
+                            if (list.length === 0) {
+                                shouldSkip = false;
+                            } else {
+                                // 仅匹配域名本身或其子域名
+                                shouldSkip = list.some(domain => targetDomain === domain || targetDomain.endsWith('.' + domain));
+                            }
+                        }
+
+                        if (shouldSkip) {
+                            // 立即跳转
+                            window.location.replace(targetUrlStr);
+                            return; // 停止执行后续脚本
+                        }
+                    } catch (e) {
+                        // URL 解析失败，按原逻辑直接跳转
+                        window.location.replace(decodeURIComponent(target));
+                        return;
+                    }
                 }
             }
         }
@@ -66,6 +96,8 @@
     const VIEWED_COLOR_KEY = 'nodeseek_viewed_color';
     // 新增：跳过跳转页面开关
     const SKIP_JUMP_PAGE_KEY = 'nodeseek_skip_jump_page';
+    const SKIP_JUMP_MODE_KEY = 'nodeseek_skip_jump_mode'; // 'blacklist' or 'whitelist'
+    const SKIP_JUMP_LIST_KEY = 'nodeseek_skip_jump_list'; // Array of domains
 
     // 新增：浏览历史记录的存储键
     const BROWSE_HISTORY_KEY = 'nodeseek_browse_history';
@@ -82,12 +114,39 @@
 
     // 新增：获取是否开启跳过跳转页面
     function getSkipJumpPageEnabled() {
-        return localStorage.getItem(SKIP_JUMP_PAGE_KEY) === 'true'; // 默认关闭
+        const val = localStorage.getItem(SKIP_JUMP_PAGE_KEY);
+        return val === null ? true : val === 'true'; // 默认开启
     }
 
     // 新增：设置是否开启跳过跳转页面
     function setSkipJumpPageEnabled(enabled) {
         localStorage.setItem(SKIP_JUMP_PAGE_KEY, enabled.toString());
+    }
+
+    // 新增：获取跳转模式
+    function getSkipJumpMode() {
+        const mode = localStorage.getItem(SKIP_JUMP_MODE_KEY);
+        return (mode === 'whitelist') ? 'whitelist' : 'all'; // 默认为 all，处理旧有的 blacklist 为 all
+    }
+
+    // 新增：设置跳转模式
+    function setSkipJumpMode(mode) {
+        localStorage.setItem(SKIP_JUMP_MODE_KEY, mode);
+    }
+
+    // 新增：获取跳转名单列表
+    function getSkipJumpList() {
+        const saved = localStorage.getItem(SKIP_JUMP_LIST_KEY);
+        try {
+            return saved ? JSON.parse(saved) : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    // 新增：设置跳转名单列表
+    function setSkipJumpList(list) {
+        localStorage.setItem(SKIP_JUMP_LIST_KEY, JSON.stringify(list));
     }
 
     // 新增：获取阅读记忆开启状态
@@ -2395,10 +2454,9 @@
         // 新增：屏蔽URL跳转提醒设置
         let skipJumpSettings = {};
         try {
-            const skipJumpPage = localStorage.getItem('nodeseek_skip_jump_page');
-            if (skipJumpPage !== null) {
-                skipJumpSettings.enabled = skipJumpPage === 'true';
-            }
+            skipJumpSettings.enabled = getSkipJumpPageEnabled();
+            skipJumpSettings.mode = getSkipJumpMode();
+            skipJumpSettings.list = getSkipJumpList();
         } catch (error) {
             console.error('导出屏蔽URL跳转提醒设置失败:', error);
         }
@@ -2655,13 +2713,22 @@
                         }
                     }
 
-                    // 新增：处理屏蔽URL跳转提醒设置
+    // 新增：处理屏蔽URL跳转提醒设置
                     if (json.skipJumpSettings && typeof json.skipJumpSettings === 'object') {
                         try {
                             if (typeof json.skipJumpSettings.enabled !== 'undefined') {
                                 setSkipJumpPageEnabled(json.skipJumpSettings.enabled);
-                                importInfo.push(`屏蔽URL跳转提醒设置(${json.skipJumpSettings.enabled ? '开启' : '关闭'})`);
                             }
+                            if (json.skipJumpSettings.mode) {
+                                // 兼容旧数据的 blacklist 模式，将其转为 all
+                                const mode = json.skipJumpSettings.mode === 'whitelist' ? 'whitelist' : 'all';
+                                setSkipJumpMode(mode);
+                            }
+                            if (json.skipJumpSettings.list) {
+                                setSkipJumpList(json.skipJumpSettings.list);
+                            }
+                            const modeText = (getSkipJumpMode() === 'whitelist') ? '白名单' : '全放行';
+                            importInfo.push(`屏蔽URL跳转提醒设置(${json.skipJumpSettings.enabled ? '开启' : '关闭'}, ${modeText})`);
                         } catch (error) {
                             console.error('导入屏蔽URL跳转提醒设置失败:', error);
                             importInfo.push('屏蔽URL跳转提醒设置(失败)');
@@ -2906,6 +2973,244 @@
         if (window.NodeSeekHistory && window.NodeSeekHistory.showDialog) {
             return window.NodeSeekHistory.showDialog();
         }
+    }
+
+    // 新增：显示跳转名单设置弹窗
+    function showJumpListDialog() {
+        const existing = document.getElementById('jump-list-dialog');
+        if (existing) {
+            existing.remove();
+            return;
+        }
+
+        const mode = getSkipJumpMode();
+        const modeText = mode === 'whitelist' ? '白名单' : '全放行';
+        const list = getSkipJumpList();
+
+        const dialog = document.createElement('div');
+        dialog.id = 'jump-list-dialog';
+        dialog.style.position = 'fixed';
+        dialog.style.top = '100px';
+        dialog.style.left = '50%';
+        dialog.style.transform = 'translateX(-50%)';
+        dialog.style.zIndex = '10001';
+        dialog.style.background = '#fff';
+        dialog.style.border = '1px solid #ccc';
+        dialog.style.borderRadius = '8px';
+        dialog.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
+        dialog.style.padding = '20px';
+        dialog.style.width = '350px';
+        dialog.style.maxHeight = '80vh';
+        dialog.style.display = 'flex';
+        dialog.style.flexDirection = 'column';
+        dialog.style.overflow = 'hidden';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'center';
+        header.style.marginBottom = '15px';
+
+        const title = document.createElement('div');
+        title.textContent = `屏蔽URL跳转提醒 - ${modeText}设置`;
+        title.style.fontWeight = 'bold';
+        title.style.fontSize = '16px';
+
+        const closeBtn = document.createElement('span');
+        closeBtn.textContent = '×';
+        closeBtn.style.cursor = 'pointer';
+        closeBtn.style.fontSize = '24px';
+        closeBtn.onclick = function() { dialog.remove(); };
+
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        dialog.appendChild(header);
+
+        const isMobile = (window.NodeSeekFilter && typeof window.NodeSeekFilter.isMobileDevice === 'function')
+            ? window.NodeSeekFilter.isMobileDevice()
+            : (window.innerWidth <= 767);
+
+        const dragHandle = document.createElement('div');
+        dragHandle.style.position = 'absolute';
+        dragHandle.style.top = '0';
+        dragHandle.style.left = '0';
+        dragHandle.style.width = '20px';
+        dragHandle.style.height = '20px';
+        dragHandle.style.cursor = 'move';
+        dragHandle.style.zIndex = '10002';
+        dialog.appendChild(dragHandle);
+
+        if (!isMobile) {
+            let isDragging = false;
+            let startX = 0;
+            let startY = 0;
+            let startLeft = 0;
+            let startTop = 0;
+
+            const onMouseMove = (e) => {
+                if (!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                const rect = dialog.getBoundingClientRect();
+                const maxLeft = Math.max(0, window.innerWidth - rect.width);
+                const maxTop = Math.max(0, window.innerHeight - rect.height);
+                const nextLeft = Math.min(maxLeft, Math.max(0, startLeft + dx));
+                const nextTop = Math.min(maxTop, Math.max(0, startTop + dy));
+                dialog.style.left = nextLeft + 'px';
+                dialog.style.top = nextTop + 'px';
+            };
+
+            const onMouseUp = () => {
+                isDragging = false;
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            };
+
+            dragHandle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                const rect = dialog.getBoundingClientRect();
+                dialog.style.transform = '';
+                dialog.style.left = rect.left + 'px';
+                dialog.style.top = rect.top + 'px';
+
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startLeft = rect.left;
+                startTop = rect.top;
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+        }
+
+        const desc = document.createElement('div');
+        desc.style.fontSize = '12px';
+        desc.style.color = '#666';
+        desc.style.marginBottom = '12px';
+        desc.textContent = mode === 'whitelist' 
+            ? '在此名单内的域名将直接跳转（不显示提醒）。' 
+            : '当前处于“全放行”模式，所有外链都将自动跳转。';
+        dialog.appendChild(desc);
+
+        // 输入区域
+        const inputRow = document.createElement('div');
+        inputRow.style.display = 'flex';
+        inputRow.style.gap = '8px';
+        inputRow.style.marginBottom = '15px';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = '输入域名，如: github.com';
+        input.style.flex = '1';
+        input.style.padding = '6px 10px';
+        input.style.border = '1px solid #ddd';
+        input.style.borderRadius = '4px';
+        input.style.outline = 'none';
+
+        const addBtn = document.createElement('button');
+        addBtn.textContent = '添加';
+        addBtn.style.padding = '6px 15px';
+        addBtn.style.background = '#1890ff';
+        addBtn.style.color = '#fff';
+        addBtn.style.border = 'none';
+        addBtn.style.borderRadius = '4px';
+        addBtn.style.cursor = 'pointer';
+
+        inputRow.appendChild(input);
+        inputRow.appendChild(addBtn);
+        dialog.appendChild(inputRow);
+
+        // 名单显示区域
+        const listContainer = document.createElement('div');
+        listContainer.style.overflowY = 'auto';
+        listContainer.style.flex = '1';
+        listContainer.style.border = '1px solid #eee';
+        listContainer.style.borderRadius = '4px';
+        listContainer.style.background = '#f9f9f9';
+        listContainer.style.padding = '5px';
+        listContainer.style.minHeight = '150px';
+
+        function renderList() {
+            listContainer.innerHTML = '';
+            const currentList = getSkipJumpList();
+            if (currentList.length === 0) {
+                const empty = document.createElement('div');
+                empty.textContent = '暂无记录';
+                empty.style.textAlign = 'center';
+                empty.style.color = '#999';
+                empty.style.marginTop = '60px';
+                empty.style.fontSize = '13px';
+                listContainer.appendChild(empty);
+                return;
+            }
+
+            currentList.forEach((domain, index) => {
+                const item = document.createElement('div');
+                item.style.display = 'flex';
+                item.style.justifyContent = 'space-between';
+                item.style.alignItems = 'center';
+                item.style.padding = '6px 10px';
+                item.style.borderBottom = '1px solid #eee';
+                item.style.fontSize = '13px';
+
+                const name = document.createElement('span');
+                name.textContent = domain;
+                name.style.wordBreak = 'break-all';
+
+                const delBtn = document.createElement('span');
+                delBtn.textContent = '删除';
+                delBtn.style.color = '#ff4d4f';
+                delBtn.style.cursor = 'pointer';
+                delBtn.style.fontSize = '12px';
+                delBtn.onclick = function() {
+                    const newList = getSkipJumpList();
+                    newList.splice(index, 1);
+                    setSkipJumpList(newList);
+                    renderList();
+                    addLog(`从跳转${modeText}中删除域名: ${domain}`);
+                    if (getSkipJumpPageEnabled()) {
+                        // 立即应用更改：先恢复所有链接，再按更新后的名单重写
+                        restoreJumpLinks();
+                        rewriteJumpLinks();
+                    }
+                };
+
+                item.appendChild(name);
+                item.appendChild(delBtn);
+                listContainer.appendChild(item);
+            });
+        }
+
+        addBtn.onclick = function() {
+            const domain = input.value.trim().toLowerCase();
+            if (!domain) return;
+            
+            const currentList = getSkipJumpList();
+            if (currentList.includes(domain)) {
+                alert('该域名已在名单中');
+                return;
+            }
+
+            currentList.unshift(domain);
+            setSkipJumpList(currentList);
+            input.value = '';
+            renderList();
+            addLog(`添加到跳转${modeText}: ${domain}`);
+            if (getSkipJumpPageEnabled()) {
+                // 立即应用更改：先恢复所有链接，再按更新后的名单重写
+                restoreJumpLinks();
+                rewriteJumpLinks();
+            }
+        };
+
+        input.onkeydown = function(e) {
+            if (e.key === 'Enter') addBtn.click();
+        };
+
+        renderList();
+        dialog.appendChild(listContainer);
+        document.body.appendChild(dialog);
     }
 
     // 日志记录功能
@@ -5816,17 +6121,96 @@
         skipJumpRow.style.display = 'flex';
         skipJumpRow.style.justifyContent = 'space-between';
         skipJumpRow.style.alignItems = 'center';
+        skipJumpRow.style.marginBottom = '12px';
+        skipJumpRow.style.gap = '4px'; // 紧凑间距
 
         const skipJumpLabel = document.createElement('label');
         skipJumpLabel.textContent = '屏蔽URL跳转提醒';
         skipJumpLabel.style.fontWeight = '500';
         skipJumpLabel.style.color = '#555';
-        // skipJumpLabel.title = '开启后将自动跳过外链跳转提示页'; // 用户要求移除
+        skipJumpLabel.style.fontSize = '12px';
+        skipJumpLabel.style.whiteSpace = 'nowrap';
+        skipJumpLabel.style.overflow = 'hidden';
+        skipJumpLabel.style.textOverflow = 'ellipsis';
+
+        const skipJumpRightContainer = document.createElement('div');
+        skipJumpRightContainer.style.display = 'flex';
+        skipJumpRightContainer.style.alignItems = 'center';
+        skipJumpRightContainer.style.gap = '6px';
+
+        const modeSelect = document.createElement('select');
+        modeSelect.style.fontSize = '12px';
+        modeSelect.style.padding = '1px 2px';
+        modeSelect.style.borderRadius = '4px';
+        modeSelect.style.border = '1px solid #ddd';
+        modeSelect.style.outline = 'none';
+        modeSelect.style.cursor = 'pointer';
+        modeSelect.style.width = '75px'; // 固定宽度更整齐
+        
+        const optAll = document.createElement('option');
+        optAll.value = 'all';
+        optAll.textContent = '全放行';
+        const optWhite = document.createElement('option');
+        optWhite.value = 'whitelist';
+        optWhite.textContent = '白名单';
+        
+        modeSelect.appendChild(optAll);
+        modeSelect.appendChild(optWhite);
+        modeSelect.value = getSkipJumpMode();
+
+        const configBtn = document.createElement('button');
+        configBtn.textContent = '编辑';
+        configBtn.style.fontSize = '12px';
+        configBtn.style.padding = '2px 6px';
+        configBtn.style.background = '#1890ff';
+        configBtn.style.color = '#fff';
+        configBtn.style.border = 'none';
+        configBtn.style.borderRadius = '4px';
+        configBtn.style.cursor = 'pointer';
+        configBtn.style.whiteSpace = 'nowrap';
+        configBtn.title = '管理白名单域名';
+        configBtn.onclick = function() {
+            showJumpListDialog();
+        };
+
+        // 更新设置按钮状态的函数
+        const updateConfigBtnStatus = () => {
+            if (modeSelect.value === 'whitelist') {
+                configBtn.disabled = false;
+                configBtn.style.opacity = '1';
+                configBtn.style.cursor = 'pointer';
+                configBtn.style.background = '#1890ff';
+            } else {
+                configBtn.disabled = true;
+                configBtn.style.opacity = '0.5';
+                configBtn.style.cursor = 'not-allowed';
+                configBtn.style.background = '#ccc';
+            }
+        };
+
+        // 初始化按钮状态
+        updateConfigBtnStatus();
+        
+        modeSelect.onchange = function() {
+             setSkipJumpMode(this.value);
+             updateConfigBtnStatus();
+             addLog('屏蔽URL跳转提醒模式：' + (this.value === 'whitelist' ? '白名单' : '全放行'));
+             
+             // 立即应用模式更改
+             if (getSkipJumpPageEnabled()) {
+                 // 切换模式前先恢复所有链接，确保逻辑干净
+                 restoreJumpLinks();
+                 // 再按新模式重写
+                 rewriteJumpLinks();
+             } else {
+                 restoreJumpLinks();
+             }
+         };
 
         const skipJumpSwitch = document.createElement('input');
         skipJumpSwitch.type = 'checkbox';
         skipJumpSwitch.checked = getSkipJumpPageEnabled();
-        skipJumpSwitch.style.transform = 'scale(1.2)';
+        skipJumpSwitch.style.transform = 'scale(1.1)';
         skipJumpSwitch.onchange = function() {
             const newState = this.checked;
             setSkipJumpPageEnabled(newState);
@@ -5838,8 +6222,12 @@
             }
         };
 
+        skipJumpRightContainer.appendChild(modeSelect);
+        skipJumpRightContainer.appendChild(configBtn);
+        skipJumpRightContainer.appendChild(skipJumpSwitch);
+
         skipJumpRow.appendChild(skipJumpLabel);
-        skipJumpRow.appendChild(skipJumpSwitch);
+        skipJumpRow.appendChild(skipJumpRightContainer);
         content.appendChild(skipJumpRow);
 
         dialog.appendChild(content);
@@ -6128,20 +6516,49 @@
 
     function rewriteJumpLinks() {
         if (!getSkipJumpPageEnabled()) return;
+        
+        const mode = getSkipJumpMode();
+        const list = getSkipJumpList();
+
         document.querySelectorAll('a[href*="/jump?to="]').forEach(link => {
             try {
                 if (link.href.includes('/jump?to=')) {
-                    // 保存原始链接以便恢复
-                    if (!link.getAttribute('data-ns-jump-url')) {
-                        link.setAttribute('data-ns-jump-url', link.href);
-                    }
-                    
                     const url = new URL(link.href);
                     const target = url.searchParams.get('to');
                     if (target) {
-                        link.href = decodeURIComponent(target);
-                        if (!link.target) link.target = '_blank';
-                        link.rel = 'noopener noreferrer';
+                        const targetUrlStr = decodeURIComponent(target);
+                        let targetDomain = '';
+                        try {
+                            targetDomain = new URL(targetUrlStr).hostname;
+                        } catch (e) { }
+
+                        let shouldSkip = true;
+                        if (mode === 'whitelist') {
+                            // 如果是白名单模式，且名单为空，则不跳过（即显示跳转提醒）
+                            if (list.length === 0) {
+                                shouldSkip = false;
+                            } else {
+                                // 仅匹配域名本身或其子域名
+                                shouldSkip = list.some(domain => targetDomain === domain || targetDomain.endsWith('.' + domain));
+                            }
+                        }
+
+                        if (shouldSkip) {
+                            // 保存原始链接以便恢复
+                            if (!link.getAttribute('data-ns-jump-url')) {
+                                link.setAttribute('data-ns-jump-url', link.href);
+                            }
+                            link.href = targetUrlStr;
+                            if (!link.target) link.target = '_blank';
+                            link.rel = 'noopener noreferrer';
+                        } else {
+                            // 如果不应该跳过，但之前可能被重写过，则恢复
+                            const originalUrl = link.getAttribute('data-ns-jump-url');
+                            if (originalUrl) {
+                                link.href = originalUrl;
+                                link.removeAttribute('data-ns-jump-url');
+                            }
+                        }
                     }
                 }
             } catch (e) {
