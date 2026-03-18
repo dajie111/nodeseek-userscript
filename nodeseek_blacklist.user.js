@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NS综合插件
 // @namespace    http://tampermonkey.net/
-// @version      2026.03.09
+// @version      2026.03.18
 // @description  NodeSeek 论坛黑名单，拉黑后红色高亮并可备注，增加域名检测控制按钮显隐，支持折叠功能，显示用户详细信息，快捷回复功能
 // @author       YourName
 // @match        https://www.nodeseek.com/*
@@ -1133,31 +1133,6 @@
     }
     .blacklist-btn.red { background: #d00 !important; }
     .blacklist-time { color: #d00; font-size: 10px; margin-left: 4px; }
-    /* 新增：代码块复制按钮样式 */
-    .code-block-wrapper {
-        position: relative;
-        display: inline-block;
-        width: 100%;
-    }
-    .code-copy-btn {
-        position: absolute;
-        top: 5px;
-        right: 5px;
-        padding: 2.7px 5.4px;
-        font-size: 10.8px;
-        color: #fff;
-        background-color: #555;
-        border: none;
-        border-radius: 3px;
-        cursor: pointer;
-        opacity: 0.7;
-        transition: opacity 0.2s;
-        z-index: 10;
-        pointer-events: auto;
-    }
-    .code-block-wrapper:hover .code-copy-btn { opacity: 1; }
-    .code-copy-btn:hover { background-color: #333; }
-    .code-copy-btn.copied { background-color: #28a745; }
     /* 新增：收藏按钮样式 */
     .favorite-btn {
         background-color: #1890ff;
@@ -1913,67 +1888,6 @@
     // highlightFriends 函数已移动到 Friends.js 模块
     const highlightFriends = (username) => window.NodeSeekFriends?.highlightFriends(username);
 
-    // 新增：为代码块添加复制按钮
-    function addCopyButtonsToCodeBlocks() {
-        // 检查是否有激活的编辑器，如果有，则移除复制按钮并返回
-        if (document.querySelector('.ProseMirror-focused, textarea:focus, input:focus')) {
-            document.querySelectorAll('.code-block-wrapper .code-copy-btn').forEach(btn => btn.remove());
-            return;
-        }
-
-        document.querySelectorAll('pre').forEach(preElement => {
-            // 如果在编辑器内部，则不添加按钮
-            if (preElement.closest('.ProseMirror')) {
-                return;
-            }
-
-            // 如果已经被包装过，则不重复处理
-            if (preElement.parentElement && preElement.parentElement.classList.contains('code-block-wrapper')) {
-                return;
-            }
-
-            // 如果已经存在复制按钮，则不重复添加
-            if (preElement.querySelector('.code-copy-btn')) {
-                return;
-            }
-
-            const codeElement = preElement.querySelector('code');
-            if (!codeElement) return; //确保pre中有code标签
-
-            // 创建包装器
-            const wrapper = document.createElement('div');
-            wrapper.className = 'code-block-wrapper';
-
-            // 将pre元素包装在wrapper中
-            preElement.parentNode.insertBefore(wrapper, preElement);
-            wrapper.appendChild(preElement);
-
-            const copyBtn = document.createElement('button');
-            copyBtn.textContent = '复制';
-            copyBtn.className = 'code-copy-btn';
-            copyBtn.setAttribute('aria-label', '复制代码');
-
-            copyBtn.onclick = (e) => {
-                e.stopPropagation(); // 阻止事件冒泡
-
-                const codeToCopy = codeElement.innerText;
-                navigator.clipboard.writeText(codeToCopy).then(() => {
-                    copyBtn.textContent = '已复制!';
-                    copyBtn.classList.add('copied'); // 确保添加 copied 类
-                    addLog('代码块内容已复制到剪贴板'); // 日志可以保持不变，或根据需要调整
-                }).catch(err => {
-                    console.error('复制失败:', err);
-                    copyBtn.textContent = '失败'; // 提示复制失败，并保持此状态
-                    copyBtn.classList.remove('copied'); // 失败时移除 copied 类
-                    addLog('代码块内容复制失败: ' + err.message);
-                });
-            };
-
-            // 将按钮添加到包装器中，而不是pre元素中
-            wrapper.appendChild(copyBtn);
-        });
-    }
-
     // 将相对时间替换为悬停 title 中的完整时间
     function replaceRelativeTimeWithAbsolute() {
         const processedAttr = 'data-ns-time-replaced';
@@ -2258,7 +2172,6 @@
         processUsernames();
         highlightBlacklisted();
         highlightFriends(); // 新增调用
-        addCopyButtonsToCodeBlocks();
         addFavoriteButton(); // 新增收藏按钮
         processUserAvatars(); // 新增：处理用户头像信息显示
         replaceRelativeTimeWithAbsolute(); // 新增：替换相对时间为完整时间
