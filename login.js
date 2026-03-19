@@ -571,6 +571,10 @@
                         viewedTitles.skipJumpList = [];
                     }
 
+                    // 新标签页打开帖子设置
+                    const openPostNewTab = localStorage.getItem('nodeseek_open_post_new_tab');
+                    if (openPostNewTab !== null) viewedTitles.openPostNewTab = openPostNewTab;
+
                     if (Object.keys(viewedTitles).length > 0) {
                         config.viewedTitles = viewedTitles;
                     }
@@ -873,6 +877,10 @@
                                 }
                             }
                             localStorage.setItem('nodeseek_skip_jump_list', JSON.stringify(Array.isArray(list) ? list : []));
+                        }
+                        if (typeof config.viewedTitles.openPostNewTab !== 'undefined') {
+                            const v = config.viewedTitles.openPostNewTab;
+                            localStorage.setItem('nodeseek_open_post_new_tab', typeof v === 'boolean' ? (v ? 'true' : 'false') : String(v));
                         }
 
                         if (Array.isArray(config.viewedTitles.data)) {
