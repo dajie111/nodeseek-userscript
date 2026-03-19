@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NS综合插件
 // @namespace    http://tampermonkey.net/
-// @version      2026.03.18
+// @version      2026.03.19
 // @description  NodeSeek 论坛黑名单，拉黑后红色高亮并可备注，增加域名检测控制按钮显隐，支持折叠功能，显示用户详细信息，快捷回复功能
 // @author       YourName
 // @match        https://www.nodeseek.com/*
@@ -4427,6 +4427,7 @@
                 // 保持站点默认字号，不进行修改
                 titleLink.style.textDecoration = 'none';
                 titleLink.style.display = 'inline-block';
+                titleLink.style.lineHeight = '1.1';
                 // 修复标题末尾无法点击的问题（被备注列padding遮挡）
                 titleLink.style.position = 'relative';
                 titleLink.style.zIndex = '5';
@@ -4435,7 +4436,7 @@
                 if (window.innerWidth > 767) {
                     const extraTitleWidth = getCollapsedState() ? 5 : 0;
                     titleLink.style.maxWidth = `calc(100% + ${121 + extraTitleWidth}px)`;
-                    titleLink.style.top = '4px';
+                    titleLink.style.top = '3px';
                 } else {
                     titleLink.style.maxWidth = '100%';
                 }
