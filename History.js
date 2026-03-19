@@ -314,6 +314,9 @@
                 tr.style.borderBottom = '1px solid #eee';
 
                 const tdTitle = document.createElement('td');
+                const rowPaddingY = '1px';
+                tdTitle.style.paddingTop = rowPaddingY;
+                tdTitle.style.paddingBottom = rowPaddingY;
                 tdTitle.style.width = '61%';
                 tdTitle.style.maxWidth = '61%';
                 tdTitle.style.overflow = 'hidden';
@@ -326,7 +329,13 @@
                 titleLink.style.fontWeight = 'normal';
                 titleLink.style.fontSize = '13px';
                 titleLink.style.textDecoration = 'none';
-                titleLink.style.display = 'block';
+                titleLink.style.display = 'inline-block';
+                titleLink.style.lineHeight = '1.1';
+                titleLink.style.position = 'relative';
+                titleLink.style.zIndex = '5';
+                if (window.innerWidth > 767) {
+                    titleLink.style.top = '3px';
+                }
                 titleLink.style.width = '100%';
                 titleLink.style.overflow = 'hidden';
                 titleLink.style.textOverflow = 'ellipsis';
@@ -338,6 +347,8 @@
                 tr.appendChild(tdTitle);
 
                 const tdTime = document.createElement('td');
+                tdTime.style.paddingTop = rowPaddingY;
+                tdTime.style.paddingBottom = rowPaddingY;
                 tdTime.style.width = '22%';
                 tdTime.style.maxWidth = '22%';
                 tdTime.style.overflow = 'hidden';
@@ -359,6 +370,8 @@
                 tr.appendChild(tdTime);
 
                 const tdCount = document.createElement('td');
+                tdCount.style.paddingTop = rowPaddingY;
+                tdCount.style.paddingBottom = rowPaddingY;
                 tdCount.style.width = '8%';
                 tdCount.style.maxWidth = '8%';
                 tdCount.style.overflow = 'hidden';
@@ -370,6 +383,8 @@
                 tr.appendChild(tdCount);
 
                 const tdOp = document.createElement('td');
+                tdOp.style.paddingTop = rowPaddingY;
+                tdOp.style.paddingBottom = rowPaddingY;
                 tdOp.style.width = '9%';
                 tdOp.style.maxWidth = '9%';
                 tdOp.style.overflow = 'hidden';
