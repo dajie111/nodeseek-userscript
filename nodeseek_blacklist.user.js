@@ -102,6 +102,18 @@
     // 新增：浏览历史记录的存储键
     const BROWSE_HISTORY_KEY = 'nodeseek_browse_history';
 
+    // 新增：新标签页打开帖子开关
+    const OPEN_POST_NEW_TAB_KEY = 'nodeseek_open_post_new_tab';
+
+    function getOpenPostNewTabEnabled() {
+        const val = localStorage.getItem(OPEN_POST_NEW_TAB_KEY);
+        return val === 'true'; // 默认关闭
+    }
+
+    function setOpenPostNewTabEnabled(enabled) {
+        localStorage.setItem(OPEN_POST_NEW_TAB_KEY, enabled.toString());
+    }
+
     // 新增：获取用户信息显示状态
     function getUserInfoDisplayState() {
         return localStorage.getItem(USER_INFO_DISPLAY_KEY) !== 'false'; // 默认开启
@@ -2065,6 +2077,57 @@
         root.classList.toggle('ns-page-notification', isNotificationPage());
     }
 
+    // 新增：应用新标签页打开帖子逻辑
+    function applyNewTabLinks() {
+        const isEnabled = getOpenPostNewTabEnabled();
+        const selectors = [
+            'a.topic-title', '.topic-title a',
+            'a.thread-title', '.thread-title a',
+            'a.post-title', '.post-title a',
+            'a.article-title', '.article-title a',
+            '.subject a', '.title a',
+            'h2 a[href*="/post-"]', 'h3 a[href*="/post-"]',
+            'a[href*="/post-"][class*="title"]',
+            'a[href*="/topic/"][class*="title"]',
+            'a[href*="/article/"][class*="title"]'
+        ];
+
+        const candidates = new Set();
+        for (const selector of selectors) {
+            const list = document.querySelectorAll(selector);
+            for (const el of list) {
+                if (el instanceof HTMLAnchorElement) candidates.add(el);
+            }
+        }
+
+        if (candidates.size === 0) {
+            const fallback = document.querySelectorAll('a[href*="/post-"], a[href*="/topic/"], a[href*="/article/"]');
+            for (const el of fallback) {
+                if (el instanceof HTMLAnchorElement && isLikelyTitleLink(el)) candidates.add(el);
+            }
+        }
+
+        for (const a of candidates) {
+            if (!isLikelyTitleLink(a)) continue;
+            if (isEnabled) {
+                if (!a.hasAttribute('data-ns-original-target')) {
+                    a.setAttribute('data-ns-original-target', a.target || '');
+                }
+                a.target = '_blank';
+            } else {
+                if (a.hasAttribute('data-ns-original-target')) {
+                    const originalTarget = a.getAttribute('data-ns-original-target');
+                    if (originalTarget) {
+                        a.target = originalTarget;
+                    } else {
+                        a.removeAttribute('target');
+                    }
+                    a.removeAttribute('data-ns-original-target');
+                }
+            }
+        }
+    }
+
     function markViewedTitles(force = false) {
         const isEnabled = getViewedHistoryEnabled();
         const now = Date.now();
@@ -2176,6 +2239,7 @@
         processUserAvatars(); // 新增：处理用户头像信息显示
         replaceRelativeTimeWithAbsolute(); // 新增：替换相对时间为完整时间
         markViewedTitles();
+        applyNewTabLinks(); // 新增：应用新标签页打开帖子逻辑
     }
 
     // 兼容异步加载，定时检查
@@ -2374,6 +2438,14 @@
             console.error('导出屏蔽URL跳转提醒设置失败:', error);
         }
 
+        // 新增：新标签页打开帖子设置
+        let openPostNewTabSettings = {};
+        try {
+            openPostNewTabSettings.enabled = getOpenPostNewTabEnabled();
+        } catch (error) {
+            console.error('导出新标签页打开帖子设置失败:', error);
+        }
+
         const data = JSON.stringify({
             blacklist: blacklist,
             friends: friends,
@@ -2387,6 +2459,7 @@
             signSettings: signSettings, // 新增：签到设置
             userInfoSettings: userInfoSettings, // 新增：用户信息显示设置
             skipJumpSettings: skipJumpSettings, // 新增：屏蔽URL跳转提醒设置
+            openPostNewTabSettings: openPostNewTabSettings, // 新增：新标签页打开帖子设置
             chickenLegStats: chickenLegStats, // 添加鸡腿统计数据
             filterData: filterData, // 添加关键词过滤数据
             notesData: notesData, // 添加笔记数据
@@ -2433,7 +2506,7 @@
         }
         // 不在导出日志中包含“自动同步设置”
         // 始终包含备份设置
-        exportDesc += '、备份设置';
+        exportDesc += '、设置';
         exportDesc += ')';
         addLog(exportDesc);
     }
@@ -2645,6 +2718,19 @@
                         } catch (error) {
                             console.error('导入屏蔽URL跳转提醒设置失败:', error);
                             importInfo.push('屏蔽URL跳转提醒设置(失败)');
+                        }
+                    }
+
+                    // 新增：处理新标签页打开帖子设置
+                    if (json.openPostNewTabSettings && typeof json.openPostNewTabSettings === 'object') {
+                        try {
+                            if (typeof json.openPostNewTabSettings.enabled !== 'undefined') {
+                                setOpenPostNewTabEnabled(json.openPostNewTabSettings.enabled);
+                                importInfo.push(`新标签页打开帖子设置(${json.openPostNewTabSettings.enabled ? '开启' : '关闭'})`);
+                            }
+                        } catch (error) {
+                            console.error('导入新标签页打开帖子设置失败:', error);
+                            importInfo.push('新标签页打开帖子设置(失败)');
                         }
                     }
 
@@ -6037,6 +6123,32 @@
         signRow.appendChild(signLabel);
         signRow.appendChild(signRightContainer);
         content.appendChild(signRow);
+
+        // 新增：新标签页打开帖子开关
+        const openPostNewTabRow = document.createElement('div');
+        openPostNewTabRow.style.display = 'flex';
+        openPostNewTabRow.style.justifyContent = 'space-between';
+        openPostNewTabRow.style.alignItems = 'center';
+
+        const openPostNewTabLabel = document.createElement('label');
+        openPostNewTabLabel.textContent = '新标签页打开帖子';
+        openPostNewTabLabel.style.fontWeight = '500';
+        openPostNewTabLabel.style.color = '#555';
+
+        const openPostNewTabSwitch = document.createElement('input');
+        openPostNewTabSwitch.type = 'checkbox';
+        openPostNewTabSwitch.checked = getOpenPostNewTabEnabled();
+        openPostNewTabSwitch.style.transform = 'scale(1.2)';
+        openPostNewTabSwitch.onchange = function() {
+            const newState = this.checked;
+            setOpenPostNewTabEnabled(newState);
+            applyNewTabLinks(); // 立即应用
+            addLog('新标签页打开帖子：' + (newState ? '开启' : '关闭'));
+        };
+
+        openPostNewTabRow.appendChild(openPostNewTabLabel);
+        openPostNewTabRow.appendChild(openPostNewTabSwitch);
+        content.appendChild(openPostNewTabRow);
 
         // 4. 跳过跳转页面开关 -> 改为 屏蔽URL跳转提醒
         const skipJumpRow = document.createElement('div');
