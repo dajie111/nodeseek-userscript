@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NS综合插件
 // @namespace    http://tampermonkey.net/
-// @version      2026.03.19
+// @version      2026.03.24
 // @description  NodeSeek 论坛黑名单，拉黑后红色高亮并可备注，增加域名检测控制按钮显隐，支持折叠功能，显示用户详细信息，快捷回复功能
 // @author       YourName
 // @match        https://www.nodeseek.com/*
@@ -1947,6 +1947,34 @@
         }
     }
 
+    // 全局点击拦截：点击标题链接时立即记录历史 + 更新链接样式（不依赖页面 load/DOMContentLoaded）
+    document.addEventListener('click', function(e) {
+        const a = e.target.closest('a');
+        if (!a || !a.href) return;
+        const href = a.getAttribute('href') || '';
+        if (!/\/post-\d+|\/topic\/|\/article\//.test(href) && !/\/post-\d+|\/topic\/|\/article\//.test(a.href)) return;
+        const text = (a.textContent || '').trim();
+        if (text.length < 1) return;
+        if (a.closest('#nodeseek-plugin-container, #browse-history-dialog, #favorites-dialog, #blacklist-dialog, #friends-dialog, #logs-dialog, footer')) return;
+
+        // 立即记录到已读历史
+        if (getViewedHistoryEnabled()) {
+            addToViewedTitles(a.href);
+            // 立即同步更新该链接样式（同步执行，在页面离开前完成）
+            const normalized = normalizeVisitedUrl(a.href);
+            if (cachedVisitedUrlSet.has(normalized)) {
+                a.classList.add('ns-viewed-title');
+            } else {
+                a.classList.remove('ns-viewed-title');
+            }
+        }
+
+        // 同时记录到浏览历史
+        if (window.NodeSeekViewedTitles && window.NodeSeekViewedTitles.add) {
+            window.NodeSeekViewedTitles.add(a.href);
+        }
+    }, true);
+
     // 新增：已读标题记录管理（独立存储）
     const VIEWED_TITLES_STORAGE_KEY = 'nodeseek_viewed_titles_data';
     
@@ -2046,24 +2074,20 @@
             if (a.closest('h1')) return false;
         }
         const text = (a.textContent || '').trim();
-        if (text.length < 3 || text.length > 140) return false;
+        const minLen = isUserSpaceTab() ? 1 : 3;
+        const maxLen = isUserSpaceTab() ? 500 : 140;
+        if (text.length < minLen || text.length > maxLen) return false;
         const href = a.getAttribute('href') || '';
         if (!/\/post-\d+|\/topic\/|\/article\//.test(href) && !/\/post-\d+|\/topic\/|\/article\//.test(a.href)) return false;
         return true;
     }
 
-    function isUserSpaceDiscussionsPage() {
+    /** 个人主页「主题帖」「评论」「收藏」标签（含 #/discussions 与 #discussions 等写法） */
+    function isUserSpaceTab() {
         const path = window.location.pathname || '';
         if (!/^\/space\/\d+/.test(path)) return false;
         const hash = window.location.hash || '';
-        return /^#\/discussions(\b|\/|\?|$)/.test(hash);
-    }
-
-    function isUserSpaceCommentsPage() {
-        const path = window.location.pathname || '';
-        if (!/^\/space\/\d+/.test(path)) return false;
-        const hash = window.location.hash || '';
-        return /^#\/comments(\b|\/|\?|$)/.test(hash);
+        return /^#\/?discussions(\b|\/|\?|$)/.test(hash) || /^#\/?comments(\b|\/|\?|$)/.test(hash) || /^#\/?favorites?(\b|\/|\?|$)/.test(hash);
     }
 
     function isNotificationPage() {
@@ -2077,34 +2101,96 @@
         root.classList.toggle('ns-page-notification', isNotificationPage());
     }
 
+    // ====== MutationObserver：Vue SPA 渲染完成后自动触发标记和链接处理 ======
+    (function() {
+        const CONTENT_ROOT_SELECTORS = [
+            '#app', 'main', '.nsk-content',
+            '.post-content', '.topic-list',
+            '.thread-list', '.post-list'
+        ];
+
+        function contentRoot() {
+            for (const sel of CONTENT_ROOT_SELECTORS) {
+                const el = document.querySelector(sel);
+                if (el) return el;
+            }
+            return document.body;
+        }
+
+        const obs = new MutationObserver(function(mutations) {
+            for (const m of mutations) {
+                if (m.type !== 'childList' || m.addedNodes.length === 0) continue;
+                for (const node of m.addedNodes) {
+                    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+                    if (node.id && /^nodeseek-plugin|blacklist-dialog|friends-dialog|favorites-dialog|browse-history-dialog|logs-dialog/.test(node.id)) continue;
+                    if (node.closest && node.closest('#nodeseek-plugin-container, #blacklist-dialog, #friends-dialog, #favorites-dialog, #browse-history-dialog, #logs-dialog')) continue;
+                    // 立即同步执行，不 debounce
+                    markViewedTitles(true);
+                    applyNewTabLinks();
+                    return;
+                }
+            }
+        });
+
+        function initObserver() {
+            obs.observe(contentRoot(), { childList: true, subtree: true });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initObserver);
+        } else {
+            initObserver();
+        }
+
+        // hash 路由切换时：立即同步执行 + 多次补漏（Vue 渲染可能分批）
+        window.addEventListener('hashchange', function() {
+            markViewedTitles(true);
+            applyNewTabLinks();
+            setTimeout(function() { markViewedTitles(true); applyNewTabLinks(); }, 150);
+            setTimeout(function() { markViewedTitles(true); applyNewTabLinks(); }, 400);
+        });
+    })();
+
     // 新增：应用新标签页打开帖子逻辑
     function applyNewTabLinks() {
         const isEnabled = getOpenPostNewTabEnabled();
-        const selectors = [
+        const isSpaceTab = isUserSpaceTab();
+
+        // 通用选择器（所有页面都用）
+        const generalSelectors = [
             'a.topic-title', '.topic-title a',
             'a.thread-title', '.thread-title a',
             'a.post-title', '.post-title a',
             'a.article-title', '.article-title a',
-            '.subject a', '.title a',
+            '.subject a',
             'h2 a[href*="/post-"]', 'h3 a[href*="/post-"]',
             'a[href*="/post-"][class*="title"]',
             'a[href*="/topic/"][class*="title"]',
             'a[href*="/article/"][class*="title"]'
         ];
 
+        // 用户空间 tab 专用（.title 在论坛列表页会误匹配，这里只对用户空间页额外补充）
+        const spaceSelectors = isSpaceTab ? [
+            '.title a',
+            'a[href*="/post-"]',
+            'a[href*="/topic/"]',
+            'a[href*="/article/"]'
+        ] : [];
+
+        const allSelectors = [...generalSelectors, ...spaceSelectors];
+
         const candidates = new Set();
-        for (const selector of selectors) {
+        for (const selector of allSelectors) {
             const list = document.querySelectorAll(selector);
             for (const el of list) {
                 if (el instanceof HTMLAnchorElement) candidates.add(el);
             }
         }
 
-        if (candidates.size === 0) {
-            const fallback = document.querySelectorAll('a[href*="/post-"], a[href*="/topic/"], a[href*="/article/"]');
-            for (const el of fallback) {
-                if (el instanceof HTMLAnchorElement && isLikelyTitleLink(el)) candidates.add(el);
-            }
+        // fallback：始终兜底查找所有帖子链接
+        const fallback = document.querySelectorAll('a[href*="/post-"], a[href*="/topic/"], a[href*="/article/"]');
+        for (const el of fallback) {
+            if (el instanceof HTMLAnchorElement && isLikelyTitleLink(el)) candidates.add(el);
         }
 
         for (const a of candidates) {
@@ -2144,24 +2230,6 @@
             return;
         }
 
-        if (isUserSpaceDiscussionsPage()) {
-            const marked = document.querySelectorAll('.ns-viewed-title');
-            for (const el of marked) {
-                el.classList.remove('ns-viewed-title');
-                el.style.removeProperty('color');
-            }
-            return;
-        }
-
-        if (isUserSpaceCommentsPage()) {
-            const marked = document.querySelectorAll('.ns-viewed-title');
-            for (const el of marked) {
-                el.classList.remove('ns-viewed-title');
-                el.style.removeProperty('color');
-            }
-            return;
-        }
-
         if (isNotificationPage()) {
             const marked = document.querySelectorAll('.ns-viewed-title');
             for (const el of marked) {
@@ -2172,32 +2240,39 @@
         }
 
         const visitedSet = getVisitedUrlSet();
+        const isSpaceTab = isUserSpaceTab();
 
-        const selectors = [
+        const generalSelectors = [
             'a.topic-title', '.topic-title a',
             'a.thread-title', '.thread-title a',
             'a.post-title', '.post-title a',
             'a.article-title', '.article-title a',
-            '.subject a', '.title a',
+            '.subject a',
             'h2 a[href*="/post-"]', 'h3 a[href*="/post-"]',
             'a[href*="/post-"][class*="title"]',
             'a[href*="/topic/"][class*="title"]',
             'a[href*="/article/"][class*="title"]'
         ];
 
+        const spaceSelectors = isSpaceTab ? [
+            '.title a',
+            'a[href*="/post-"]',
+            'a[href*="/topic/"]',
+            'a[href*="/article/"]'
+        ] : [];
+
         const candidates = new Set();
-        for (const selector of selectors) {
+        for (const selector of [...generalSelectors, ...spaceSelectors]) {
             const list = document.querySelectorAll(selector);
             for (const el of list) {
                 if (el instanceof HTMLAnchorElement) candidates.add(el);
             }
         }
 
-        if (candidates.size === 0) {
-            const fallback = document.querySelectorAll('a[href*="/post-"], a[href*="/topic/"], a[href*="/article/"]');
-            for (const el of fallback) {
-                if (el instanceof HTMLAnchorElement) candidates.add(el);
-            }
+        // fallback：始终兜底查找所有帖子链接
+        const fallback = document.querySelectorAll('a[href*="/post-"], a[href*="/topic/"], a[href*="/article/"]');
+        for (const el of fallback) {
+            if (el instanceof HTMLAnchorElement) candidates.add(el);
         }
 
         for (const a of candidates) {
