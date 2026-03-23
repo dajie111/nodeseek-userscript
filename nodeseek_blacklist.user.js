@@ -1957,12 +1957,11 @@
         if (text.length < 1) return;
         if (a.closest('#nodeseek-plugin-container, #browse-history-dialog, #favorites-dialog, #blacklist-dialog, #friends-dialog, #logs-dialog, footer')) return;
 
-        // 立即记录到已读历史
+        // 立即记录到已读历史（任意进帖链接均可记录）；仅标题链接触发阅读记忆颜色
         if (getViewedHistoryEnabled()) {
             addToViewedTitles(a.href);
-            // 立即同步更新该链接样式（同步执行，在页面离开前完成）
             const normalized = normalizeVisitedUrl(a.href);
-            if (cachedVisitedUrlSet.has(normalized)) {
+            if (isLikelyTitleLink(a) && cachedVisitedUrlSet.has(normalized)) {
                 a.classList.add('ns-viewed-title');
             } else {
                 a.classList.remove('ns-viewed-title');
@@ -2062,11 +2061,23 @@
         }
     }
 
+    /** 链接可见文本仅为日期时间（如最后回复时间），不是帖子标题 */
+    function anchorTextLooksLikeReplyOrPostTime(text) {
+        const t = (text || '').trim();
+        if (!t) return false;
+        if (/^编辑时间\s+/u.test(t)) return true;
+        // 完整本地时间：2026-03-24 01:40:17
+        if (/^\d{4}-\d{2}-\d{2}(\s+\d{1,2}:\d{2}(:\d{2})?)?$/u.test(t)) return true;
+        return false;
+    }
+
     function isLikelyTitleLink(a) {
         if (!(a instanceof HTMLAnchorElement)) return false;
         if (!a.href) return false;
         if (a.closest('#nodeseek-plugin-container, #browse-history-dialog, #favorites-dialog, #blacklist-dialog, #friends-dialog, #logs-dialog')) return false;
         if (a.closest('footer')) return false;
+        // 列表项底部元信息行（作者、浏览、回复、最后回复时间等）内的帖子链不是标题
+        if (a.closest('.nsk-content-meta-info')) return false;
         const path = window.location.pathname || '';
         const isDetailPage = path.includes('/topic/') || path.includes('/article/') || /\/post-\d+/.test(path);
         if (isDetailPage) {
@@ -2074,6 +2085,7 @@
             if (a.closest('h1')) return false;
         }
         const text = (a.textContent || '').trim();
+        if (anchorTextLooksLikeReplyOrPostTime(text)) return false;
         const minLen = isUserSpaceTab() ? 1 : 3;
         const maxLen = isUserSpaceTab() ? 500 : 140;
         if (text.length < minLen || text.length > maxLen) return false;
