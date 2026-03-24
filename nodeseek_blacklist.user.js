@@ -1952,6 +1952,7 @@
         const a = e.target.closest('a');
         if (!a || !a.href) return;
         if (isReadMemoryBlockedPage()) return;
+        if (!isReadMemoryTargetLink(a)) return;
         const href = a.getAttribute('href') || '';
         if (!/\/post-\d+|\/topic\/|\/article\//.test(href) && !/\/post-\d+|\/topic\/|\/article\//.test(a.href)) return;
         const text = (a.textContent || '').trim();
@@ -2101,6 +2102,17 @@
         const host = window.location.hostname || '';
         const path = window.location.pathname || '';
         return host === 'www.nodeseek.com' && path.startsWith('/post');
+    }
+
+    // 阅读记忆仅作用于你指定的标题结构：<div class="post-title"><a ...></a></div>
+    function isReadMemoryTargetLink(a) {
+        if (!(a instanceof HTMLAnchorElement)) return false;
+        const inPostTitle = !!a.closest('.post-title');
+        const inDiscussionItem = !!a.closest('.discussion-item');
+        const isDiscussionItemAnchor = a.classList.contains('discussion-item');
+        if (!inPostTitle && !inDiscussionItem && !isDiscussionItemAnchor) return false;
+        const href = a.getAttribute('href') || '';
+        return /\/post-\d+/.test(href) || /\/post-\d+/.test(a.href);
     }
 
     function updatePageScopeClasses() {
@@ -2257,43 +2269,10 @@
         }
 
         const visitedSet = getVisitedUrlSet();
-        const isSpaceTab = isUserSpaceTab();
-
-        const generalSelectors = [
-            'a.topic-title', '.topic-title a',
-            'a.thread-title', '.thread-title a',
-            'a.post-title', '.post-title a',
-            'a.article-title', '.article-title a',
-            '.subject a',
-            'h2 a[href*="/post-"]', 'h3 a[href*="/post-"]',
-            'a[href*="/post-"][class*="title"]',
-            'a[href*="/topic/"][class*="title"]',
-            'a[href*="/article/"][class*="title"]'
-        ];
-
-        const spaceSelectors = isSpaceTab ? [
-            '.title a',
-            'a[href*="/post-"]',
-            'a[href*="/topic/"]',
-            'a[href*="/article/"]'
-        ] : [];
-
-        const candidates = new Set();
-        for (const selector of [...generalSelectors, ...spaceSelectors]) {
-            const list = document.querySelectorAll(selector);
-            for (const el of list) {
-                if (el instanceof HTMLAnchorElement) candidates.add(el);
-            }
-        }
-
-        // fallback：始终兜底查找所有帖子链接
-        const fallback = document.querySelectorAll('a[href*="/post-"], a[href*="/topic/"], a[href*="/article/"]');
-        for (const el of fallback) {
-            if (el instanceof HTMLAnchorElement) candidates.add(el);
-        }
+        const candidates = document.querySelectorAll('.post-title a[href*="/post-"], .discussion-item a[href*="/post-"], a.discussion-item[href*="/post-"]');
 
         for (const a of candidates) {
-            if (!isLikelyTitleLink(a)) continue;
+            if (!isReadMemoryTargetLink(a)) continue;
             const normalized = normalizeVisitedUrl(a.href);
             const isViewed = visitedSet.has(normalized);
             
