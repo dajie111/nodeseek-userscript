@@ -1977,7 +1977,7 @@
 
     // 新增：已读标题记录管理（独立存储）
     const VIEWED_TITLES_STORAGE_KEY = 'nodeseek_viewed_titles_data';
-    
+
     function getViewedTitlesData() {
         return JSON.parse(localStorage.getItem(VIEWED_TITLES_STORAGE_KEY) || '[]');
     }
@@ -1989,21 +1989,21 @@
     function addToViewedTitles(url) {
         const history = getViewedTitlesData();
         const normalizedUrl = normalizeVisitedUrl(url);
-        
+
         // 检查是否存在
         const existingIndex = history.indexOf(normalizedUrl);
         if (existingIndex !== -1) {
             // 移动到最前
             history.splice(existingIndex, 1);
         }
-        
+
         history.unshift(normalizedUrl);
-        
+
         // 限制最大条数 5000
         if (history.length > 5000) {
             history.length = 5000;
         }
-        
+
         setViewedTitlesData(history);
         // 更新缓存
         cachedVisitedUrlSet = new Set(history);
@@ -2301,7 +2301,7 @@
             if (!isLikelyTitleLink(a)) continue;
             const normalized = normalizeVisitedUrl(a.href);
             const isViewed = visitedSet.has(normalized);
-            
+
             if (isViewed) {
                 a.classList.add('ns-viewed-title');
                 // 移除旧的内联样式
@@ -2990,12 +2990,12 @@
                             if (Array.isArray(json.viewedTitles.data)) {
                                 localStorage.setItem('nodeseek_viewed_titles_data', JSON.stringify(json.viewedTitles.data));
                             }
-                            
+
                             // 刷新缓存
                             if (window.NodeSeekViewedTitles && typeof window.NodeSeekViewedTitles.refresh === 'function') {
                                 window.NodeSeekViewedTitles.refresh();
                             }
-                            
+
                             const count = Array.isArray(json.viewedTitles.data) ? json.viewedTitles.data.length : 0;
                             importInfo.push(`阅读记忆(${json.viewedTitles.enabled ? '开启' : '关闭'}, ${count}条)`);
                         } catch (error) {
@@ -3193,8 +3193,8 @@
         desc.style.fontSize = '12px';
         desc.style.color = '#666';
         desc.style.marginBottom = '12px';
-        desc.textContent = mode === 'whitelist' 
-            ? '在此名单内的域名将直接跳转（不显示提醒）。' 
+        desc.textContent = mode === 'whitelist'
+            ? '在此名单内的域名将直接跳转（不显示提醒）。'
             : '当前处于“全放行”模式，所有外链都将自动跳转。';
         dialog.appendChild(desc);
 
@@ -3290,7 +3290,7 @@
         addBtn.onclick = function() {
             const domain = input.value.trim().toLowerCase();
             if (!domain) return;
-            
+
             const currentList = getSkipJumpList();
             if (currentList.includes(domain)) {
                 alert('该域名已在名单中');
@@ -5954,7 +5954,7 @@
         dragHandle.style.zIndex = '10001'; // 确保在最上层
         dragHandle.title = '按住拖动';
         // 可选：添加一点微弱的背景色或边框提示，或者完全透明
-        // dragHandle.style.background = 'rgba(0,0,0,0.05)'; 
+        // dragHandle.style.background = 'rgba(0,0,0,0.05)';
         dialog.appendChild(dragHandle);
 
         // 拖动逻辑实现
@@ -5966,19 +5966,19 @@
                 isDragging = true;
                 startX = e.clientX;
                 startY = e.clientY;
-                
+
                 const rect = dialog.getBoundingClientRect();
                 initialLeft = rect.left;
                 initialTop = rect.top;
-                
+
                 // 防止选中文本
                 e.preventDefault();
-                
+
                 document.onmousemove = function(e) {
                     if (isDragging) {
                         const dx = e.clientX - startX;
                         const dy = e.clientY - startY;
-                        
+
                         // 移除 right 定位，改为 left/top 定位以支持拖动
                         dialog.style.right = 'auto';
                         dialog.style.left = (initialLeft + dx) + 'px';
@@ -6231,7 +6231,7 @@
             const newState = this.checked;
             localStorage.setItem('nodeseek_sign_enabled', newState.toString());
             addLog('自动签到：' + (newState ? '开启' : '关闭'));
-            
+
             // 立即触发一次状态更新（如果是开启）
              if (newState && window.NodeSeekClockIn && window.NodeSeekClockIn.scheduleNextHourlySign) {
                  window.NodeSeekClockIn.scheduleNextHourlySign();
@@ -6301,14 +6301,14 @@
         modeSelect.style.outline = 'none';
         modeSelect.style.cursor = 'pointer';
         modeSelect.style.width = '75px'; // 固定宽度更整齐
-        
+
         const optAll = document.createElement('option');
         optAll.value = 'all';
         optAll.textContent = '全放行';
         const optWhite = document.createElement('option');
         optWhite.value = 'whitelist';
         optWhite.textContent = '白名单';
-        
+
         modeSelect.appendChild(optAll);
         modeSelect.appendChild(optWhite);
         modeSelect.value = getSkipJumpMode();
@@ -6345,12 +6345,12 @@
 
         // 初始化按钮状态
         updateConfigBtnStatus();
-        
+
         modeSelect.onchange = function() {
              setSkipJumpMode(this.value);
              updateConfigBtnStatus();
              addLog('屏蔽URL跳转提醒模式：' + (this.value === 'whitelist' ? '白名单' : '全放行'));
-             
+
              // 立即应用模式更改
              if (getSkipJumpPageEnabled()) {
                  // 切换模式前先恢复所有链接，确保逻辑干净
@@ -6671,7 +6671,7 @@
 
     function rewriteJumpLinks() {
         if (!getSkipJumpPageEnabled()) return;
-        
+
         const mode = getSkipJumpMode();
         const list = getSkipJumpList();
 
