@@ -94,6 +94,7 @@
     const USER_INFO_DISPLAY_KEY = 'nodeseek_user_info_display';
     const VIEWED_HISTORY_ENABLED_KEY = 'nodeseek_viewed_history_enabled';
     const VIEWED_COLOR_KEY = 'nodeseek_viewed_color';
+    const VIEWED_COLOR_DEFAULT = '#58adee';
     // 新增：跳过跳转页面开关
     const SKIP_JUMP_PAGE_KEY = 'nodeseek_skip_jump_page';
     const SKIP_JUMP_MODE_KEY = 'nodeseek_skip_jump_mode'; // 'blacklist' or 'whitelist'
@@ -173,7 +174,7 @@
 
     // 新增：获取阅读后颜色
     function getViewedColor() {
-        return localStorage.getItem(VIEWED_COLOR_KEY) || '#9aa0a6';
+        return localStorage.getItem(VIEWED_COLOR_KEY) || VIEWED_COLOR_DEFAULT;
     }
 
     // 新增：保存阅读后颜色
@@ -1047,7 +1048,7 @@
 
     // 红色高亮样式
     const style = document.createElement('style');
-    style.innerHTML = `.friend-user { color: #2ea44f !important; font-weight: bold; white-space: nowrap; } .blacklisted-user { color: red !important; font-weight: bold; white-space: nowrap; } .blacklist-remark { color: #d00; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; } .friend-remark { color: #2ea44f; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; } .ns-viewed-title { color: var(--ns-viewed-color, #9aa0a6) !important; }
+    style.innerHTML = `.friend-user { color: #2ea44f !important; font-weight: bold; white-space: nowrap; } .blacklisted-user { color: red !important; font-weight: bold; white-space: nowrap; } .blacklist-remark { color: #d00; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; } .friend-remark { color: #2ea44f; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; } .ns-viewed-title { color: var(--ns-viewed-color, #58adee) !important; }
     .ns-page-notification .app-switch a,
     .ns-page-notification .app-switch a.btn,
     .ns-page-notification .app-switch a[class*="btn-"] {
@@ -6026,7 +6027,7 @@
         colorResetBtn.style.textDecoration = 'underline';
         colorResetBtn.onclick = function() {
             if (confirm('确定要重置阅读记忆颜色吗？')) {
-                colorPicker.value = '#9aa0a6';
+                colorPicker.value = VIEWED_COLOR_DEFAULT;
                 colorPicker.dispatchEvent(new Event('input')); // 触发实时预览
                 colorPicker.dispatchEvent(new Event('change')); // 触发保存
             }
