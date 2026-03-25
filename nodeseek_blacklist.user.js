@@ -2108,6 +2108,8 @@
     // 阅读记忆仅作用于你指定的标题结构：<div class="post-title"><a ...></a></div>
     function isReadMemoryTargetLink(a) {
         if (!(a instanceof HTMLAnchorElement)) return false;
+        // 通知/回复列表等：不要对已读颜色生效
+        if (a.closest('.reply-item')) return false;
         const inPostTitle = !!a.closest('.post-title');
         const inDiscussionItem = !!a.closest('.discussion-item');
         const isDiscussionItemAnchor = a.classList.contains('discussion-item');
@@ -2291,6 +2293,12 @@
                 }
             }
         }
+
+        // 兜底：清除 .reply-item 内误标的已读样式（避免历史版本或其它路径上过色）
+        document.querySelectorAll('.reply-item a.ns-viewed-title').forEach(function (el) {
+            el.classList.remove('ns-viewed-title');
+            el.style.removeProperty('color');
+        });
     }
 
     // 优化主更新函数，减少不必要的重复调用
