@@ -1,12 +1,17 @@
 // ==UserScript==
 // @name         NS综合插件
 // @namespace    http://tampermonkey.net/
-// @version      2026.03.24
+// @version      2026.03.25.2
 // @description  NodeSeek 论坛黑名单，拉黑后红色高亮并可备注，增加域名检测控制按钮显隐，支持折叠功能，显示用户详细信息，快捷回复功能
 // @author       YourName
 // @match        https://www.nodeseek.com/*
 // @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_deleteValue
 // @connect      hb.396663.xyz
+// @connect      api.nodeimage.com
+// @connect      www.nodeimage.com
 // @run-at       document-end
 // @require      https://raw.githubusercontent.com/dajie111/nodeseek-userscript/refs/heads/main/filter.js
 // @require      https://raw.githubusercontent.com/dajie111/nodeseek-userscript/refs/heads/main/statistics.js
@@ -20,6 +25,7 @@
 // @require      https://raw.githubusercontent.com/dajie111/nodeseek-userscript/refs/heads/main/vps.js
 // @require      https://raw.githubusercontent.com/dajie111/nodeseek-userscript/refs/heads/main/History.js
 // @require      https://raw.githubusercontent.com/dajie111/nodeseek-userscript/refs/heads/main/notes.js
+// @require      https://raw.githubusercontent.com/dajie111/nodeseek-userscript/refs/heads/main/nodeImage.js
 // ==/UserScript==
 
 (function () {
@@ -94,7 +100,6 @@
     const USER_INFO_DISPLAY_KEY = 'nodeseek_user_info_display';
     const VIEWED_HISTORY_ENABLED_KEY = 'nodeseek_viewed_history_enabled';
     const VIEWED_COLOR_KEY = 'nodeseek_viewed_color';
-    const VIEWED_COLOR_DEFAULT = '#58adee';
     // 新增：跳过跳转页面开关
     const SKIP_JUMP_PAGE_KEY = 'nodeseek_skip_jump_page';
     const SKIP_JUMP_MODE_KEY = 'nodeseek_skip_jump_mode'; // 'blacklist' or 'whitelist'
@@ -174,7 +179,7 @@
 
     // 新增：获取阅读后颜色
     function getViewedColor() {
-        return localStorage.getItem(VIEWED_COLOR_KEY) || VIEWED_COLOR_DEFAULT;
+        return localStorage.getItem(VIEWED_COLOR_KEY) || '#9aa0a6';
     }
 
     // 新增：保存阅读后颜色
@@ -1048,7 +1053,7 @@
 
     // 红色高亮样式
     const style = document.createElement('style');
-    style.innerHTML = `.friend-user { color: #2ea44f !important; font-weight: bold; white-space: nowrap; } .blacklisted-user { color: red !important; font-weight: bold; white-space: nowrap; } .blacklist-remark { color: #d00; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; } .friend-remark { color: #2ea44f; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; } .ns-viewed-title { color: var(--ns-viewed-color, #58adee) !important; }
+    style.innerHTML = `.friend-user { color: #2ea44f !important; font-weight: bold; white-space: nowrap; } .blacklisted-user { color: red !important; font-weight: bold; white-space: nowrap; } .blacklist-remark { color: #d00; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; } .friend-remark { color: #2ea44f; font-size: 12px; margin-left: 4px; max-width: 220px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: text-bottom; } .ns-viewed-title { color: var(--ns-viewed-color, #9aa0a6) !important; }
     .ns-page-notification .app-switch a,
     .ns-page-notification .app-switch a.btn,
     .ns-page-notification .app-switch a[class*="btn-"] {
@@ -1952,23 +1957,22 @@
     document.addEventListener('click', function(e) {
         const a = e.target.closest('a');
         if (!a || !a.href) return;
-        if (isReadMemoryBlockedPage()) return;
-        if (!isReadMemoryTargetLink(a)) return;
         const href = a.getAttribute('href') || '';
         if (!/\/post-\d+|\/topic\/|\/article\//.test(href) && !/\/post-\d+|\/topic\/|\/article\//.test(a.href)) return;
         const text = (a.textContent || '').trim();
         if (text.length < 1) return;
         if (a.closest('#nodeseek-plugin-container, #browse-history-dialog, #favorites-dialog, #blacklist-dialog, #friends-dialog, #logs-dialog, footer')) return;
 
-        // 立即记录到已读历史
+        // 立即记录到已读历史（任意进帖链接均可记录）；仅标题链接触发阅读记忆颜色（帖子详情页不着色）
         if (getViewedHistoryEnabled()) {
             addToViewedTitles(a.href);
-            // 立即同步更新该链接样式（同步执行，在页面离开前完成）
-            const normalized = normalizeVisitedUrl(a.href);
-            if (cachedVisitedUrlSet.has(normalized)) {
-                a.classList.add('ns-viewed-title');
-            } else {
-                a.classList.remove('ns-viewed-title');
+            if (!isPostThreadDetailPage()) {
+                const normalized = normalizeVisitedUrl(a.href);
+                if (isLikelyTitleLink(a) && cachedVisitedUrlSet.has(normalized)) {
+                    a.classList.add('ns-viewed-title');
+                } else {
+                    a.classList.remove('ns-viewed-title');
+                }
             }
         }
 
@@ -1980,7 +1984,7 @@
 
     // 新增：已读标题记录管理（独立存储）
     const VIEWED_TITLES_STORAGE_KEY = 'nodeseek_viewed_titles_data';
-    
+
     function getViewedTitlesData() {
         return JSON.parse(localStorage.getItem(VIEWED_TITLES_STORAGE_KEY) || '[]');
     }
@@ -1992,21 +1996,21 @@
     function addToViewedTitles(url) {
         const history = getViewedTitlesData();
         const normalizedUrl = normalizeVisitedUrl(url);
-        
+
         // 检查是否存在
         const existingIndex = history.indexOf(normalizedUrl);
         if (existingIndex !== -1) {
             // 移动到最前
             history.splice(existingIndex, 1);
         }
-        
+
         history.unshift(normalizedUrl);
-        
+
         // 限制最大条数 5000
         if (history.length > 5000) {
             history.length = 5000;
         }
-        
+
         setViewedTitlesData(history);
         // 更新缓存
         cachedVisitedUrlSet = new Set(history);
@@ -2065,11 +2069,31 @@
         }
     }
 
+    /** 链接可见文本仅为日期时间（如最后回复时间），不是帖子标题 */
+    function anchorTextLooksLikeReplyOrPostTime(text) {
+        const t = (text || '').trim();
+        if (!t) return false;
+        if (/^编辑时间\s+/u.test(t)) return true;
+        // 完整本地时间：2026-03-24 01:40:17
+        if (/^\d{4}-\d{2}-\d{2}(\s+\d{1,2}:\d{2}(:\d{2})?)?$/u.test(t)) return true;
+        return false;
+    }
+
+    /** 主题页楼层锚点（#13）；与同帖 URL 规范化后一致，不能当「标题」染阅读记忆色 */
+    function anchorTextLooksLikeFloorLink(text) {
+        const t = (text || '').trim().replace(/\s+/g, '');
+        if (!t) return false;
+        return /^#\d+$/.test(t);
+    }
+
     function isLikelyTitleLink(a) {
         if (!(a instanceof HTMLAnchorElement)) return false;
         if (!a.href) return false;
         if (a.closest('#nodeseek-plugin-container, #browse-history-dialog, #favorites-dialog, #blacklist-dialog, #friends-dialog, #logs-dialog')) return false;
         if (a.closest('footer')) return false;
+        if (a.closest('.floor-link-wrapper')) return false;
+        // 列表项底部元信息行（作者、浏览、回复、最后回复时间等）内的帖子链不是标题
+        if (a.closest('.nsk-content-meta-info')) return false;
         const path = window.location.pathname || '';
         const isDetailPage = path.includes('/topic/') || path.includes('/article/') || /\/post-\d+/.test(path);
         if (isDetailPage) {
@@ -2077,6 +2101,8 @@
             if (a.closest('h1')) return false;
         }
         const text = (a.textContent || '').trim();
+        if (anchorTextLooksLikeReplyOrPostTime(text)) return false;
+        if (anchorTextLooksLikeFloorLink(text)) return false;
         const minLen = isUserSpaceTab() ? 1 : 3;
         const maxLen = isUserSpaceTab() ? 500 : 140;
         if (text.length < minLen || text.length > maxLen) return false;
@@ -2098,24 +2124,10 @@
         return path === '/notification' || path.startsWith('/notification/');
     }
 
-    // 阅读记忆在 www.nodeseek.com/post 页面禁用
-    function isReadMemoryBlockedPage() {
-        const host = window.location.hostname || '';
+    /** 论坛帖子详情页（/post-123-1）；不在此页应用阅读记忆标题颜色 */
+    function isPostThreadDetailPage() {
         const path = window.location.pathname || '';
-        return host === 'www.nodeseek.com' && path.startsWith('/post');
-    }
-
-    // 阅读记忆仅作用于你指定的标题结构：<div class="post-title"><a ...></a></div>
-    function isReadMemoryTargetLink(a) {
-        if (!(a instanceof HTMLAnchorElement)) return false;
-        // 通知/回复列表等：不要对已读颜色生效
-        if (a.closest('.reply-item')) return false;
-        const inPostTitle = !!a.closest('.post-title');
-        const inDiscussionItem = !!a.closest('.discussion-item');
-        const isDiscussionItemAnchor = a.classList.contains('discussion-item');
-        if (!inPostTitle && !inDiscussionItem && !isDiscussionItemAnchor) return false;
-        const href = a.getAttribute('href') || '';
-        return /\/post-\d+/.test(href) || /\/post-\d+/.test(a.href);
+        return /^\/post-\d+/i.test(path);
     }
 
     function updatePageScopeClasses() {
@@ -2254,15 +2266,20 @@
         }
 
         if (isNotificationPage()) {
-            const marked = document.querySelectorAll('.ns-viewed-title');
-            for (const el of marked) {
-                el.classList.remove('ns-viewed-title');
-                el.style.removeProperty('color');
+            // /notification 列表页本身（无 hash 或其他 hash）不染色；#/reply 和 #/atMe 子页面需要染标题色
+            const hash = window.location.hash || '';
+            const isReplyOrAtMe = /^#\/reply\b/i.test(hash) || /^#\/atMe\b/i.test(hash);
+            if (!isReplyOrAtMe) {
+                const marked = document.querySelectorAll('.ns-viewed-title');
+                for (const el of marked) {
+                    el.classList.remove('ns-viewed-title');
+                    el.style.removeProperty('color');
+                }
+                return;
             }
-            return;
         }
 
-        if (isReadMemoryBlockedPage()) {
+        if (isPostThreadDetailPage()) {
             const marked = document.querySelectorAll('.ns-viewed-title');
             for (const el of marked) {
                 el.classList.remove('ns-viewed-title');
@@ -2272,13 +2289,55 @@
         }
 
         const visitedSet = getVisitedUrlSet();
-        const candidates = document.querySelectorAll('.post-title a[href*="/post-"], .discussion-item a[href*="/post-"], a.discussion-item[href*="/post-"]');
+        const isSpaceTab = isUserSpaceTab();
+
+        const generalSelectors = [
+            'a.topic-title', '.topic-title a',
+            'a.thread-title', '.thread-title a',
+            'a.post-title', '.post-title a',
+            'a.article-title', '.article-title a',
+            '.subject a',
+            'h2 a[href*="/post-"]', 'h3 a[href*="/post-"]',
+            'a[href*="/post-"][class*="title"]',
+            'a[href*="/topic/"][class*="title"]',
+            'a[href*="/article/"][class*="title"]',
+            // 通知页 #/reply 和 #/atMe 标题链接
+            '.notification-title a',
+            '.notify-title a',
+            '.notify-item a[href*="/post-"]',
+            'a.notify-link[href*="/post-"]',
+            'a[href*="/post-"][class*="notification"]',
+            'a[href*="/post-"][class*="notify"]',
+            '.app-main a[href*="/post-"]',
+            '.notification-content a[href*="/post-"]'
+        ];
+
+        const spaceSelectors = isSpaceTab ? [
+            '.title a',
+            'a[href*="/post-"]',
+            'a[href*="/topic/"]',
+            'a[href*="/article/"]'
+        ] : [];
+
+        const candidates = new Set();
+        for (const selector of [...generalSelectors, ...spaceSelectors]) {
+            const list = document.querySelectorAll(selector);
+            for (const el of list) {
+                if (el instanceof HTMLAnchorElement) candidates.add(el);
+            }
+        }
+
+        // fallback：始终兜底查找所有帖子链接
+        const fallback = document.querySelectorAll('a[href*="/post-"], a[href*="/topic/"], a[href*="/article/"]');
+        for (const el of fallback) {
+            if (el instanceof HTMLAnchorElement) candidates.add(el);
+        }
 
         for (const a of candidates) {
-            if (!isReadMemoryTargetLink(a)) continue;
+            if (!isLikelyTitleLink(a)) continue;
             const normalized = normalizeVisitedUrl(a.href);
             const isViewed = visitedSet.has(normalized);
-            
+
             if (isViewed) {
                 a.classList.add('ns-viewed-title');
                 // 移除旧的内联样式
@@ -2293,12 +2352,6 @@
                 }
             }
         }
-
-        // 兜底：清除 .reply-item 内误标的已读样式（避免历史版本或其它路径上过色）
-        document.querySelectorAll('.reply-item a.ns-viewed-title').forEach(function (el) {
-            el.classList.remove('ns-viewed-title');
-            el.style.removeProperty('color');
-        });
     }
 
     // 优化主更新函数，减少不必要的重复调用
@@ -2973,12 +3026,12 @@
                             if (Array.isArray(json.viewedTitles.data)) {
                                 localStorage.setItem('nodeseek_viewed_titles_data', JSON.stringify(json.viewedTitles.data));
                             }
-                            
+
                             // 刷新缓存
                             if (window.NodeSeekViewedTitles && typeof window.NodeSeekViewedTitles.refresh === 'function') {
                                 window.NodeSeekViewedTitles.refresh();
                             }
-                            
+
                             const count = Array.isArray(json.viewedTitles.data) ? json.viewedTitles.data.length : 0;
                             importInfo.push(`阅读记忆(${json.viewedTitles.enabled ? '开启' : '关闭'}, ${count}条)`);
                         } catch (error) {
@@ -3176,8 +3229,8 @@
         desc.style.fontSize = '12px';
         desc.style.color = '#666';
         desc.style.marginBottom = '12px';
-        desc.textContent = mode === 'whitelist' 
-            ? '在此名单内的域名将直接跳转（不显示提醒）。' 
+        desc.textContent = mode === 'whitelist'
+            ? '在此名单内的域名将直接跳转（不显示提醒）。'
             : '当前处于“全放行”模式，所有外链都将自动跳转。';
         dialog.appendChild(desc);
 
@@ -3273,7 +3326,7 @@
         addBtn.onclick = function() {
             const domain = input.value.trim().toLowerCase();
             if (!domain) return;
-            
+
             const currentList = getSkipJumpList();
             if (currentList.includes(domain)) {
                 alert('该域名已在名单中');
@@ -3999,6 +4052,28 @@
         emojiBtnContainer.style.width = '100%';
         emojiBtnContainer.appendChild(emojiBtn);
 
+        // 新增：NS 图床（NodeImage API，window.NodeSeekNodeImage）
+        const nodeImageBtn = document.createElement('button');
+        nodeImageBtn.id = 'ns-nodeimage-btn';
+        nodeImageBtn.className = 'blacklist-btn';
+        nodeImageBtn.style.background = '#0d9488';
+        nodeImageBtn.textContent = 'NS图床';
+        nodeImageBtn.style.width = '100%';
+        nodeImageBtn.style.marginTop = '1px';
+        nodeImageBtn.onclick = function () {
+            if (window.NodeSeekNodeImage && typeof window.NodeSeekNodeImage.open === 'function') {
+                window.NodeSeekNodeImage.open();
+            } else {
+                alert('NS图床模块未加载');
+            }
+        };
+        const nodeImageBtnContainer = document.createElement('div');
+        nodeImageBtnContainer.style.display = 'flex';
+        nodeImageBtnContainer.style.flexDirection = 'row';
+        nodeImageBtnContainer.style.gap = '10px';
+        nodeImageBtnContainer.style.width = '100%';
+        nodeImageBtnContainer.appendChild(nodeImageBtn);
+
         // 新增：高亮统计显示区域
         const statsContainer = document.createElement('div');
         statsContainer.id = 'ns-highlight-stats-container';
@@ -4044,6 +4119,7 @@
         container.appendChild(filterBtnContainer); // 关键词过滤按钮行
         container.appendChild(quickReplyContainer); // 快捷回复按钮行
         container.appendChild(emojiBtnContainer); // 表情按钮行
+        container.appendChild(nodeImageBtnContainer); // NS 图床
         container.appendChild(statsContainer); // 高亮统计显示区域
 
         // 尝试立即渲染（如果统计数据已就绪）
@@ -5914,7 +5990,7 @@
         dragHandle.style.zIndex = '10001'; // 确保在最上层
         dragHandle.title = '按住拖动';
         // 可选：添加一点微弱的背景色或边框提示，或者完全透明
-        // dragHandle.style.background = 'rgba(0,0,0,0.05)'; 
+        // dragHandle.style.background = 'rgba(0,0,0,0.05)';
         dialog.appendChild(dragHandle);
 
         // 拖动逻辑实现
@@ -5926,19 +6002,19 @@
                 isDragging = true;
                 startX = e.clientX;
                 startY = e.clientY;
-                
+
                 const rect = dialog.getBoundingClientRect();
                 initialLeft = rect.left;
                 initialTop = rect.top;
-                
+
                 // 防止选中文本
                 e.preventDefault();
-                
+
                 document.onmousemove = function(e) {
                     if (isDragging) {
                         const dx = e.clientX - startX;
                         const dy = e.clientY - startY;
-                        
+
                         // 移除 right 定位，改为 left/top 定位以支持拖动
                         dialog.style.right = 'auto';
                         dialog.style.left = (initialLeft + dx) + 'px';
@@ -6035,7 +6111,7 @@
         colorResetBtn.style.textDecoration = 'underline';
         colorResetBtn.onclick = function() {
             if (confirm('确定要重置阅读记忆颜色吗？')) {
-                colorPicker.value = VIEWED_COLOR_DEFAULT;
+                colorPicker.value = '#9aa0a6';
                 colorPicker.dispatchEvent(new Event('input')); // 触发实时预览
                 colorPicker.dispatchEvent(new Event('change')); // 触发保存
             }
@@ -6191,7 +6267,7 @@
             const newState = this.checked;
             localStorage.setItem('nodeseek_sign_enabled', newState.toString());
             addLog('自动签到：' + (newState ? '开启' : '关闭'));
-            
+
             // 立即触发一次状态更新（如果是开启）
              if (newState && window.NodeSeekClockIn && window.NodeSeekClockIn.scheduleNextHourlySign) {
                  window.NodeSeekClockIn.scheduleNextHourlySign();
@@ -6261,14 +6337,14 @@
         modeSelect.style.outline = 'none';
         modeSelect.style.cursor = 'pointer';
         modeSelect.style.width = '75px'; // 固定宽度更整齐
-        
+
         const optAll = document.createElement('option');
         optAll.value = 'all';
         optAll.textContent = '全放行';
         const optWhite = document.createElement('option');
         optWhite.value = 'whitelist';
         optWhite.textContent = '白名单';
-        
+
         modeSelect.appendChild(optAll);
         modeSelect.appendChild(optWhite);
         modeSelect.value = getSkipJumpMode();
@@ -6305,12 +6381,12 @@
 
         // 初始化按钮状态
         updateConfigBtnStatus();
-        
+
         modeSelect.onchange = function() {
              setSkipJumpMode(this.value);
              updateConfigBtnStatus();
              addLog('屏蔽URL跳转提醒模式：' + (this.value === 'whitelist' ? '白名单' : '全放行'));
-             
+
              // 立即应用模式更改
              if (getSkipJumpPageEnabled()) {
                  // 切换模式前先恢复所有链接，确保逻辑干净
@@ -6631,7 +6707,7 @@
 
     function rewriteJumpLinks() {
         if (!getSkipJumpPageEnabled()) return;
-        
+
         const mode = getSkipJumpMode();
         const list = getSkipJumpList();
 
