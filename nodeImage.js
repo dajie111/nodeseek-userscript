@@ -62,9 +62,10 @@
             var uas = opts.uploadAbortState;
             var settled = false;
             function markSettled() {
-                if (settled) return;
+                if (settled) return false;
                 settled = true;
                 if (uas) uas._rejectInFlight = null;
+                return true;
             }
             function clearHandle() {
                 if (uas) uas.xhrHandle = null;
@@ -73,10 +74,11 @@
                 return uas && uas.abortScope === 'file' ? 'ABORT_FILE' : 'ABORT';
             }
             if (uas) {
+                /** 新请求开始时清理上一文件「取消」遗留状态，否则 onload 会误判为已取消且快捷面板多图队列无法继续 */
+                uas.userAborted = false;
+                uas.abortScope = 'batch';
                 uas._rejectInFlight = function () {
-                    if (settled) return;
-                    settled = true;
-                    if (uas) uas._rejectInFlight = null;
+                    if (!markSettled()) return;
                     clearHandle();
                     reject(Object.assign(new Error('已取消'), { code: rejectCodeForAbort() }));
                 };
@@ -86,10 +88,10 @@
                 url: opts.url,
                 headers: headers,
                 data: opts.data,
-                timeout: opts.timeout != null ? opts.timeout : 120000,
+                timeout: opts.timeout != null ? opts.timeout : 300000,
                 anonymous: false,
                 onload: function (r) {
-                    markSettled();
+                    if (!markSettled()) return;
                     clearHandle();
                     if (uas && uas.userAborted) {
                         reject(Object.assign(new Error('已取消'), { code: rejectCodeForAbort() }));
@@ -108,7 +110,7 @@
                     }
                 },
                 onerror: function () {
-                    markSettled();
+                    if (!markSettled()) return;
                     clearHandle();
                     if (uas && uas.userAborted) {
                         reject(Object.assign(new Error('已取消'), { code: rejectCodeForAbort() }));
@@ -117,7 +119,7 @@
                     reject(new Error('网络错误'));
                 },
                 ontimeout: function () {
-                    markSettled();
+                    if (!markSettled()) return;
                     clearHandle();
                     if (uas && uas.userAborted) {
                         reject(Object.assign(new Error('已取消'), { code: rejectCodeForAbort() }));
@@ -454,10 +456,8 @@
             skippedFormat: skippedFormat,
         };
     }
-    function openNi() {
-        var id = 'ns-nodeimage-dialog';
-        var pasteHandler = null;
-        var uploadAbortState = {
+    function newNiUploadAbortState() {
+        return {
             stop: false,
             userAborted: false,
             abortScope: 'batch',
@@ -506,9 +506,390 @@
                 this._rejectInFlight = null;
             },
         };
-        function isAbortErr(e) {
-            return e && (e.code === 'ABORT' || (e.message && String(e.message).indexOf('已取消') >= 0));
+    }
+    function isNiAbortErr(e) {
+        return e && (e.code === 'ABORT' || (e.message && String(e.message).indexOf('已取消') >= 0));
+    }
+    function niPostImageUpload(file, apiKey, uploadAbortState, onUploadProgress) {
+        var fd = new FormData();
+        fd.append('image', file, file.name || 'image');
+        return gm({
+            method: 'POST',
+            url: API_BASE + '/api/upload',
+            headers: { 'X-API-Key': apiKey },
+            data: fd,
+            timeout: 300000,
+            uploadAbortState: uploadAbortState,
+            onUploadProgress: typeof onUploadProgress === 'function' ? onUploadProgress : undefined,
+        });
+    }
+    function niNotifyUploadSuccessToEditor(body, onStatus, onNoUrl) {
+        onStatus = onStatus || function () {};
+        var urls = collectUrls(body, []);
+        var seen = {};
+        var uniq = [];
+        urls.forEach(function (u) {
+            if (!seen[u]) {
+                seen[u] = true;
+                uniq.push(u);
+            }
+        });
+        var mainUrl = uniq[0] || '';
+        if (mainUrl) {
+            var mdSnippet = formatSnippet('md', mainUrl);
+            if (insertIntoForumEditor(mdSnippet + '\n')) onStatus('上传成功，已插入 MD 格式');
+            else {
+                copyText(
+                    mdSnippet,
+                    function () {
+                        onStatus('已复制 MD 格式');
+                    },
+                    function () {
+                        onStatus('复制失败', true);
+                    }
+                );
+            }
+        } else {
+            if (typeof onNoUrl === 'function') onNoUrl(body);
+            else onStatus('上传成功（响应中无图片链接）', true);
         }
+    }
+    var NS_NI_UPLOAD_PROG_STYLE_ID = 'ns-ni-upload-prog-styles';
+    function niEnsureUploadProgressStyles() {
+        if (document.getElementById(NS_NI_UPLOAD_PROG_STYLE_ID)) return;
+        var s = document.createElement('style');
+        s.id = NS_NI_UPLOAD_PROG_STYLE_ID;
+        s.textContent =
+            '@keyframes nsNiBarMove{0%{transform:translateX(-120%);}100%{transform:translateX(380%);}}' +
+            '.ns-ni-pbar-ind{position:relative;}' +
+            '.ns-ni-pbar-ind::after{content:"";position:absolute;left:0;top:0;height:100%;width:55%;border-radius:4px;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(13,148,136,.55),transparent);animation:nsNiBarMove 1.05s linear infinite;}';
+        (document.head || document.documentElement).appendChild(s);
+    }
+    var NS_NI_QUICK_PANEL_ID = 'ns-ni-quick-upload-panel';
+    function niCloseQuickUploadPanel() {
+        var p = document.getElementById(NS_NI_QUICK_PANEL_ID);
+        if (p) p.remove();
+    }
+    function niQuickToast(msg, isErr) {
+        var id = 'ns-ni-floating-toast';
+        var el = document.getElementById(id);
+        if (!el) {
+            el = document.createElement('div');
+            el.id = id;
+            el.style.cssText =
+                'position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:10003;max-width:min(520px,92vw);padding:8px 14px;border-radius:8px;font:13px system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.12);pointer-events:none;transition:opacity .2s;text-align:center;';
+            document.body.appendChild(el);
+        }
+        el.textContent = msg || '';
+        el.style.background = isErr ? '#fef2f2' : '#f0fdfa';
+        el.style.color = isErr ? '#b91c1c' : '#0f766e';
+        el.style.border = isErr ? '1px solid #fecaca' : '1px solid #99f6e4';
+        el.style.opacity = '1';
+        clearTimeout(el._nsNiT);
+        el._nsNiT = setTimeout(function () {
+            el.style.opacity = '0';
+        }, isErr ? 4500 : 3000);
+    }
+    function niOpenQuickUploadPanel(uploadAbortState, batchHintText) {
+        niEnsureUploadProgressStyles();
+        niCloseQuickUploadPanel();
+        var panel = document.createElement('div');
+        panel.id = NS_NI_QUICK_PANEL_ID;
+        panel.style.cssText =
+            'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:10002;min-width:min(420px,94vw);max-width:96vw;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.15);padding:10px 12px;font:13px system-ui,sans-serif;';
+        var hdr = document.createElement('div');
+        hdr.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;';
+        var titleCol = document.createElement('div');
+        titleCol.style.cssText = 'flex:1;min-width:0;';
+        var t = document.createElement('div');
+        t.style.cssText = 'font-weight:600;color:#0f766e;font-size:13px;';
+        t.textContent = 'NS 图床上传';
+        var sub = document.createElement('div');
+        sub.style.cssText = 'font-size:12px;color:#64748b;margin-top:4px;line-height:1.35;';
+        sub.textContent = batchHintText || '';
+        titleCol.appendChild(t);
+        titleCol.appendChild(sub);
+        var cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = '取消全部';
+        cancelBtn.style.cssText =
+            'flex-shrink:0;padding:4px 10px;font-size:12px;border:1px solid #fecaca;background:#fff;color:#b45309;border-radius:4px;cursor:pointer;';
+        cancelBtn.onclick = function () {
+            niQuickToast('正在取消…', false);
+            uploadAbortState.abortCurrent();
+        };
+        hdr.appendChild(titleCol);
+        hdr.appendChild(cancelBtn);
+        var body = document.createElement('div');
+        body.style.cssText = 'max-height:220px;overflow-y:auto;';
+        panel.appendChild(hdr);
+        panel.appendChild(body);
+        document.body.appendChild(panel);
+        return {
+            body: body,
+            setBatchHint: function (s) {
+                sub.textContent = s || '';
+            },
+        };
+    }
+    function niAppendQuickProgressRow(host, fileName, uploadAbortState) {
+        var row = document.createElement('div');
+        row.style.cssText = 'margin-bottom:10px;';
+        var head = document.createElement('div');
+        head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:3px;';
+        var nm = document.createElement('div');
+        nm.textContent = fileName;
+        nm.style.cssText =
+            'font-size:11px;color:#334155;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1;';
+        var rowCancel = document.createElement('button');
+        rowCancel.type = 'button';
+        rowCancel.textContent = '取消';
+        rowCancel.style.cssText =
+            'flex-shrink:0;padding:2px 8px;font-size:10px;border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:4px;cursor:pointer;';
+        rowCancel.onclick = function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+            niQuickToast('正在跳过当前文件…', false);
+            uploadAbortState.abortCurrentFile();
+        };
+        head.appendChild(nm);
+        head.appendChild(rowCancel);
+        var barWrap = document.createElement('div');
+        barWrap.className = 'ns-ni-pbar';
+        barWrap.style.cssText =
+            'height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;position:relative;';
+        var barFill = document.createElement('div');
+        barFill.style.cssText =
+            'height:100%;width:0%;background:#0d9488;border-radius:4px;transition:width .12s linear;';
+        barWrap.appendChild(barFill);
+        var stt = document.createElement('div');
+        stt.style.cssText = 'font-size:10px;color:#64748b;margin-top:3px;';
+        stt.textContent = '等待中…';
+        row.appendChild(head);
+        row.appendChild(barWrap);
+        row.appendChild(stt);
+        host.prepend(row);
+        var realProgress = false;
+        var fakeTimer = null;
+        return {
+            startUpload: function () {
+                barWrap.classList.add('ns-ni-pbar-ind');
+                barFill.style.width = '0%';
+                barFill.style.background = '#0d9488';
+                stt.style.color = '#64748b';
+                stt.textContent = '上传中…';
+                var fake = 0.06;
+                fakeTimer = setInterval(function () {
+                    if (realProgress) return;
+                    fake = Math.min(0.9, fake + 0.035 + Math.random() * 0.025);
+                    barFill.style.width = fake * 100 + '%';
+                }, 320);
+            },
+            setLoadedTotal: function (loaded, total) {
+                if (!total || total <= 0) return;
+                realProgress = true;
+                if (fakeTimer) {
+                    clearInterval(fakeTimer);
+                    fakeTimer = null;
+                }
+                barWrap.classList.remove('ns-ni-pbar-ind');
+                var p = Math.min(100, (loaded / total) * 100);
+                barFill.style.width = p + '%';
+                stt.textContent = '上传中 ' + Math.round(p) + '%';
+            },
+            doneOk: function () {
+                rowCancel.style.display = 'none';
+                if (fakeTimer) {
+                    clearInterval(fakeTimer);
+                    fakeTimer = null;
+                }
+                barWrap.classList.remove('ns-ni-pbar-ind');
+                barFill.style.width = '100%';
+                barFill.style.background = '#059669';
+                stt.textContent = '完成';
+                stt.style.color = '#059669';
+            },
+            doneErr: function (msg) {
+                rowCancel.style.display = 'none';
+                if (fakeTimer) {
+                    clearInterval(fakeTimer);
+                    fakeTimer = null;
+                }
+                barWrap.classList.remove('ns-ni-pbar-ind');
+                barFill.style.width = '100%';
+                barFill.style.background = '#dc2626';
+                stt.textContent = msg || '失败';
+                stt.style.color = '#dc2626';
+            },
+        };
+    }
+    var nsNiGlobalFileInput = null;
+    function getOrCreateNiGlobalFileInput() {
+        if (nsNiGlobalFileInput && document.body.contains(nsNiGlobalFileInput)) return nsNiGlobalFileInput;
+        var inp = document.createElement('input');
+        inp.type = 'file';
+        inp.multiple = true;
+        inp.accept = 'image/jpeg,image/png,image/gif,image/webp';
+        inp.id = 'ns-ni-mde-global-file';
+        inp.setAttribute('aria-hidden', 'true');
+        inp.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;opacity:0;';
+        inp.addEventListener('change', function () {
+            var fs = inp.files;
+            if (!fs || !fs.length) return;
+            var arr = [];
+            for (var j = 0; j < fs.length; j++) arr.push(fs[j]);
+            inp.value = '';
+            niQuickUploadRunBatch(arr);
+        });
+        document.body.appendChild(inp);
+        nsNiGlobalFileInput = inp;
+        return inp;
+    }
+    function niQuickUploadRunBatch(files) {
+        if (!files || !files.length) return;
+        var k = getK();
+        if (!k || !String(k).trim()) {
+            niQuickToast('未配置 API Key，将打开设置面板', false);
+            openNi();
+            return;
+        }
+        k = String(k).trim();
+        var part = partitionUploadFiles(files);
+        var skipped = part.skippedSize + part.skippedFormat;
+        if (skipped > 0) {
+            var bits = [];
+            if (part.skippedSize) bits.push('超过 100MB×' + part.skippedSize);
+            if (part.skippedFormat) bits.push('格式不符×' + part.skippedFormat);
+            niQuickToast('已跳过 ' + skipped + ' 个（' + bits.join('，') + '）', !part.valid.length);
+        }
+        if (!part.valid.length) {
+            if (!skipped) niQuickToast('没有可上传的文件', true);
+            return;
+        }
+        files = part.valid;
+        var uploadAbortState = newNiUploadAbortState();
+        var batchTotal = files.length;
+        var skippedHint =
+            skipped > 0 ? '（另有 ' + skipped + ' 个已跳过）' : '';
+        var ui = niOpenQuickUploadPanel(
+            uploadAbortState,
+            '共 ' + batchTotal + ' 张' + skippedHint
+        );
+        var host = ui.body;
+        if (files.length === 1) {
+            var rowUi = niAppendQuickProgressRow(host, fileDisplayNameForTip(files[0]), uploadAbortState);
+            rowUi.startUpload();
+            niPostImageUpload(files[0], k, uploadAbortState, function (loaded, total) {
+                rowUi.setLoadedTotal(loaded, total);
+            })
+                .then(function (r) {
+                    rowUi.doneOk();
+                    niNotifyUploadSuccessToEditor(r.body, niQuickToast, function () {
+                        niQuickToast('上传成功（响应无可解析链接）', true);
+                    });
+                    setTimeout(niCloseQuickUploadPanel, 900);
+                })
+                .catch(function (e) {
+                    var skipFile = e && e.code === 'ABORT_FILE';
+                    if (skipFile || isNiAbortErr(e)) {
+                        rowUi.doneErr('已取消');
+                        niQuickToast(skipFile ? '已跳过该文件' : '已取消上传', false);
+                    } else {
+                        var em = (e && e.message) || String(e);
+                        rowUi.doneErr(em.length > 72 ? em.slice(0, 72) + '…' : em);
+                        niQuickToast(humanizeApiError(e), true);
+                    }
+                    setTimeout(niCloseQuickUploadPanel, 1100);
+                });
+            return;
+        }
+        var total = files.length;
+        var i = 0;
+        function step() {
+            if (uploadAbortState.stop) {
+                niQuickToast('已取消上传', false);
+                niCloseQuickUploadPanel();
+                return;
+            }
+            if (i >= total) {
+                ui.setBatchHint('共 ' + total + ' 张 · 已全部完成' + skippedHint);
+                niQuickToast('已完成 ' + total + ' 张上传' + (skipped ? '（另有 ' + skipped + ' 个已跳过）' : ''), false);
+                setTimeout(niCloseQuickUploadPanel, 900);
+                return;
+            }
+            ui.setBatchHint(
+                '共 ' + total + ' 张 · 第 ' + (i + 1) + ' / ' + total + ' 张' + skippedHint
+            );
+            niQuickToast('上传第 ' + (i + 1) + ' / ' + total + ' 张…', false);
+            var rowUi = niAppendQuickProgressRow(host, fileDisplayNameForTip(files[i]), uploadAbortState);
+            rowUi.startUpload();
+            niPostImageUpload(files[i], k, uploadAbortState, function (loaded, total2) {
+                rowUi.setLoadedTotal(loaded, total2);
+            })
+                .then(function (r) {
+                    if (uploadAbortState.stop) {
+                        niCloseQuickUploadPanel();
+                        return;
+                    }
+                    rowUi.doneOk();
+                    var urls = collectUrls(r && r.body ? r.body : null, []);
+                    var seen = {};
+                    var batchUniq = [];
+                    urls.forEach(function (u) {
+                        if (!seen[u]) {
+                            seen[u] = true;
+                            batchUniq.push(u);
+                        }
+                    });
+                    if (batchUniq.length) {
+                        var mdParts = batchUniq.map(function (u) {
+                            return formatSnippet('md', u);
+                        });
+                        var mdAll = mdParts.join('\n') + '\n';
+                        if (!insertIntoForumEditor(mdAll)) {
+                            copyText(mdAll, function () {}, function () {});
+                        }
+                    }
+                    i++;
+                    step();
+                })
+                .catch(function (e) {
+                    if (e && e.code === 'ABORT_FILE') {
+                        rowUi.doneErr('已取消');
+                        i++;
+                        step();
+                        return;
+                    }
+                    if (isNiAbortErr(e) || uploadAbortState.stop) {
+                        niQuickToast('已取消上传', false);
+                        niCloseQuickUploadPanel();
+                        return;
+                    }
+                    var em = (e && e.message) || String(e);
+                    rowUi.doneErr(em.length > 72 ? em.slice(0, 72) + '…' : em);
+                    i++;
+                    step();
+                });
+        }
+        step();
+    }
+    function niToolbarTriggerPickFiles() {
+        try {
+            var kk = getK();
+            if (!kk || !String(kk).trim()) {
+                niQuickToast('未配置 API Key，将打开设置面板', false);
+                openNi();
+                return;
+            }
+            getOrCreateNiGlobalFileInput().click();
+        } catch (e) {
+            niQuickToast('无法打开文件选择', true);
+        }
+    }
+    function openNi() {
+        var id = 'ns-nodeimage-dialog';
+        var pasteHandler = null;
+        var uploadAbortState = newNiUploadAbortState();
 
         function destroyDialog() {
             uploadAbortState.abortCurrent();
@@ -1092,53 +1473,27 @@
             } else if (!batchMode) {
                 st('上传中…');
             }
-            var fd = new FormData();
-            fd.append('image', file, file.name || 'image');
-            return gm({
-                method: 'POST',
-                url: API_BASE + '/api/upload',
-                headers: { 'X-API-Key': k },
-                data: fd,
-                timeout: batchMode ? 120000 : 120000,
-                uploadAbortState: uploadAbortState,
-                onUploadProgress:
-                    progressUi && typeof progressUi.setLoadedTotal === 'function'
-                        ? function (loaded, total) {
-                              progressUi.setLoadedTotal(loaded, total);
-                          }
-                        : undefined,
-            })
+            var progressCb =
+                progressUi && typeof progressUi.setLoadedTotal === 'function'
+                    ? function (loaded, total) {
+                          progressUi.setLoadedTotal(loaded, total);
+                      }
+                    : undefined;
+            return niPostImageUpload(file, k, uploadAbortState, progressCb)
                 .then(function (r) {
                     if (progressUi && typeof progressUi.doneOk === 'function') progressUi.doneOk();
                     if (!batchMode) {
-                        var urls = collectUrls(r.body, []);
-                        var seen = {};
-                        var uniq = [];
-                        urls.forEach(function (u) {
-                            if (!seen[u]) {
-                                seen[u] = true;
-                                uniq.push(u);
-                            }
-                        });
-                        var mainUrl = uniq[0] || '';
-                        if (mainUrl) {
-                            linksBox.innerHTML = '';
-                            var mdSnippet = formatSnippet('md', mainUrl);
-                            if (insertIntoForumEditor(mdSnippet + '\n')) st('上传成功，已插入 MD 格式');
-                            else {
-                                st('上传成功');
-                                copyText(mdSnippet, function () { st('已复制 MD 格式'); }, function () {});
-                            }
-                        } else {
-                            showLinks(r.body);
+                        linksBox.innerHTML = '';
+                        niNotifyUploadSuccessToEditor(r.body, st, function (body) {
+                            showLinks(body);
                             st('上传成功');
-                        }
+                        });
                         loadL();
                     }
                     return r;
                 })
                 .catch(function (e) {
-                    var ab = isAbortErr(e);
+                    var ab = isNiAbortErr(e);
                     var skipFile = e && e.code === 'ABORT_FILE';
                     var em = (e && e.message) || String(e);
                     if (progressUi && typeof progressUi.doneErr === 'function') {
@@ -1187,7 +1542,7 @@
                     },
                     function (e) {
                         endUploadSession();
-                        if (isAbortErr(e)) {
+                        if (isNiAbortErr(e)) {
                             st('已取消上传');
                         }
                     }
@@ -1251,7 +1606,7 @@
                             step();
                             return;
                         }
-                        if (isAbortErr(e) || uploadAbortState.stop) {
+                        if (isNiAbortErr(e) || uploadAbortState.stop) {
                             endUploadSession();
                             st('已取消上传');
                             loadL();
@@ -1940,22 +2295,26 @@
         span.className = 'toolbar-item ' + NS_NI_MDE_BTN_CLASS;
         span.setAttribute('role', 'button');
         span.tabIndex = 0;
-        span.title = 'NS图床';
+        span.title = '选择图片上传到 NS 图床（Shift+点击打开管理面板）';
         span.textContent = 'NS图床';
         span.style.cssText =
             'font-size:12px;font-weight:600;color:#0d9488;padding:0 8px;white-space:nowrap;line-height:1;cursor:pointer;user-select:none;';
-        function openNiEv(e) {
+        function toolbarNsNiClick(e) {
             if (e) {
                 e.preventDefault();
                 e.stopPropagation();
             }
             try {
-                openNi();
+                if (e && e.shiftKey) {
+                    openNi();
+                    return;
+                }
+                niToolbarTriggerPickFiles();
             } catch (e2) {}
         }
-        span.onclick = openNiEv;
+        span.onclick = toolbarNsNiClick;
         span.onkeydown = function (e) {
-            if (e.key === 'Enter' || e.key === ' ') openNiEv(e);
+            if (e.key === 'Enter' || e.key === ' ') toolbarNsNiClick(e);
         };
         toolbar.appendChild(sep);
         toolbar.appendChild(span);
@@ -1989,6 +2348,7 @@
 
     window.NodeSeekNodeImage = {
         open: openNi,
+        pickAndUpload: niToolbarTriggerPickFiles,
         getApiKey: getK,
         setApiKey: setK,
         API_BASE: API_BASE,
