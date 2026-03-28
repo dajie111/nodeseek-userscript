@@ -537,8 +537,7 @@
         var mainUrl = uniq[0] || '';
         if (mainUrl) {
             var mdSnippet = formatSnippet('md', mainUrl);
-            if (insertIntoForumEditor(mdSnippet + '\n')) onStatus('上传成功，已插入 MD 格式');
-            else {
+            if (!insertIntoForumEditor(mdSnippet + '\n')) {
                 copyText(
                     mdSnippet,
                     function () {
@@ -577,7 +576,7 @@
             el = document.createElement('div');
             el.id = id;
             el.style.cssText =
-                'position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:10003;max-width:min(520px,92vw);padding:8px 14px;border-radius:8px;font:13px system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.12);pointer-events:none;transition:opacity .2s;text-align:center;';
+                'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10003;max-width:min(520px,92vw);padding:8px 14px;border-radius:8px;font:13px system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.12);pointer-events:none;transition:opacity .2s;text-align:center;';
             document.body.appendChild(el);
         }
         el.textContent = msg || '';
@@ -649,7 +648,6 @@
         rowCancel.onclick = function (e) {
             e.stopPropagation();
             e.preventDefault();
-            niQuickToast('正在跳过当前文件…', false);
             uploadAbortState.abortCurrentFile();
         };
         head.appendChild(nm);
@@ -784,9 +782,7 @@
             })
                 .then(function (r) {
                     rowUi.doneOk();
-                    niNotifyUploadSuccessToEditor(r.body, niQuickToast, function () {
-                        niQuickToast('上传成功（响应无可解析链接）', true);
-                    });
+                    niNotifyUploadSuccessToEditor(r.body, niQuickToast, function () {});
                     setTimeout(niCloseQuickUploadPanel, 900);
                 })
                 .catch(function (e) {
@@ -813,14 +809,12 @@
             }
             if (i >= total) {
                 ui.setBatchHint('共 ' + total + ' 张 · 已全部完成' + skippedHint);
-                niQuickToast('已完成 ' + total + ' 张上传' + (skipped ? '（另有 ' + skipped + ' 个已跳过）' : ''), false);
                 setTimeout(niCloseQuickUploadPanel, 900);
                 return;
             }
             ui.setBatchHint(
                 '共 ' + total + ' 张 · 第 ' + (i + 1) + ' / ' + total + ' 张' + skippedHint
             );
-            niQuickToast('上传第 ' + (i + 1) + ' / ' + total + ' 张…', false);
             var rowUi = niAppendQuickProgressRow(host, fileDisplayNameForTip(files[i]), uploadAbortState);
             rowUi.startUpload();
             niPostImageUpload(files[i], k, uploadAbortState, function (loaded, total2) {
@@ -1062,7 +1056,6 @@
             rowCancel.onclick = function (e) {
                 e.stopPropagation();
                 e.preventDefault();
-                st('正在跳过当前文件…');
                 uploadAbortState.abortCurrentFile();
             };
             head.appendChild(nm);
