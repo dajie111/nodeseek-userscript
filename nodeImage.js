@@ -614,7 +614,6 @@
         cancelBtn.style.cssText =
             'flex-shrink:0;padding:4px 10px;font-size:12px;border:1px solid #fecaca;background:#fff;color:#b45309;border-radius:4px;cursor:pointer;';
         cancelBtn.onclick = function () {
-            niQuickToast('正在取消…', false);
             uploadAbortState.abortCurrent();
         };
         hdr.appendChild(titleCol);
@@ -789,7 +788,6 @@
                     var skipFile = e && e.code === 'ABORT_FILE';
                     if (skipFile || isNiAbortErr(e)) {
                         rowUi.doneErr('已取消');
-                        niQuickToast(skipFile ? '已跳过该文件' : '已取消上传', false);
                     } else {
                         var em = (e && e.message) || String(e);
                         rowUi.doneErr(em.length > 72 ? em.slice(0, 72) + '…' : em);
@@ -803,7 +801,6 @@
         var i = 0;
         function step() {
             if (uploadAbortState.stop) {
-                niQuickToast('已取消上传', false);
                 niCloseQuickUploadPanel();
                 return;
             }
@@ -855,7 +852,6 @@
                         return;
                     }
                     if (isNiAbortErr(e) || uploadAbortState.stop) {
-                        niQuickToast('已取消上传', false);
                         niCloseQuickUploadPanel();
                         return;
                     }
@@ -904,9 +900,10 @@
         el.id = id;
         el.tabIndex = -1;
         el.style.cssText =
-            'position:fixed;top:56px;right:12px;z-index:10001;width:min(520px,96vw);max-height:78vh;overflow:auto;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);padding:12px;font:13px system-ui,sans-serif;outline:none;';
+            'position:fixed;top:56px;right:12px;z-index:10001;width:min(520px,96vw);max-height:78vh;display:flex;flex-direction:column;overflow:hidden;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);padding:0;font:13px system-ui,sans-serif;outline:none;';
         var hdr = document.createElement('div');
-        hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;';
+        hdr.style.cssText =
+            'display:flex;justify-content:space-between;align-items:center;flex-shrink:0;padding:12px;padding-bottom:8px;border-bottom:1px solid #e2e8f0;background:#fff;';
         var t1 = document.createElement('b');
         t1.style.color = '#0d9488';
         t1.textContent = 'NS 图床';
@@ -920,11 +917,14 @@
         hdr.appendChild(t1);
         hdr.appendChild(xb);
         el.appendChild(hdr);
+        var niScroll = document.createElement('div');
+        niScroll.style.cssText = 'flex:1;min-height:0;overflow-y:auto;padding:12px;padding-top:10px;';
+        el.appendChild(niScroll);
         var tip = document.createElement('div');
         tip.style.cssText = 'font-size:12px;color:#666;margin-bottom:8px;line-height:1.4;';
         tip.innerHTML =
             '请到 <a href="https://www.nodeimage.com/" target="_blank" rel="noopener noreferrer">nodeimage.com</a> 完成 <strong>NodeSeek 授权</strong>。<span style="color:#b45309;">须在与油猴相同的浏览器里授权</span>。密钥需<strong>手动</strong>获取：点「手动获取」从接口拉取（须已登录 nodeimage），或到网站顶部「API」页复制后粘贴，再点「保存密钥」。';
-        el.appendChild(tip);
+        niScroll.appendChild(tip);
         var keyRow = document.createElement('div');
         keyRow.style.cssText = 'display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center;';
         var keyWrap = document.createElement('div');
@@ -973,7 +973,7 @@
         keyRow.appendChild(saveBtn);
         keyRow.appendChild(clearBtn);
         keyRow.appendChild(autoBtn);
-        el.appendChild(keyRow);
+        niScroll.appendChild(keyRow);
         var stRow = document.createElement('div');
         stRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;';
         var stEl = document.createElement('div');
@@ -986,23 +986,22 @@
         cancelUploadBtn.onclick = function (e) {
             e.stopPropagation();
             e.preventDefault();
-            st('正在取消…');
             uploadAbortState.abortCurrent();
         };
         stRow.appendChild(stEl);
         stRow.appendChild(cancelUploadBtn);
-        el.appendChild(stRow);
+        niScroll.appendChild(stRow);
         var niProgStyle = document.createElement('style');
         niProgStyle.textContent =
             '@keyframes nsNiBarMove{0%{transform:translateX(-120%);}100%{transform:translateX(380%);}}' +
             '.ns-ni-pbar-ind{position:relative;}' +
             '.ns-ni-pbar-ind::after{content:"";position:absolute;left:0;top:0;height:100%;width:55%;border-radius:4px;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(13,148,136,.55),transparent);animation:nsNiBarMove 1.05s linear infinite;}';
-        el.appendChild(niProgStyle);
+        niScroll.appendChild(niProgStyle);
         var uploadQueueBox = document.createElement('div');
         uploadQueueBox.id = 'ns-ni-upload-q';
         uploadQueueBox.style.cssText =
             'display:none;margin-bottom:8px;padding:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;max-height:240px;overflow-y:auto;';
-        el.appendChild(uploadQueueBox);
+        niScroll.appendChild(uploadQueueBox);
         var uploadQueueInv = null;
         var uploadQueueProg = null;
         function st(m, isErr) {
@@ -1150,15 +1149,15 @@
         fileIn.accept = 'image/jpeg,image/png,image/gif,image/webp';
         fileIn.style.display = 'none';
         upLabel.appendChild(fileIn);
-        el.appendChild(upLabel);
+        niScroll.appendChild(upLabel);
         var linksBox = document.createElement('div');
         linksBox.style.marginBottom = '10px';
-        el.appendChild(linksBox);
+        niScroll.appendChild(linksBox);
         var refBtn = document.createElement('button');
         refBtn.type = 'button';
         refBtn.textContent = '刷新图片列表';
         refBtn.style.cssText = 'width:100%;padding:8px;background:#e2e8f0;border:none;border-radius:4px;cursor:pointer;';
-        el.appendChild(refBtn);
+        niScroll.appendChild(refBtn);
         var GALLERY_PAGE_SIZE = 40;
         var galleryAllItems = [];
         var galleryPageIndex = 1;
@@ -1192,11 +1191,11 @@
         listPagerBar.appendChild(listPagerNext);
         listPagerBar.appendChild(listPagerSelectAll);
         listPagerBar.appendChild(listPagerDelSel);
-        el.appendChild(listPagerBar);
+        niScroll.appendChild(listPagerBar);
         var listWrap = document.createElement('div');
         listWrap.style.cssText =
             'margin-top:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-content:start;';
-        el.appendChild(listWrap);
+        niScroll.appendChild(listWrap);
         function syncGallerySelectAllBtn() {
             var boxes = listWrap.querySelectorAll('.ni-gal-sel:not(:disabled)');
             if (!boxes.length) {
