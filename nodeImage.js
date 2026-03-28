@@ -8,6 +8,13 @@
     var API_V1 = API_BASE + '/api/v1';
     var REFERRER = 'https://www.nodeseek.com/';
 
+    var _niIsMobile = null;
+    function niIsMobile() {
+        if (_niIsMobile !== null) return _niIsMobile;
+        _niIsMobile = /Mobi|Android|iPhone|iPad|iPod|Touch/i.test(navigator.userAgent) || window.innerWidth < 640;
+        return _niIsMobile;
+    }
+
     function getK() {
         try {
             if (typeof GM_getValue === 'function') {
@@ -595,7 +602,9 @@
         var panel = document.createElement('div');
         panel.id = NS_NI_QUICK_PANEL_ID;
         panel.style.cssText =
-            'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:10002;min-width:min(420px,94vw);max-width:96vw;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.15);padding:10px 12px;font:13px system-ui,sans-serif;';
+            'position:fixed;' + (niIsMobile() ? 'left:8px;right:8px;bottom:16px;' : 'left:50%;bottom:24px;transform:translateX(-50%);') +
+            'z-index:10002;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.15);padding:10px 12px;font:13px system-ui,sans-serif;' +
+            (niIsMobile() ? 'width:auto;' : 'min-width:min(420px,94vw);max-width:96vw;');
         var hdr = document.createElement('div');
         hdr.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;';
         var titleCol = document.createElement('div');
@@ -900,10 +909,14 @@
         el.id = id;
         el.tabIndex = -1;
         el.style.cssText =
-            'position:fixed;top:56px;right:12px;z-index:10001;width:min(520px,96vw);max-height:78vh;display:flex;flex-direction:column;overflow:hidden;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);padding:0;font:13px system-ui,sans-serif;outline:none;';
+            'position:fixed;z-index:10001;max-height:78vh;display:flex;flex-direction:column;overflow:hidden;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);padding:0;font:13px system-ui,sans-serif;outline:none;' +
+            (niIsMobile()
+                ? 'left:4px;right:4px;top:8px;bottom:8px;width:auto;max-height:none;'
+                : 'top:56px;right:12px;width:min(520px,96vw);max-height:78vh;');
         var hdr = document.createElement('div');
         hdr.style.cssText =
-            'display:flex;justify-content:space-between;align-items:center;flex-shrink:0;padding:12px;padding-bottom:8px;border-bottom:1px solid #e2e8f0;background:#fff;';
+            'display:flex;justify-content:space-between;align-items:center;flex-shrink:0;padding:12px;border-bottom:1px solid #e2e8f0;background:#fff;' +
+            (niIsMobile() ? 'padding-bottom:12px;' : 'padding-bottom:8px;');
         var t1 = document.createElement('b');
         t1.style.color = '#0d9488';
         t1.textContent = 'NS 图床';
@@ -918,7 +931,8 @@
         hdr.appendChild(xb);
         el.appendChild(hdr);
         var niScroll = document.createElement('div');
-        niScroll.style.cssText = 'flex:1;min-height:0;overflow-y:auto;padding:12px;padding-top:10px;';
+        niScroll.style.cssText =
+            'flex:1;min-height:0;overflow-y:auto;padding:' + (niIsMobile() ? '10px;' : '12px;padding-top:10px;');
         el.appendChild(niScroll);
         var tip = document.createElement('div');
         tip.style.cssText = 'font-size:12px;color:#666;margin-bottom:8px;line-height:1.4;';
@@ -934,14 +948,17 @@
         keyIn.type = 'password';
         keyIn.placeholder = 'X-API-Key';
         keyIn.style.cssText =
-            'flex:1;min-width:0;width:0;padding:6px 8px;border:none;border-radius:0;box-sizing:border-box;font:inherit;';
+            'flex:1;min-width:0;width:0;padding:' + (niIsMobile() ? '10px 8px' : '6px 8px') +
+            ';border:none;border-radius:0;box-sizing:border-box;font:inherit;' + (niIsMobile() ? 'font-size:14px;' : '');
         keyIn.value = getK();
         var keyToggleBtn = document.createElement('button');
         keyToggleBtn.type = 'button';
         keyToggleBtn.textContent = '显示';
         keyToggleBtn.title = '显示或隐藏密钥明文';
         keyToggleBtn.style.cssText =
-            'flex-shrink:0;padding:0 10px;border:none;border-left:1px solid #ddd;background:#f1f5f9;cursor:pointer;font-size:12px;color:#475569;white-space:nowrap;';
+            'flex-shrink:0;padding:' + (niIsMobile() ? '0 14px' : '0 10px') +
+            ';border:none;border-left:1px solid #ddd;background:#f1f5f9;cursor:pointer;font-size:12px;color:#475569;white-space:nowrap;' +
+            (niIsMobile() ? 'min-height:42px;' : '');
         var keyPlainVisible = false;
         keyToggleBtn.onclick = function (ev) {
             ev.preventDefault();
@@ -957,18 +974,21 @@
         saveBtn.textContent = '保存密钥';
         saveBtn.className = 'blacklist-btn';
         saveBtn.style.cssText =
-            'padding:6px 10px;background:#0d9488;color:#fff;border:none;border-radius:4px;cursor:pointer;';
+            'padding:' + (niIsMobile() ? '10px 12px' : '6px 10px') + ';background:#0d9488;color:#fff;border:none;border-radius:4px;cursor:pointer;' +
+            (niIsMobile() ? 'font-size:14px;min-height:42px;' : '');
         var clearBtn = document.createElement('button');
         clearBtn.type = 'button';
         clearBtn.textContent = '清除';
         clearBtn.style.cssText =
-            'padding:6px 10px;background:#94a3b8;color:#fff;border:none;border-radius:4px;cursor:pointer;';
+            'padding:' + (niIsMobile() ? '10px 12px' : '6px 10px') + ';background:#94a3b8;color:#fff;border:none;border-radius:4px;cursor:pointer;' +
+            (niIsMobile() ? 'font-size:14px;min-height:42px;' : '');
         var autoBtn = document.createElement('button');
         autoBtn.type = 'button';
         autoBtn.textContent = '手动获取';
         autoBtn.title = '在已登录 nodeimage.com 的前提下，从接口拉取密钥并保存';
         autoBtn.style.cssText =
-            'padding:6px 8px;background:#f59e0b;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;';
+            'padding:' + (niIsMobile() ? '10px 12px' : '6px 8px') + ';background:#f59e0b;color:#fff;border:none;border-radius:4px;cursor:pointer;' +
+            (niIsMobile() ? 'font-size:14px;min-height:42px;' : 'font-size:12px;');
         keyRow.appendChild(keyWrap);
         keyRow.appendChild(saveBtn);
         keyRow.appendChild(clearBtn);
@@ -1130,7 +1150,8 @@
         }
         var upLabel = document.createElement('div');
         upLabel.style.cssText =
-            'display:block;border:2px dashed #cbd5e1;border-radius:6px;padding:14px 12px;text-align:center;cursor:pointer;margin-bottom:8px;background:#f8fafc;transition:border-color .15s;';
+            'display:block;border:2px dashed #cbd5e1;border-radius:6px;padding:' + (niIsMobile() ? '16px 12px;' : '14px 12px;') +
+            'text-align:center;cursor:pointer;margin-bottom:8px;background:#f8fafc;transition:border-color .15s;';
         var upTitle = document.createElement('div');
         upTitle.style.cssText = 'font-weight:600;color:#334155;margin-bottom:6px;';
         upTitle.textContent = '点击或拖拽上传图片';
@@ -1138,7 +1159,7 @@
         upSub.style.cssText = 'font-size:12px;color:#64748b;line-height:1.45;margin-bottom:6px;';
         upSub.textContent = '支持 JPG、JPEG、PNG、GIF、WebP 等格式，最大 100MB';
         var upPaste = document.createElement('div');
-        upPaste.style.cssText = 'font-size:12px;color:#475569;line-height:1.45;';
+        upPaste.style.cssText = 'font-size:12px;color:#475569;line-height:1.45;' + (niIsMobile() ? 'display:none;' : '');
         upPaste.textContent = '💡 [Ctrl+V] 可粘贴剪贴板中的图片（支持多张同时粘贴）';
         upLabel.appendChild(upTitle);
         upLabel.appendChild(upSub);
@@ -1163,29 +1184,30 @@
         var galleryPageIndex = 1;
         var listPagerBar = document.createElement('div');
         listPagerBar.style.cssText =
-            'display:none;align-items:center;justify-content:center;gap:10px;margin:8px 0;flex-wrap:wrap;font-size:12px;color:#64748b;';
+            'display:none;align-items:center;justify-content:center;gap:' + (niIsMobile() ? '6px;' : '10px;') +
+            'margin:8px 0;flex-wrap:wrap;font-size:12px;color:#64748b;';
         var listPagerPrev = document.createElement('button');
         listPagerPrev.type = 'button';
         listPagerPrev.textContent = '上一页';
         listPagerPrev.style.cssText =
-            'padding:4px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;font-size:12px;';
+            'padding:' + (niIsMobile() ? '8px 14px' : '4px 12px') + ';border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;font-size:12px;' + (niIsMobile() ? 'min-height:40px;' : '');
         var listPagerInfo = document.createElement('span');
         listPagerInfo.style.cssText = 'min-width:120px;text-align:center;';
         var listPagerNext = document.createElement('button');
         listPagerNext.type = 'button';
         listPagerNext.textContent = '下一页';
         listPagerNext.style.cssText =
-            'padding:4px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;font-size:12px;';
+            'padding:' + (niIsMobile() ? '8px 14px' : '4px 12px') + ';border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;font-size:12px;' + (niIsMobile() ? 'min-height:40px;' : '');
         var listPagerSelectAll = document.createElement('button');
         listPagerSelectAll.type = 'button';
         listPagerSelectAll.textContent = '全选本页';
         listPagerSelectAll.style.cssText =
-            'padding:4px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;font-size:12px;';
+            'padding:' + (niIsMobile() ? '8px 14px' : '4px 12px') + ';border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;font-size:12px;' + (niIsMobile() ? 'min-height:40px;' : '');
         var listPagerDelSel = document.createElement('button');
         listPagerDelSel.type = 'button';
         listPagerDelSel.textContent = '删除选中';
         listPagerDelSel.style.cssText =
-            'padding:4px 12px;border:1px solid #fecaca;background:#fef2f2;border-radius:4px;cursor:pointer;font-size:12px;color:#b91c1c;';
+            'padding:' + (niIsMobile() ? '8px 14px' : '4px 12px') + ';border:1px solid #fecaca;background:#fef2f2;border-radius:4px;cursor:pointer;font-size:12px;color:#b91c1c;' + (niIsMobile() ? 'min-height:40px;' : '');
         listPagerBar.appendChild(listPagerPrev);
         listPagerBar.appendChild(listPagerInfo);
         listPagerBar.appendChild(listPagerNext);
@@ -1194,7 +1216,8 @@
         niScroll.appendChild(listPagerBar);
         var listWrap = document.createElement('div');
         listWrap.style.cssText =
-            'margin-top:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-content:start;';
+            'margin-top:10px;display:grid;grid-template-columns:' + (niIsMobile() ? 'repeat(1,minmax(0,1fr))' : 'repeat(2,minmax(0,1fr))') +
+            ';gap:' + (niIsMobile() ? '8px;' : '10px;') + 'align-content:start;';
         niScroll.appendChild(listWrap);
         function syncGallerySelectAllBtn() {
             var boxes = listWrap.querySelectorAll('.ni-gal-sel:not(:disabled)');
@@ -1243,10 +1266,13 @@
             card.className = 'ni-gallery-card';
             if (imageId) card.dataset.niImageId = String(imageId);
             card.style.cssText =
-                'border:1px solid #e2e8f0;border-radius:8px;padding:6px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06);min-width:0;display:flex;flex-direction:column;';
+                'border:1px solid #e2e8f0;border-radius:8px;padding:' + (niIsMobile() ? '8px;' : '6px;') +
+                'background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06);min-width:0;display:flex;flex-direction:column;';
             var thumbWrap = document.createElement('div');
             thumbWrap.style.cssText =
-                'position:relative;width:100%;aspect-ratio:1;min-height:96px;overflow:hidden;border-radius:6px;background:#f1f5f9;margin-bottom:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;';
+                'position:relative;width:100%;aspect-ratio:1;' + (niIsMobile() ? 'min-height:120px;' : 'min-height:96px;') +
+                'overflow:hidden;border-radius:6px;background:#f1f5f9;margin-bottom:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;' +
+                (niIsMobile() ? 'touch-action:manipulation;-webkit-tap-highlight-color:transparent;' : '');
             var im = document.createElement('img');
             im.src = url;
             im.alt = '';
@@ -1259,8 +1285,10 @@
             selCb.type = 'checkbox';
             selCb.className = 'ni-gal-sel';
             selCb.title = imageId ? '勾选后可批量删除' : '无图片 ID，无法删除';
+            var selCbSize = niIsMobile() ? '22px' : '14px';
             selCb.style.cssText =
-                'position:absolute;top:3px;left:3px;width:14px;height:14px;cursor:pointer;z-index:2;accent-color:#0d9488;';
+                'position:absolute;top:3px;left:3px;width:' + selCbSize + ';height:' + selCbSize +
+                ';cursor:pointer;z-index:2;accent-color:#0d9488;' + (niIsMobile() ? 'min-width:' + selCbSize + ';min-height:' + selCbSize + ';' : '');
             selCb.disabled = !imageId;
             selCb.onclick = function (ev) {
                 ev.stopPropagation();
@@ -1270,8 +1298,12 @@
             thumbDelBtn.type = 'button';
             thumbDelBtn.innerHTML = '&#128465;';
             thumbDelBtn.title = '删除';
+            var delBtnSize = niIsMobile() ? '32px' : '22px';
             thumbDelBtn.style.cssText =
-                'position:absolute;top:3px;right:3px;width:22px;height:22px;border:none;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;z-index:2;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.18);';
+                'position:absolute;top:3px;right:3px;width:' + delBtnSize + ';height:' + delBtnSize +
+                ';border:none;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;font-size:' + (niIsMobile() ? '11px' : '9px') +
+                ';cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;z-index:2;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.18);' +
+                (niIsMobile() ? 'min-width:' + delBtnSize + ';min-height:' + delBtnSize + ';' : '');
             thumbDelBtn.onclick = function (e) {
                 e.stopPropagation();
                 e.preventDefault();
@@ -1302,10 +1334,12 @@
                 if (e.target === selCb) return;
                 var ov = document.createElement('div');
                 ov.style.cssText =
-                    'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
+                    'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;cursor:zoom-out;' +
+                    (niIsMobile() ? 'touch-action:manipulation;' : '');
                 var fi = document.createElement('img');
                 fi.src = url;
-                fi.style.cssText = 'max-width:92vw;max-height:92vh;object-fit:contain;border-radius:4px;';
+                fi.style.cssText =
+                    'max-width:' + (niIsMobile() ? '98vw' : '92vw') + ';max-height:' + (niIsMobile() ? '95vh' : '92vh') + ';object-fit:contain;border-radius:4px;';
                 fi.referrerPolicy = 'no-referrer';
                 ov.appendChild(fi);
                 ov.onclick = function () {
@@ -1334,7 +1368,7 @@
             urlInput.readOnly = true;
             urlInput.value = url;
             urlInput.style.cssText =
-                'width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid #e2e8f0;border-radius:4px;font-size:11px;margin-bottom:5px;background:#f8fafc;height:26px;';
+                'width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid #e2e8f0;border-radius:4px;font-size:11px;margin-bottom:5px;background:#f8fafc;height:' + (niIsMobile() ? '34px;' : '26px;');
             card.appendChild(urlInput);
             var fmtRow = document.createElement('div');
             fmtRow.style.cssText = 'display:flex;gap:4px;flex-wrap:nowrap;margin-top:auto;';
@@ -1363,7 +1397,9 @@
                 b.textContent = m.label;
                 b.title = m.title + ' · 双击插入';
                 b.style.cssText =
-                    'flex:1;min-width:0;padding:5px 3px;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:10px;background:#e5e7eb;color:#6b7280;transition:all .15s;';
+                    'flex:1;min-width:0;padding:' + (niIsMobile() ? '8px 4px' : '5px 3px') +
+                    ';border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:' + (niIsMobile() ? '13px' : '10px') +
+                    ';background:#e5e7eb;color:#6b7280;transition:all .15s;' + (niIsMobile() ? 'min-height:38px;' : '');
                 b.onclick = function (e) {
                     e.stopPropagation();
                     modeRef.v = m.id;
@@ -2261,7 +2297,7 @@
         refBtn.onclick = function () {
             loadL();
         };
-        if (typeof window.makeDraggable === 'function') {
+        if (!niIsMobile() && typeof window.makeDraggable === 'function') {
             try {
                 window.makeDraggable(el, { width: 40, height: 36 });
             } catch (e) {}
