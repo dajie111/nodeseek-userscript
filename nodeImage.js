@@ -773,6 +773,111 @@
             return;
         }
         files = part.valid;
+
+        var DIALOG_ID = 'ns-nodeimage-dialog';
+        var dialogOpen = !!document.getElementById(DIALOG_ID);
+        var editorFocused = !!(findForumEditor() && findForumEditor().hasFocus && findForumEditor().hasFocus());
+
+        if (!dialogOpen && editorFocused) {
+            var uploadAbortState = newNiUploadAbortState();
+            var batchTotal = files.length;
+            var skippedHint = skipped > 0 ? '（另有 ' + skipped + ' 个已跳过）' : '';
+            var ui = niOpenQuickUploadPanel(uploadAbortState, '共 ' + batchTotal + ' 张' + skippedHint);
+            var host = ui.body;
+            if (files.length === 1) {
+                var rowUi = niAppendQuickProgressRow(host, fileDisplayNameForTip(files[0]), uploadAbortState);
+                rowUi.startUpload();
+                niPostImageUpload(files[0], k, uploadAbortState, function (loaded, total) {
+                    rowUi.setLoadedTotal(loaded, total);
+                })
+                    .then(function (r) {
+                        rowUi.doneOk();
+                        niNotifyUploadSuccessToEditor(r.body, niQuickToast, function () {});
+                        setTimeout(niCloseQuickUploadPanel, 900);
+                    })
+                    .catch(function (e) {
+                        var skipFile = e && e.code === 'ABORT_FILE';
+                        if (skipFile || isNiAbortErr(e)) {
+                            rowUi.doneErr('已取消');
+                        } else {
+                            var em = (e && e.message) || String(e);
+                            rowUi.doneErr(em.length > 72 ? em.slice(0, 72) + '…' : em);
+                            niQuickToast(humanizeApiError(e), true);
+                        }
+                        setTimeout(niCloseQuickUploadPanel, 1100);
+                    });
+                return;
+            }
+            var total = files.length;
+            var i = 0;
+            function step() {
+                if (uploadAbortState.stop) {
+                    ui.setBatchHint('已取消上传');
+                    setTimeout(niCloseQuickUploadPanel, 900);
+                    return;
+                }
+                if (i >= total) {
+                    ui.setBatchHint('共 ' + total + ' 张 · 已全部完成' + skippedHint);
+                    setTimeout(niCloseQuickUploadPanel, 900);
+                    return;
+                }
+                ui.setBatchHint(
+                    '共 ' + total + ' 张 · 第 ' + (i + 1) + ' / ' + total + ' 张' + skippedHint
+                );
+                var rowUi = niAppendQuickProgressRow(host, fileDisplayNameForTip(files[i]), uploadAbortState);
+                rowUi.startUpload();
+                niPostImageUpload(files[i], k, uploadAbortState, function (loaded, total2) {
+                    rowUi.setLoadedTotal(loaded, total2);
+                })
+                    .then(function (r) {
+                        if (uploadAbortState.stop) {
+                            ui.setBatchHint('已取消上传');
+                            setTimeout(niCloseQuickUploadPanel, 900);
+                            return;
+                        }
+                        rowUi.doneOk();
+                        var urls = collectUrls(r && r.body ? r.body : null, []);
+                        var seen = {};
+                        var batchUniq = [];
+                        urls.forEach(function (u) {
+                            if (!seen[u]) {
+                                seen[u] = true;
+                                batchUniq.push(u);
+                            }
+                        });
+                        if (batchUniq.length) {
+                            var mdParts = batchUniq.map(function (u) {
+                                return formatSnippet('md', u);
+                            });
+                            var mdAll = mdParts.join('\n') + '\n';
+                            if (!insertIntoForumEditor(mdAll)) {
+                                copyText(mdAll, function () {}, function () {});
+                            }
+                        }
+                        i++;
+                        step();
+                    })
+                    .catch(function (e) {
+                        if (e && e.code === 'ABORT_FILE') {
+                            rowUi.doneErr('已取消');
+                            i++;
+                            step();
+                            return;
+                        }
+                        if (isNiAbortErr(e) || uploadAbortState.stop) {
+                            niCloseQuickUploadPanel();
+                            return;
+                        }
+                        var em = (e && e.message) || String(e);
+                        rowUi.doneErr(em.length > 72 ? em.slice(0, 72) + '…' : em);
+                        i++;
+                        step();
+                    });
+            }
+            step();
+            return;
+        }
+
         var uploadAbortState = newNiUploadAbortState();
         var batchTotal = files.length;
         var skippedHint =
@@ -1554,7 +1659,6 @@
                 var bits = [];
                 if (part.skippedSize) bits.push('超过 100MB：' + part.skippedSize + ' 个');
                 if (part.skippedFormat) bits.push('格式/无效：' + part.skippedFormat + ' 个');
-                st('已忽略 ' + skipped + ' 个（' + bits.join('；') + '），见上方红色说明', !part.valid.length);
             }
             if (!part.valid.length) {
                 if (!skipped) st('没有可上传的文件', true);
@@ -1706,6 +1810,12 @@
             if (!document.getElementById(id)) return;
             var cd = ev.clipboardData;
             if (!cd || !cd.items) return;
+
+            var DIALOG_ID = 'ns-nodeimage-dialog';
+            var dialogOpen = !!document.getElementById(DIALOG_ID);
+            var cm = findForumEditor();
+            var editorFocused = !!(cm && cm.hasFocus && cm.hasFocus());
+
             var files = [];
             var baseT = Date.now();
             for (var i = 0; i < cd.items.length; i++) {
@@ -1719,6 +1829,11 @@
             if (!files.length) return;
             ev.preventDefault();
             ev.stopPropagation();
+
+            if (!dialogOpen && editorFocused) {
+                niQuickUploadRunBatch(files);
+                return;
+            }
             runUploadBatch(files);
         };
         document.addEventListener('paste', pasteHandler, true);
@@ -2373,6 +2488,36 @@
     } else {
         scheduleMdeToolbarScan();
     }
+
+    (function () {
+        var NS_NI_GLOBAL_PASTE_LISTENED = false;
+        function niGlobalPasteHandler(ev) {
+            var cd = ev.clipboardData;
+            if (!cd || !cd.items) return;
+            var DIALOG_ID = 'ns-nodeimage-dialog';
+            if (document.getElementById(DIALOG_ID)) return;
+            var cm = findForumEditor();
+            if (!cm || !cm.hasFocus || !cm.hasFocus()) return;
+            var files = [];
+            var baseT = Date.now();
+            for (var i = 0; i < cd.items.length; i++) {
+                var it = cd.items[i];
+                if (it.type.indexOf('image') === -1) continue;
+                var blob = it.getAsFile();
+                if (!blob) continue;
+                var name = fileNameFromClipboardBlob(blob, baseT, files.length);
+                files.push(new File([blob], name, { type: blob.type || 'image/png' }));
+            }
+            if (!files.length) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            niQuickUploadRunBatch(files);
+        }
+        if (!NS_NI_GLOBAL_PASTE_LISTENED) {
+            NS_NI_GLOBAL_PASTE_LISTENED = true;
+            document.addEventListener('paste', niGlobalPasteHandler, true);
+        }
+    })();
 
     window.NodeSeekNodeImage = {
         open: openNi,
