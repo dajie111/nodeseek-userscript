@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NS综合插件
 // @namespace    http://tampermonkey.net/
-// @version      2026.03.29
+// @version      2026.03.30
 // @description  NodeSeek 论坛黑名单，拉黑后红色高亮并可备注，增加域名检测控制按钮显隐，支持折叠功能，显示用户详细信息，快捷回复功能
 // @author       YourName
 // @match        https://www.nodeseek.com/*
@@ -2103,6 +2103,7 @@
         const text = (a.textContent || '').trim();
         if (anchorTextLooksLikeReplyOrPostTime(text)) return false;
         if (anchorTextLooksLikeFloorLink(text)) return false;
+        if (isSamePostThreadPageLink(a)) return false;
         const minLen = isUserSpaceTab() ? 1 : 3;
         const maxLen = isUserSpaceTab() ? 500 : 140;
         if (text.length < minLen || text.length > maxLen) return false;
@@ -2128,6 +2129,22 @@
     function isPostThreadDetailPage() {
         const path = window.location.pathname || '';
         return /^\/post-\d+/i.test(path);
+    }
+
+    /** 帖子内翻页、省略号跳转等与当前帖同 ID（/post-{id}-*），应保持站点默认打开方式，不强制新标签页 */
+    function isSamePostThreadPageLink(a) {
+        if (!(a instanceof HTMLAnchorElement)) return false;
+        const path = window.location.pathname || '';
+        const cur = path.match(/^\/post-(\d+)/i);
+        if (!cur) return false;
+        try {
+            const u = new URL(a.href, window.location.href);
+            const linkPath = u.pathname || '';
+            const tgt = linkPath.match(/^\/post-(\d+)/i);
+            return !!(tgt && tgt[1] === cur[1]);
+        } catch (e) {
+            return false;
+        }
     }
 
     function updatePageScopeClasses() {
@@ -2190,6 +2207,19 @@
     function applyNewTabLinks() {
         const isEnabled = getOpenPostNewTabEnabled();
         const isSpaceTab = isUserSpaceTab();
+
+        // 曾误判为标题链的节点（如帖内翻页、省略号）需摘掉本脚本写入的 target 标记
+        document.querySelectorAll('a[data-ns-original-target]').forEach(function (el) {
+            if (!(el instanceof HTMLAnchorElement)) return;
+            if (isLikelyTitleLink(el)) return;
+            const originalTarget = el.getAttribute('data-ns-original-target');
+            if (originalTarget) {
+                el.target = originalTarget;
+            } else {
+                el.removeAttribute('target');
+            }
+            el.removeAttribute('data-ns-original-target');
+        });
 
         // 通用选择器（所有页面都用）
         const generalSelectors = [
