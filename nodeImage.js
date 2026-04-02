@@ -2438,7 +2438,7 @@
         span.className = 'toolbar-item ' + NS_NI_MDE_BTN_CLASS;
         span.setAttribute('role', 'button');
         span.tabIndex = 0;
-        span.title = '选择图片上传到 NS 图床（Shift+点击打开管理面板）';
+        span.title = '输入框获取焦点时，用Ctrl+v 直接上传图片到NS图床（Shift+点击打开管理面板）';
         span.textContent = 'NS图床';
         span.style.cssText =
             'font-size:12px;font-weight:600;color:#0d9488;padding:0 8px;white-space:nowrap;line-height:1;cursor:pointer;user-select:none;';
