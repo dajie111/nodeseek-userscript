@@ -1081,9 +1081,9 @@
             }
 
             const shareButtons = [
-                { label: '下载', w: 84 },
-                { label: '复制文本', w: 104 },
-                { label: '复制 SVG', w: 100 }
+                { label: '下载', w: 100 },
+                { label: '复制文本', w: 120 },
+                { label: '复制 SVG', w: 115 }
             ];
 
             const footerText = '导出时间: ' + dateStr;
@@ -1094,32 +1094,49 @@
 
             let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${displayW}" height="${displayH}" viewBox="0 0 ${width} ${height}">
 <defs>
+  <linearGradient id="vpsPageBg" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#eef2ff"/>
+    <stop offset="55%" stop-color="#f8fafc"/>
+    <stop offset="100%" stop-color="#f1f5f9"/>
+  </linearGradient>
   <linearGradient id="gradBtn" x1="0%" y1="0%" x2="100%" y2="0%">
     <stop offset="0%" stop-color="#4f46e5"/>
     <stop offset="100%" stop-color="#7c3aed"/>
   </linearGradient>
+  <linearGradient id="vpsCardTint" x1="0%" y1="0%" x2="0%" y2="100%">
+    <stop offset="0%" stop-color="#ffffff"/>
+    <stop offset="100%" stop-color="#f8fafc"/>
+  </linearGradient>
+  <filter id="vpsShadowLg" x="-8%" y="-8%" width="116%" height="116%">
+    <feDropShadow dx="0" dy="10" stdDeviation="24" flood-color="#0f172a" flood-opacity="0.09"/>
+  </filter>
+  <filter id="vpsShadowSm" x="-10%" y="-10%" width="120%" height="120%">
+    <feDropShadow dx="0" dy="2" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.06"/>
+  </filter>
 </defs>
 <style>
-  .font { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  .outer { fill: #ffffff; stroke: #eeeeee; stroke-width: 1; }
-  .panel { fill: #ffffff; stroke: #eeeeee; stroke-width: 1; }
-  .soft { fill: #f8fafc; stroke: #eef2f7; stroke-width: 1; }
-  .h2 { font-size: 26px; font-weight: 700; fill: #111827; text-anchor: middle; dominant-baseline: middle; }
-  .label { font-size: 18px; font-weight: 700; fill: #111827; dominant-baseline: middle; }
-  .sub { font-size: 15px; fill: #6b7280; dominant-baseline: middle; }
-  .input { fill: #fafafa; stroke: none; }
-  .inputText { font-size: 18px; fill: #111827; dominant-baseline: middle; }
-  .resultLabel { font-size: 18px; font-weight: 700; fill: #111827; dominant-baseline: middle; }
-  .resultValue { font-size: 18px; fill: #111827; dominant-baseline: middle; }
-  .em { fill: #ff0000; font-weight: 700; }
+  .font { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .outer { fill: #ffffff; stroke: #e2e8f0; stroke-width: 1.5; filter: url(#vpsShadowLg); }
+  .panel { fill: url(#vpsCardTint); stroke: #e2e8f0; stroke-width: 1; }
+  .soft { fill: #f1f5f9; stroke: #e2e8f0; stroke-width: 1; }
+  .h2 { font-size: 22px; font-weight: 700; fill: #0f172a; text-anchor: middle; dominant-baseline: middle; letter-spacing: 0.02em; }
+  .label { font-size: 16px; font-weight: 600; fill: #334155; dominant-baseline: middle; }
+  .sub { font-size: 13px; fill: #64748b; dominant-baseline: middle; }
+  .input { fill: #ffffff; stroke: #e2e8f0; stroke-width: 1; }
+  .inputText { font-size: 16px; fill: #0f172a; font-weight: 500; dominant-baseline: middle; }
+  .resultLabel { font-size: 16px; font-weight: 600; fill: #475569; dominant-baseline: middle; }
+  .resultValue { font-size: 16px; font-weight: 600; fill: #0f172a; dominant-baseline: middle; }
+  .em { fill: #dc2626; font-weight: 700; }
   .pillText { font-size: 14px; font-weight: 700; fill: #ffffff; dominant-baseline: middle; text-anchor: middle; }
-  .btn { fill: #ededed; stroke: none; }
-  .btnText { font-size: 16px; fill: #111827; dominant-baseline: middle; text-anchor: middle; }
-  .footer { font-size: 18px; font-weight: 700; fill: #111827; dominant-baseline: middle; }
+  .btn { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1; filter: url(#vpsShadowSm); }
+  .btnText { font-size: 15px; font-weight: 600; fill: #334155; dominant-baseline: middle; text-anchor: middle; }
+  .footer { font-size: 13px; font-weight: 500; fill: #64748b; dominant-baseline: middle; }
+  .rowLine { stroke: #e2e8f0; stroke-width: 1; }
 </style>
-<rect class="outer" x="${outer.x}" y="${outer.y}" width="${outer.w}" height="${outer.h}" rx="16" ry="16"/>
-<rect class="panel" x="${left.x}" y="${left.y}" width="${left.w}" height="${left.h}" rx="12" ry="12"/>
-<rect class="panel" x="${right.x}" y="${right.y}" width="${right.w}" height="${right.h}" rx="12" ry="12"/>
+<rect width="${width}" height="${height}" fill="url(#vpsPageBg)"/>
+<rect class="outer" x="${outer.x}" y="${outer.y}" width="${outer.w}" height="${outer.h}" rx="20" ry="20"/>
+<rect class="panel" x="${left.x}" y="${left.y}" width="${left.w}" height="${left.h}" rx="14" ry="14"/>
+<rect class="panel" x="${right.x}" y="${right.y}" width="${right.w}" height="${right.h}" rx="14" ry="14"/>
 `;
 
             const leftInnerX = left.x + 24;
@@ -1135,7 +1152,7 @@
                 } else {
                     cy += 28;
                 }
-                svg += `<rect class="input" x="${leftInnerX}" y="${cy}" width="${inputW}" height="${fieldH}" rx="10" ry="10"/>`;
+                svg += `<rect class="input" x="${leftInnerX}" y="${cy}" width="${inputW}" height="${fieldH}" rx="12" ry="12"/>`;
                 svg += `<text class="font inputText" x="${leftInnerX + 16}" y="${cy + fieldH / 2}">${escapeXml(row.value)}</text>`;
                 cy += fieldH + fieldGap;
             }
@@ -1146,63 +1163,61 @@
             // svg += `<text class="font pillText" x="${leftInnerX + btnW / 2}" y="${btnY + btnH / 2}">计算剩余价值</text>`;
 
             const rightInnerX = right.x + 24;
-            svg += `<text class="font h2" x="${right.x + right.w / 2}" y="${right.y + 50}">计算结果</text>`;
+            const titleCx = right.x + right.w / 2;
+            const titleY = right.y + 46;
+            svg += `<text class="font h2" x="${titleCx}" y="${titleY}">计算结果</text>`;
+            svg += `<rect x="${titleCx - 36}" y="${titleY + 18}" width="72" height="3" rx="1.5" fill="#4f46e5" opacity="0.85"/>`;
 
-            const card1 = { x: rightInnerX, y: right.y + 90, w: right.w - 48, h: 200 };
-            svg += `<rect class="soft" x="${card1.x}" y="${card1.y}" width="${card1.w}" height="${card1.h}" rx="12" ry="12"/>`;
+            const card1 = { x: rightInnerX, y: right.y + 88, w: right.w - 48, h: 200 };
+            svg += `<rect class="soft" x="${card1.x}" y="${card1.y}" width="${card1.w}" height="${card1.h}" rx="14" ry="14"/>`;
 
             const rLabelX = card1.x + 24;
-            const rValueX = card1.x + 120;
+            const rValueX = card1.x + 128;
             let ry = card1.y + 40;
 
-            svg += `<text class="font resultLabel" x="${rLabelX}" y="${ry}">剩余天数:</text>`;
+            svg += `<text class="font resultLabel" x="${rLabelX}" y="${ry}">剩余天数</text>`;
             svg += `<text x="${rValueX}" y="${ry}" class="font resultValue">
                       <tspan class="em">${escapeXml(remainDaysLine)}</tspan>
                       <tspan class="sub" dx="10">${escapeXml(expiryHint)}</tspan>
                     </text>`;
             ry += 42;
+            svg += `<line class="rowLine" x1="${card1.x + 16}" y1="${ry - 20}" x2="${card1.x + card1.w - 16}" y2="${ry - 20}"/>`;
 
-            svg += `<text class="font resultLabel" x="${rLabelX}" y="${ry}">剩余价值:</text>`;
+            svg += `<text class="font resultLabel" x="${rLabelX}" y="${ry}">剩余价值</text>`;
             svg += `<text class="font resultValue em" x="${rValueX}" y="${ry}">${escapeXml(remainValueLine)}</text>`;
             ry += 42;
+            svg += `<line class="rowLine" x1="${card1.x + 16}" y1="${ry - 20}" x2="${card1.x + card1.w - 16}" y2="${ry - 20}"/>`;
 
-            svg += `<text class="font resultLabel" x="${rLabelX}" y="${ry}">交易金额:</text>`;
+            svg += `<text class="font resultLabel" x="${rLabelX}" y="${ry}">交易金额</text>`;
             svg += `<text class="font resultValue" x="${rValueX}" y="${ry}">${escapeXml(tradeMoneyLine)}</text>`;
             ry += 42;
+            svg += `<line class="rowLine" x1="${card1.x + 16}" y1="${ry - 20}" x2="${card1.x + card1.w - 16}" y2="${ry - 20}"/>`;
 
-            svg += `<text class="font resultLabel" x="${rLabelX}" y="${ry}">${escapeXml(premiumLineLabel || '溢价:')}</text>`;
+            const premiumLabelText = String(premiumLineLabel || '溢价:').replace(/:+$/, '');
+            svg += `<text class="font resultLabel" x="${rLabelX}" y="${ry}">${escapeXml(premiumLabelText)}</text>`;
             svg += `<text class="font resultValue" x="${rValueX}" y="${ry}">${escapeXml(premiumLineValue)}</text>`;
 
             const card2 = { x: rightInnerX, y: card1.y + card1.h + 24, w: right.w - 48, h: 160 };
-            svg += `<rect class="soft" x="${card2.x}" y="${card2.y}" width="${card2.w}" height="${card2.h}" rx="12" ry="12"/>`;
-            svg += `<text class="font label" x="${card2.x + card2.w / 2}" y="${card2.y + 40}" text-anchor="middle">分享功能</text>`;
+            svg += `<rect class="soft" x="${card2.x}" y="${card2.y}" width="${card2.w}" height="${card2.h}" rx="14" ry="14"/>`;
+            const shareTitleY = card2.y + 38;
+            svg += `<text class="font h2" x="${card2.x + card2.w / 2}" y="${shareTitleY}" text-anchor="middle">分享功能</text>`;
+            svg += `<rect x="${card2.x + card2.w / 2 - 36}" y="${shareTitleY + 18}" width="72" height="3" rx="1.5" fill="#4f46e5" opacity="0.85"/>`;
 
-            const btnY2 = card2.y + 80;
-            const totalBtnW = shareButtons.reduce((sum, b) => sum + (b.w + 20), 0) + (shareButtons.length - 1) * 10; 
-            // Note: I need to update shareButtons widths in the definition if I want them wider, 
-            // but here I just added +20 to each for calculation, which is wrong if I don't update the object.
-            // Let's rely on updated shareButtons definition which I should do.
-            
-            // Re-calculating center based on new widths (I will update shareButtons array in next tool call or this one if possible, but search/replace is tricky for that).
-            // Let's assume I update shareButtons widths: 84->100, 104->120, 96->110.
-            const updatedShareButtons = [
-                { label: '下载', w: 100 },
-                { label: '复制文本', w: 120 },
-                { label: '复制 SVG', w: 115 }
-            ];
-            const realTotalBtnW = updatedShareButtons.reduce((sum, b) => sum + b.w, 0) + (updatedShareButtons.length - 1) * 10;
+            const btnY2 = card2.y + 82;
+            const btnGap = 12;
+            const realTotalBtnW = shareButtons.reduce((sum, b) => sum + b.w, 0) + (shareButtons.length - 1) * btnGap;
             let bx = card2.x + (card2.w - realTotalBtnW) / 2;
-            
-            for (let i = 0; i < updatedShareButtons.length; i++) {
-                const b = updatedShareButtons[i];
-                svg += `<rect class="btn" x="${bx}" y="${btnY2}" width="${b.w}" height="36" rx="8" ry="8"/>`;
-                svg += `<text class="font btnText" x="${bx + b.w / 2}" y="${btnY2 + 18}">${escapeXml(b.label)}</text>`;
-                bx += b.w + 10;
+
+            for (let i = 0; i < shareButtons.length; i++) {
+                const b = shareButtons[i];
+                svg += `<rect class="btn" x="${bx}" y="${btnY2}" width="${b.w}" height="38" rx="10" ry="10"/>`;
+                svg += `<text class="font btnText" x="${bx + b.w / 2}" y="${btnY2 + 20}">${escapeXml(b.label)}</text>`;
+                bx += b.w + btnGap;
             }
 
-            const footerX = outer.x + outer.w - 30;
-            const footerY = outer.y + outer.h - 41;
-            svg += `<text class="font footer" x="${footerX}" y="${footerY}" text-anchor="end">${escapeXml(footerText)}</text>`;
+            const shareBtnBottom = btnY2 + 38;
+            const exportTimeY = shareBtnBottom + (card2.y + card2.h - shareBtnBottom) / 2;
+            svg += `<text class="font footer" x="${card2.x + card2.w / 2}" y="${exportTimeY}" text-anchor="middle">${escapeXml(footerText)}</text>`;
             svg += `</svg>`;
             return svg;
         },
