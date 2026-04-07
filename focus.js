@@ -339,7 +339,7 @@
             self._initDraggable(dialog, dragArea, closeBtn);
             self._bindStatsMessageOnce();
 
-            // 先设 src 再挂到 DOM：弹窗立刻可见，iframe 内 hotspot_stats 自行显示「数据加载中…」
+            // 先挂到 DOM 使弹窗立即可见，再设 src 让 iframe 在后台加载（显示加载中状态）
             iframe.src = self.hbServiceBase + '/hotspot_stats.html?embed=1';
         },
 
