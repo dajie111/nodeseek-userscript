@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         NS综合插件
 // @namespace    http://tampermonkey.net/
-// @version      2026.04.07
+// @version      2026.04.08
 // @description  NodeSeek 论坛黑名单，拉黑后红色高亮并可备注，增加域名检测控制按钮显隐，支持折叠功能，显示用户详细信息，快捷回复功能
 // @author       YourName
 // @match        https://www.nodeseek.com/*
 // @grant        GM_xmlhttpRequest
+// @grant        GM_info
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_deleteValue
@@ -736,6 +737,110 @@
             return true;
         }
         return false;
+    }
+
+    /** 从收藏项 URL 解析帖子数字 ID（与 /post-123-1 一致） */
+    function getPostIdFromFavoriteUrl(url) {
+        if (!url) return null;
+        const m = String(url).match(/\/post-(\d+)/i);
+        return m ? m[1] : null;
+    }
+
+    /**
+     * 分页请求 NodeSeek 站内收藏 API，合并到插件本地收藏（需已登录；同 post_id 已存在则跳过）。
+     * 请求方式与 statistics.js 鸡腿拉取一致：same-origin 携带 Cookie。
+     */
+    async function importOfficialNsCollectionsIntoFavorites() {
+        const headers = {
+            Accept: 'application/json, text/plain, */*',
+            'User-Agent': navigator.userAgent,
+        };
+        const allRows = [];
+        let emptyStreak = 0;
+        const maxPage = 500;
+        for (let page = 1; page <= maxPage; page++) {
+            let resp;
+            try {
+                resp = await fetch(`https://www.nodeseek.com/api/statistics/list-collection?page=${page}`, {
+                    method: 'GET',
+                    headers,
+                    credentials: 'same-origin',
+                });
+            } catch (e) {
+                throw new Error(`网络错误：${e.message}`);
+            }
+            if (!resp.ok) {
+                if (resp.status === 401 || resp.status === 403) {
+                    throw new Error('未登录或无权限，请先登录 NodeSeek 后再试。');
+                }
+                throw new Error(`拉取失败：HTTP ${resp.status}`);
+            }
+            let json;
+            try {
+                json = await resp.json();
+            } catch (e) {
+                throw new Error('接口返回不是有效 JSON');
+            }
+            if (!json || json.success !== true) {
+                emptyStreak++;
+                if (emptyStreak >= 2) break;
+                continue;
+            }
+            const cols = json.collections;
+            if (!Array.isArray(cols) || cols.length === 0) {
+                emptyStreak++;
+                if (emptyStreak >= 2) break;
+                continue;
+            }
+            emptyStreak = 0;
+            allRows.push(...cols);
+            await new Promise(r => setTimeout(r, 280));
+        }
+        if (allRows.length === 0) {
+            return { added: 0, skipped: 0, totalApi: 0 };
+        }
+        const list = getFavorites();
+        const existingIds = new Set();
+        for (const fav of list) {
+            const pid = getPostIdFromFavoriteUrl(fav.url);
+            if (pid) existingIds.add(pid);
+        }
+        let added = 0;
+        let skipped = 0;
+        const nowIso = new Date().toISOString();
+        // 先按接口顺序收集，再一次插入；若逐条 splice(firstUnpinned,0) 会把后处理的顶到前面，顺序与 NS 列表相反
+        const toAdd = [];
+        for (const col of allRows) {
+            const pid = col && col.post_id != null ? String(col.post_id).trim() : '';
+            if (!pid || !/^\d+$/.test(pid)) continue;
+            if (existingIds.has(pid)) {
+                skipped++;
+                continue;
+            }
+            existingIds.add(pid);
+            const title = (col.title && String(col.title).trim()) || `帖子 ${pid}`;
+            // NS 接口的 rank 表示站内排序等含义，与插件「置顶」不是同一概念，导入一律不设置顶
+            toAdd.push({
+                title,
+                url: `https://www.nodeseek.com/post-${pid}-1`,
+                remark: '',
+                category: '未分类',
+                timestamp: nowIso,
+                pinned: false,
+            });
+            added++;
+        }
+        if (toAdd.length > 0) {
+            const firstUnpinned = list.findIndex(item => !item.pinned);
+            if (firstUnpinned === -1) {
+                list.push(...toAdd);
+            } else {
+                list.splice(firstUnpinned, 0, ...toAdd);
+            }
+        }
+        setFavorites(list);
+        addLog(`NS站内收藏导入：新增 ${added} 条，跳过已存在 ${skipped} 条（接口共 ${allRows.length} 条）`);
+        return { added, skipped, totalApi: allRows.length };
     }
 
     // 检查当前页面是否已收藏
@@ -4266,18 +4371,53 @@
         title.style.fontSize = '16px';
         titleBar.appendChild(title);
 
+        // 从 NS 站内收藏 API 合并到插件收藏（需登录，逻辑参考 statistics.js 鸡腿拉取）
+        const importNsCollectionsBtn = document.createElement('button');
+        importNsCollectionsBtn.textContent = '导入NS收藏';
+        importNsCollectionsBtn.className = 'blacklist-btn';
+        importNsCollectionsBtn.style.fontSize = '12px';
+        importNsCollectionsBtn.style.padding = '4px 8px';
+        importNsCollectionsBtn.style.marginRight = '8px';
+        importNsCollectionsBtn.onclick = async function () {
+            if (!confirm('将从当前已登录账号拉取 NodeSeek 站内「我的收藏」并合并到本列表。\n相同帖子（按帖子 ID）已存在时会自动跳过。是否继续？')) return;
+            importNsCollectionsBtn.disabled = true;
+            const orig = importNsCollectionsBtn.textContent;
+            importNsCollectionsBtn.textContent = '拉取中…';
+            try {
+                const r = await importOfficialNsCollectionsIntoFavorites();
+                if (r.totalApi === 0) {
+                    alert('未从接口获取到任何收藏，请确认已登录且账号在站点内有收藏。');
+                } else {
+                    alert(`导入完成：新增 ${r.added} 条，跳过（本地已有）${r.skipped} 条。`);
+                }
+                dialog.remove();
+                showFavoritesDialog();
+            } catch (e) {
+                alert(e.message || String(e));
+                importNsCollectionsBtn.textContent = orig;
+                importNsCollectionsBtn.disabled = false;
+            }
+        };
+
         // 分类管理按钮
         const categoryManageBtn = document.createElement('button');
         categoryManageBtn.textContent = '分类管理';
         categoryManageBtn.className = 'blacklist-btn';
         categoryManageBtn.style.fontSize = '12px';
         categoryManageBtn.style.padding = '4px 8px';
-        // 右上角分类管理按钮左移30px：通过增加右侧外边距实现
+        // 与关闭按钮留出间距（原单独放置时的 marginRight）
         categoryManageBtn.style.marginRight = '38px';
         categoryManageBtn.onclick = function () {
             showCategoryManageDialog();
         };
-        titleBar.appendChild(categoryManageBtn);
+
+        const titleRightBtns = document.createElement('div');
+        titleRightBtns.style.display = 'flex';
+        titleRightBtns.style.alignItems = 'center';
+        titleRightBtns.style.gap = '8px';
+        titleRightBtns.appendChild(importNsCollectionsBtn);
+        titleRightBtns.appendChild(categoryManageBtn);
+        titleBar.appendChild(titleRightBtns);
 
         dialog.appendChild(titleBar);
 
@@ -6450,6 +6590,46 @@
         skipJumpRow.appendChild(skipJumpLabel);
         skipJumpRow.appendChild(skipJumpRightContainer);
         content.appendChild(skipJumpRow);
+
+        const UPDATE_POST_URL = 'https://www.nodeseek.com/post-364796-1';
+        const versionRow = document.createElement('div');
+        versionRow.style.display = 'flex';
+        versionRow.style.justifyContent = 'space-between';
+        versionRow.style.alignItems = 'center';
+        versionRow.style.flexWrap = 'wrap';
+        versionRow.style.gap = '8px';
+        versionRow.style.paddingTop = '10px';
+        versionRow.style.borderTop = '1px solid #eee';
+        versionRow.style.marginTop = '2px';
+
+        let scriptVersionText = '—';
+        try {
+            if (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version != null) {
+                const v = String(GM_info.script.version).trim();
+                if (v) scriptVersionText = v;
+            }
+        } catch (e) { /* ignore */ }
+
+        const versionLabel = document.createElement('span');
+        versionLabel.textContent = '当前版本：' + scriptVersionText;
+        versionLabel.style.fontWeight = '500';
+        versionLabel.style.color = '#555';
+        versionLabel.style.fontSize = '13px';
+
+        const updateLink = document.createElement('a');
+        updateLink.href = UPDATE_POST_URL;
+        updateLink.textContent = '更新链接';
+        updateLink.target = '_blank';
+        updateLink.rel = 'noopener noreferrer';
+        updateLink.style.fontSize = '13px';
+        updateLink.style.color = '#1890ff';
+        updateLink.style.cursor = 'pointer';
+        updateLink.style.textDecoration = 'underline';
+        updateLink.title = UPDATE_POST_URL;
+
+        versionRow.appendChild(versionLabel);
+        versionRow.appendChild(updateLink);
+        content.appendChild(versionRow);
 
         dialog.appendChild(content);
         document.body.appendChild(dialog);
