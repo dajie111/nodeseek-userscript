@@ -87,6 +87,17 @@
     const FAVORITES_KEY = 'nodeseek_favorites';
     // 收藏分类列表存储键
     const FAVORITES_CATEGORIES_KEY = 'nodeseek_favorites_categories';
+    /** NS list-collection 中 rank===255 表示私有帖；导入时可勾选过滤 */
+    const FAVORITES_IMPORT_FILTER_PRIVATE_KEY = 'nodeseek_fav_import_skip_private';
+    const NS_COLLECTION_PRIVATE_RANK = 255;
+
+    /** list-collection 条目中 rank 为 255 表示私有帖（接口可能给数字或字符串） */
+    function isNsListCollectionPrivateRank(rank) {
+        if (rank === NS_COLLECTION_PRIVATE_RANK) return true;
+        if (rank === String(NS_COLLECTION_PRIVATE_RANK)) return true;
+        const n = parseInt(rank, 10);
+        return n === NS_COLLECTION_PRIVATE_RANK && !Number.isNaN(n);
+    }
     const FAVORITE_CATEGORY_NAME_MAX_LEN = 4;
     const FAVORITE_CATEGORY_MAX_COUNT = 6;
 
@@ -748,9 +759,10 @@
 
     /**
      * 分页请求 NodeSeek 站内收藏 API，合并到插件本地收藏（需已登录；同 post_id 已存在则跳过）。
-     * 请求方式与 statistics.js 鸡腿拉取一致：same-origin 携带 Cookie。
+     * @param {{ filterPrivate?: boolean }} [opts] filterPrivate 为 true 时跳过 rank===255 的私有帖
      */
-    async function importOfficialNsCollectionsIntoFavorites() {
+    async function importOfficialNsCollectionsIntoFavorites(opts) {
+        const filterPrivate = !!(opts && opts.filterPrivate);
         const headers = {
             Accept: 'application/json, text/plain, */*',
             'User-Agent': navigator.userAgent,
@@ -797,9 +809,9 @@
             await new Promise(r => setTimeout(r, 280));
         }
         if (allRows.length === 0) {
-            return { added: 0, skipped: 0, totalApi: 0 };
+            return { added: 0, skipped: 0, skippedPrivate: 0, totalApi: 0 };
         }
-        const list = getFavorites();
+        let list = getFavorites();
         const existingIds = new Set();
         for (const fav of list) {
             const pid = getPostIdFromFavoriteUrl(fav.url);
@@ -807,12 +819,17 @@
         }
         let added = 0;
         let skipped = 0;
+        let skippedPrivate = 0;
         const nowIso = new Date().toISOString();
         // 先按接口顺序收集，再一次插入；若逐条 splice(firstUnpinned,0) 会把后处理的顶到前面，顺序与 NS 列表相反
         const toAdd = [];
         for (const col of allRows) {
             const pid = col && col.post_id != null ? String(col.post_id).trim() : '';
             if (!pid || !/^\d+$/.test(pid)) continue;
+            if (filterPrivate && isNsListCollectionPrivateRank(col.rank)) {
+                skippedPrivate++;
+                continue;
+            }
             if (existingIds.has(pid)) {
                 skipped++;
                 continue;
@@ -839,8 +856,10 @@
             }
         }
         setFavorites(list);
-        addLog(`NS站内收藏导入：新增 ${added} 条，跳过已存在 ${skipped} 条（接口共 ${allRows.length} 条）`);
-        return { added, skipped, totalApi: allRows.length };
+        let logMsg = `NS站内收藏导入：新增 ${added} 条，跳过已存在 ${skipped} 条（接口共 ${allRows.length} 条）`;
+        if (skippedPrivate > 0) logMsg += `，未导入私有 ${skippedPrivate} 条`;
+        addLog(logMsg);
+        return { added, skipped, skippedPrivate, totalApi: allRows.length };
     }
 
     // 检查当前页面是否已收藏
@@ -4372,31 +4391,114 @@
         titleBar.appendChild(title);
 
         // 从 NS 站内收藏 API 合并到插件收藏（需登录，逻辑参考 statistics.js 鸡腿拉取）
+        const importNsWrap = document.createElement('div');
+        importNsWrap.style.display = 'flex';
+        importNsWrap.style.alignItems = 'center';
+        importNsWrap.style.flexWrap = 'wrap';
+        importNsWrap.style.gap = '6px';
+
         const importNsCollectionsBtn = document.createElement('button');
         importNsCollectionsBtn.textContent = '导入NS收藏';
         importNsCollectionsBtn.className = 'blacklist-btn';
         importNsCollectionsBtn.style.fontSize = '12px';
         importNsCollectionsBtn.style.padding = '4px 8px';
-        importNsCollectionsBtn.style.marginRight = '8px';
-        importNsCollectionsBtn.onclick = async function () {
-            if (!confirm('将从当前已登录账号拉取 NodeSeek 站内「我的收藏」并合并到本列表。\n相同帖子（按帖子 ID）已存在时会自动跳过。是否继续？')) return;
-            importNsCollectionsBtn.disabled = true;
-            const orig = importNsCollectionsBtn.textContent;
-            importNsCollectionsBtn.textContent = '拉取中…';
+
+        importNsWrap.appendChild(importNsCollectionsBtn);
+
+        importNsCollectionsBtn.onclick = function () {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+            const box = document.createElement('div');
+            box.style.cssText = 'background:#fff;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,0.2);max-width:420px;width:100%;padding:18px 20px;font-size:14px;color:#333;';
+            const titleImp = document.createElement('div');
+            titleImp.textContent = '导入 NS 收藏';
+            titleImp.style.cssText = 'font-weight:bold;font-size:16px;margin-bottom:10px;';
+            const p = document.createElement('p');
+            p.style.cssText = 'margin:0 0 12px;line-height:1.55;font-size:13px;color:#444;';
+            p.textContent = '将从当前已登录账号拉取 NodeSeek 站内「我的收藏」并合并到本列表。相同帖子（按帖子 ID）已存在时会自动跳过。';
+            const filterPrivateLabel = document.createElement('label');
+            filterPrivateLabel.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin-bottom:16px;font-size:13px;color:#555;';
+            const filterPrivateCb = document.createElement('input');
+            filterPrivateCb.type = 'checkbox';
             try {
-                const r = await importOfficialNsCollectionsIntoFavorites();
-                if (r.totalApi === 0) {
-                    alert('未从接口获取到任何收藏，请确认已登录且账号在站点内有收藏。');
-                } else {
-                    alert(`导入完成：新增 ${r.added} 条，跳过（本地已有）${r.skipped} 条。`);
-                }
-                dialog.remove();
-                showFavoritesDialog();
+                filterPrivateCb.checked = localStorage.getItem(FAVORITES_IMPORT_FILTER_PRIVATE_KEY) === '1';
             } catch (e) {
-                alert(e.message || String(e));
-                importNsCollectionsBtn.textContent = orig;
-                importNsCollectionsBtn.disabled = false;
+                filterPrivateCb.checked = false;
             }
+            filterPrivateCb.onchange = function () {
+                try {
+                    localStorage.setItem(FAVORITES_IMPORT_FILTER_PRIVATE_KEY, this.checked ? '1' : '0');
+                } catch (e2) {}
+            };
+            const filterPrivateText = document.createElement('span');
+            filterPrivateText.textContent = '过滤私有';
+            filterPrivateText.title = '勾选后跳过私有帖子，不导入到本列表';
+            filterPrivateLabel.appendChild(filterPrivateCb);
+            filterPrivateLabel.appendChild(filterPrivateText);
+            const hint = document.createElement('div');
+            hint.style.cssText = 'font-size:12px;color:#888;margin:-8px 0 14px;padding-left:24px;line-height:1.4;';
+            hint.textContent = '勾选「过滤私有」时，跳过本次导入中的私有帖子。';
+            const btnRow = document.createElement('div');
+            btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;';
+            const cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.textContent = '取消';
+            cancelBtn.className = 'blacklist-btn';
+            cancelBtn.style.fontSize = '13px';
+            cancelBtn.style.padding = '6px 14px';
+            const okBtn = document.createElement('button');
+            okBtn.type = 'button';
+            okBtn.textContent = '开始导入';
+            okBtn.className = 'blacklist-btn';
+            okBtn.style.cssText = 'font-size:13px;padding:6px 14px;background:#000;color:#fff;border-color:#000;';
+            function closeModal() {
+                try {
+                    overlay.remove();
+                } catch (e) {}
+            }
+            cancelBtn.onclick = closeModal;
+            overlay.addEventListener('click', function (ev) {
+                if (ev.target === overlay) closeModal();
+            });
+            okBtn.onclick = async function () {
+                const filterPrivate = filterPrivateCb.checked;
+                filterPrivateCb.disabled = true;
+                cancelBtn.disabled = true;
+                okBtn.disabled = true;
+                okBtn.textContent = '拉取中…';
+                importNsCollectionsBtn.disabled = true;
+                const origImport = importNsCollectionsBtn.textContent;
+                importNsCollectionsBtn.textContent = '拉取中…';
+                closeModal();
+                try {
+                    const r = await importOfficialNsCollectionsIntoFavorites({ filterPrivate });
+                    if (r.totalApi === 0) {
+                        alert('未从接口获取到任何收藏，请确认已登录且账号在站点内有收藏。');
+                    } else {
+                        let msg = `导入完成：新增 ${r.added} 条，跳过（本地已有）${r.skipped} 条。`;
+                        if (r.skippedPrivate > 0) msg += `\n未导入的私有帖 ${r.skippedPrivate} 条。`;
+                        alert(msg);
+                    }
+                    dialog.remove();
+                    showFavoritesDialog();
+                } catch (e) {
+                    alert(e.message || String(e));
+                    importNsCollectionsBtn.textContent = origImport;
+                    importNsCollectionsBtn.disabled = false;
+                }
+            };
+            btnRow.appendChild(cancelBtn);
+            btnRow.appendChild(okBtn);
+            box.appendChild(titleImp);
+            box.appendChild(p);
+            box.appendChild(filterPrivateLabel);
+            box.appendChild(hint);
+            box.appendChild(btnRow);
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+            box.addEventListener('click', function (ev) {
+                ev.stopPropagation();
+            });
         };
 
         // 分类管理按钮
@@ -4415,7 +4517,7 @@
         titleRightBtns.style.display = 'flex';
         titleRightBtns.style.alignItems = 'center';
         titleRightBtns.style.gap = '8px';
-        titleRightBtns.appendChild(importNsCollectionsBtn);
+        titleRightBtns.appendChild(importNsWrap);
         titleRightBtns.appendChild(categoryManageBtn);
         titleBar.appendChild(titleRightBtns);
 
@@ -4482,8 +4584,7 @@
 
         const searchInput = document.createElement('input');
         searchInput.type = 'search';
-        // 不显示提示占位文字
-        searchInput.placeholder = '';
+        searchInput.placeholder = '搜索标题或备注';
         searchInput.style.flex = '1';
         searchInput.style.padding = isMobile ? '10px 12px' : '6px 8px';
         searchInput.style.border = '1px solid #ddd';
