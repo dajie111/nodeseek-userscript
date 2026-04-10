@@ -475,110 +475,59 @@
             // 设置title为备注的完整内容
             tdRemark.title = info.remark ? info.remark : '点击编辑备注';
 
-            // 备注编辑功能 - 使用固定定位的编辑框，不干扰现有布局
+            // 备注编辑功能 - 直接在单元格内切换为输入框（与好友列表一致）
+            tdRemark.style.cursor = 'pointer';
             tdRemark.onclick = function(e) {
                 e.stopPropagation();
-                e.preventDefault();
-                
-                // 防止重复点击
-                if (document.getElementById('blacklist-edit-overlay')) return;
-                
-                const currentText = (info.remark || '');
-                
-                // 获取单元格在页面上的位置
-                const cellRect = tdRemark.getBoundingClientRect();
-                
-                // 创建遮罩层
-                const overlay = document.createElement('div');
-                overlay.id = 'blacklist-edit-overlay';
-                overlay.style.position = 'fixed';
-                overlay.style.top = '0';
-                overlay.style.left = '0';
-                overlay.style.width = '100%';
-                overlay.style.height = '100%';
-                overlay.style.backgroundColor = 'transparent';
-                overlay.style.zIndex = '10001';
-                
-                // 创建编辑框
-                const editor = document.createElement('div');
-                editor.style.position = 'fixed';
-                editor.style.top = cellRect.top + 'px';
-                editor.style.left = cellRect.left + 'px';
-                editor.style.width = cellRect.width + 'px';
-                editor.style.height = cellRect.height + 'px';
-                editor.style.zIndex = '10002';
-                editor.style.backgroundColor = '#fff';
-                editor.style.boxShadow = '0 0 5px rgba(0,0,0,0.3)';
-                editor.style.padding = '0';
-                editor.style.boxSizing = 'border-box';
-                editor.style.borderRadius = '3px';
-                
-                // 创建输入框
+                if (tdRemark.querySelector('input')) return;
+
+                const currentText = info.remark || '';
                 const input = document.createElement('input');
                 input.type = 'text';
                 input.value = currentText;
                 input.style.width = '100%';
-                input.style.height = '100%';
+                input.style.maxWidth = '100%';
+                input.style.boxSizing = 'border-box';
+                input.style.padding = '2px';
                 input.style.border = '1px solid #d00';
                 input.style.borderRadius = '3px';
-                input.style.padding = '0 5px';
-                input.style.boxSizing = 'border-box';
                 input.style.fontSize = '12px';
                 input.style.outline = 'none';
-                
-                // 添加到文档
-                editor.appendChild(input);
-                overlay.appendChild(editor);
-                document.body.appendChild(overlay);
-                
-                                 // 聚焦输入框但不选择文本
-                 input.focus();
-                 // 将光标放在文本末尾
-                 const textLength = input.value.length;
-                 input.setSelectionRange(textLength, textLength);
-                
-                // 函数：关闭编辑并保存
-                const closeEditor = function(save) {
-                    const newText = save ? input.value : currentText;
-                    
-                    // 移除编辑器
-                    document.body.removeChild(overlay);
-                    
-                                         // 如果有变更且选择保存，则更新内容
-                     if (save && newText !== currentText) {
-                         // 更新显示的备注
-                         tdRemark.textContent = newText || '　';  // 使用全角空格保持宽度
-                         tdRemark.title = newText || '点击编辑备注';
-                        
-                        // 更新存储
-                        updateBlacklistRemark(username, newText);
-                        
-                        // 不再在这里异步更新页面上的其他备注显示
-                        // 这会导致备注出现在错误位置
-                        // 由于已经不刷新页面，用户需要手动刷新页面才能看到所有更新
-                        
-                        // 更新信息对象
-                        info.remark = newText;
-                    }
+
+                tdRemark.textContent = '';
+                tdRemark.style.cursor = 'default';
+                tdRemark.appendChild(input);
+                input.focus();
+
+                const finishEdit = () => {
+                    const newRemark = input.value;
+                    input.remove();
+
+                    // 更新显示的备注
+                    tdRemark.textContent = newRemark || '　';
+                    tdRemark.title = newRemark || '点击编辑备注';
+                    tdRemark.style.cursor = 'pointer';
+
+                    // 更新存储
+                    updateBlacklistRemark(username, newRemark);
+
+                    // 更新信息对象
+                    info.remark = newRemark;
                 };
-                
-                // 点击遮罩层关闭编辑器
-                overlay.addEventListener('mousedown', function(e) {
-                    if (e.target === overlay) {
-                        closeEditor(true);
-                    }
-                });
-                
-                // 键盘事件
+
+                input.onblur = finishEdit;
+
                 input.addEventListener('keydown', function(e) {
                     if (e.key === 'Enter') {
-                        e.preventDefault();
-                        closeEditor(true);
+                        input.blur();
                     } else if (e.key === 'Escape') {
-                        e.preventDefault();
-                        closeEditor(false);
+                        input.remove();
+                        tdRemark.textContent = currentText || '　';
+                        tdRemark.title = currentText || '点击编辑备注';
+                        tdRemark.style.cursor = 'pointer';
                     }
                 });
+                input.onclick = function(e) { e.stopPropagation(); };
             };
             tr.appendChild(tdRemark);
             // 拉黑时间
