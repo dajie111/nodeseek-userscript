@@ -1,18 +1,18 @@
-// ========== 收藏 / 查看（收藏列表、分类、导入 NS、帖子页收藏按钮）==========
+// ========== 收藏 / 查看 ==========
 (function () {
     'use strict';
 
-    function addLog(message) {
-        if (typeof window.addLog === 'function') {
-            window.addLog(message);
-        }
-    }
-
-    function getCollapsedState() {
+    function nsCollectGetCollapsedState() {
         try {
             return localStorage.getItem('nodeseek_buttons_collapsed') === 'true';
         } catch (e) {
             return false;
+        }
+    }
+
+    function nsCollectLog(message) {
+        if (typeof window.addLog === 'function') {
+            window.addLog(message);
         }
     }
 
@@ -33,6 +33,7 @@
     }
     const FAVORITE_CATEGORY_NAME_MAX_LEN = 4;
     const FAVORITE_CATEGORY_MAX_COUNT = 6;
+
     // 读取收藏
     function getFavorites() {
         return JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]');
@@ -161,322 +162,6 @@
         return true;
     }
 
-    // 新增：获取折叠状态
-    function getCollapsedState() {
-        return localStorage.getItem(COLLAPSED_STATE_KEY) === 'true';
-    }
-
-    // 新增：保存折叠状态
-    function setCollapsedState(isCollapsed) {
-        localStorage.setItem(COLLAPSED_STATE_KEY, isCollapsed.toString());
-    }
-
-    function getPanelThemeMode() {
-        const saved = localStorage.getItem(PANEL_THEME_MODE_KEY);
-        if (saved === 'dark' || saved === 'light') return saved;
-        const root = document.documentElement;
-        const pageTheme = root.getAttribute('data-theme');
-        const isDarkByAttr = pageTheme === 'dark';
-        const isDarkByClass = root.classList.contains('dark') || document.body?.classList?.contains('dark') || document.body?.classList?.contains('theme-dark');
-        const isDarkByMedia = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const inferred = (isDarkByAttr || isDarkByClass || isDarkByMedia) ? 'dark' : 'light';
-        localStorage.setItem(PANEL_THEME_MODE_KEY, inferred);
-        return inferred;
-    }
-
-    function setPanelThemeMode(mode) {
-        const safe = (mode === 'dark' || mode === 'light') ? mode : getPanelThemeMode();
-        localStorage.setItem(PANEL_THEME_MODE_KEY, safe);
-    }
-
-    function applyPanelThemeMode(mode) {
-        const root = document.documentElement;
-        root.setAttribute('data-ns-theme', mode === 'dark' ? 'dark' : 'light');
-    }
-
-    function cyclePanelThemeMode() {
-        const current = getPanelThemeMode();
-        const next = current === 'dark' ? 'light' : 'dark';
-        setPanelThemeMode(next);
-        applyPanelThemeMode(next);
-        return next;
-    }
-
-    function panelThemeModeLabel(mode) {
-        return mode === 'dark' ? '暗' : '亮';
-    }
-
-    function panelThemeModeTitle(mode) {
-        const text = mode === 'dark' ? '暗黑' : '亮色';
-        return `主题：${text}，点击切换`;
-    }
-
-    try { applyPanelThemeMode(getPanelThemeMode()); } catch (e) { }
-
-    // 新增：用户数据缓存管理
-    function getUserDataCache() {
-        const cache = JSON.parse(localStorage.getItem(USER_DATA_CACHE_KEY) || '{}');
-        // 清理过期缓存（1小时过期）
-        const now = Date.now();
-        const expireTime = 1 * 60 * 60 * 1000; // 1小时
-        Object.keys(cache).forEach(userId => {
-            if (cache[userId].timestamp && (now - cache[userId].timestamp) > expireTime) {
-                delete cache[userId];
-            }
-        });
-        localStorage.setItem(USER_DATA_CACHE_KEY, JSON.stringify(cache));
-        return cache;
-    }
-
-    function setUserDataCache(userId, data) {
-        const cache = getUserDataCache();
-        cache[userId] = {
-            ...data,
-            timestamp: Date.now()
-        };
-        localStorage.setItem(USER_DATA_CACHE_KEY, JSON.stringify(cache));
-    }
-
-    // 新增：抓取用户数据
-    async function fetchUserData(userId) {
-        try {
-            // 先检查缓存
-            const cache = getUserDataCache();
-            if (cache[userId] && cache[userId].timestamp) {
-                return cache[userId];
-            }
-
-            // 从API获取数据
-            const response = await fetch(`https://www.nodeseek.com/api/account/getInfo/${userId}`);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            if (data.success && data.detail) {
-                const userInfo = {
-                    member_id: data.detail.member_id,
-                    member_name: data.detail.member_name,
-                    rank: data.detail.rank,
-                    coin: data.detail.coin,
-                    stardust: data.detail.stardust,
-                    created_at: data.detail.created_at,
-                    nPost: data.detail.nPost,
-                    nComment: data.detail.nComment,
-                    follows: data.detail.follows,
-                    fans: data.detail.fans,
-                    created_at_str: data.detail.created_at_str
-                };
-
-                // 缓存数据
-                setUserDataCache(userId, userInfo);
-                return userInfo;
-            }
-            return null;
-        } catch (error) {
-            console.error('获取用户数据失败:', error);
-            return null;
-        }
-    }
-
-    // 新增：计算加入天数
-    function calculateJoinDays(createdAt) {
-        if (!createdAt) return '未知';
-        const joinDate = new Date(createdAt);
-        const now = new Date();
-        const diffTime = Math.abs(now - joinDate);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays;
-    }
-
-    // 新增：批量处理用户信息的队列
-    let userInfoQueue = new Set();
-    let isProcessingQueue = false;
-
-    // 新增：显示用户信息
-    async function displayUserInfo(userElement, userId) {
-        // 确保父元素有相对定位
-        const parentElement = userElement.closest('.nsk-content-meta-info') || userElement.parentElement;
-
-        // 检查父元素是否已经显示过用户信息
-        if (parentElement && parentElement.querySelector('.user-info-display')) {
-            return;
-        }
-
-        const userData = await fetchUserData(userId);
-        if (!userData) {
-            return;
-        }
-
-        await displayUserInfoFromData(userElement, userData);
-    }
-
-    // 优化后的批量处理用户头像和信息显示
-    async function processUserAvatars() {
-        // 查找所有用户头像或用户名链接
-        const userElements = document.querySelectorAll('a.author-name, .user-avatar, .nsk-content-meta-info a[href*="/space/"]');
-
-        // 收集所有需要处理的用户ID
-        const userIds = new Set();
-        const elementUserMap = new Map();
-
-        for (const element of userElements) {
-            // 检查是否已经显示过用户信息
-            const parentElement = element.closest('.nsk-content-meta-info') || element.parentElement;
-            if (parentElement && parentElement.querySelector('.user-info-display')) {
-                continue;
-            }
-
-            let userId = null;
-            // 从链接中提取用户ID
-            if (element.href && element.href.includes('/space/')) {
-                const match = element.href.match(/\/space\/(\d+)/);
-                if (match) {
-                    userId = match[1];
-                    userIds.add(userId);
-                    if (!elementUserMap.has(userId)) {
-                        elementUserMap.set(userId, []);
-                    }
-                    elementUserMap.get(userId).push(element);
-                }
-            }
-        }
-
-        // 如果没有新的用户需要处理，直接返回
-        if (userIds.size === 0) {
-            return;
-        }
-
-        // 批量获取用户数据
-        await batchFetchUserData(Array.from(userIds), elementUserMap);
-    }
-
-    // 新增：批量获取用户数据
-    async function batchFetchUserData(userIds, elementUserMap) {
-        // 检查缓存，分离需要请求的用户ID
-        const cache = getUserDataCache();
-        const cachedUsers = [];
-        const needFetchUsers = [];
-
-        userIds.forEach(userId => {
-            if (cache[userId] && cache[userId].timestamp) {
-                cachedUsers.push({ userId, data: cache[userId] });
-            } else {
-                needFetchUsers.push(userId);
-            }
-        });
-
-        // 先处理缓存的用户数据
-        for (const { userId, data } of cachedUsers) {
-            const elements = elementUserMap.get(userId) || [];
-            for (const element of elements) {
-                await displayUserInfoFromData(element, data);
-            }
-        }
-
-        // 并发获取需要请求的用户数据（限制并发数）
-        const concurrencyLimit = 3; // 限制并发请求数
-        const chunks = [];
-        for (let i = 0; i < needFetchUsers.length; i += concurrencyLimit) {
-            chunks.push(needFetchUsers.slice(i, i + concurrencyLimit));
-        }
-
-        for (const chunk of chunks) {
-            const promises = chunk.map(async userId => {
-                try {
-                    const userData = await fetchUserData(userId);
-                    if (userData) {
-                        const elements = elementUserMap.get(userId) || [];
-                        for (const element of elements) {
-                            await displayUserInfoFromData(element, userData);
-                        }
-                    }
-                } catch (error) {
-                    console.error(`获取用户${userId}数据失败:`, error);
-                }
-            });
-
-            await Promise.all(promises);
-            // 批次间添加小延迟，避免请求过于频繁
-            if (chunks.indexOf(chunk) < chunks.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 200));
-            }
-        }
-    }
-
-    // 新增：从已有数据显示用户信息
-    async function displayUserInfoFromData(userElement, userData) {
-        // 检查用户信息显示开关状态
-        if (!getUserInfoDisplayState()) {
-            return;
-        }
-
-        const parentElement = userElement.closest('.nsk-content-meta-info') || userElement.parentElement;
-
-        // 检查父元素是否已经显示过用户信息
-        if (parentElement && parentElement.querySelector('.user-info-display')) {
-            return;
-        }
-
-        // 计算加入天数
-        const joinDays = calculateJoinDays(userData.created_at);
-
-        // 创建用户信息显示元素
-        const infoDiv = document.createElement('div');
-        infoDiv.className = 'user-info-display';
-        infoDiv.style.cssText = `
-            position: absolute;
-            top: -14px;
-            left: 0;
-            right: auto;
-            max-width: calc(100% - 60px);
-            color:rgb(173, 87, 223); # 自动显示用户详细信息，字体颜色。
-            padding: 0px 1px;
-            border-radius: 1px;
-            font-size: 11px;
-            white-space: nowrap;
-            z-index: 1; /* 极低的z-index值，确保弹窗可以遮盖此元素 */
-            pointer-events: auto; /* 允许选择和复制文本 */
-            display: flex;
-            align-items: center;
-            user-select: text;
-            -webkit-user-select: text;
-            -moz-user-select: text;
-            -ms-user-select: text;
-            line-height: 1;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        `;
-
-        // 横向显示所有信息
-        infoDiv.innerHTML = `加入: ${joinDays}天 | 等级: ${userData.rank} | 鸡腿: ${userData.coin} | 星辰: ${userData.stardust} | 主题: ${userData.nPost} | 评论: ${userData.nComment} | 粉丝: ${userData.fans} | 关注: ${userData.follows}`;
-
-        // 确保父元素有相对定位，但不影响其他子元素的布局
-        if (parentElement) {
-            // 保存原始position值
-            const originalPosition = getComputedStyle(parentElement).position;
-            if (originalPosition === 'static') {
-                parentElement.style.position = 'relative';
-            }
-
-            // 为了不影响楼层号位置，确保楼层号元素保持在右侧
-            const floorElements = parentElement.querySelectorAll('*');
-            floorElements.forEach(el => {
-                if (el.textContent && el.textContent.match(/^#\d+$/)) {
-                    // 找到楼层号元素，确保其样式不被影响，并向右移动8px
-                    const computedStyle = getComputedStyle(el);
-                    if (computedStyle.position !== 'absolute' && computedStyle.position !== 'fixed') {
-                        el.style.position = 'relative';
-                        el.style.zIndex = '1001';
-                        el.style.right = '-8px';
-                    }
-                }
-            });
-
-            parentElement.appendChild(infoDiv);
-        }
-    }
-
     // 添加收藏
     function addToFavorites(remark, category) {
         const list = getFavorites();
@@ -497,7 +182,7 @@
             list[existingIndex].remark = remark || '';
             list[existingIndex].category = category;
             list[existingIndex].timestamp = new Date().toISOString();
-            addLog(`更新收藏: ${title}`);
+            nsCollectLog(`更新收藏: ${title}`);
         } else {
             // 新收藏
             const newItem = {
@@ -517,7 +202,7 @@
             } else {
                 list.splice(firstUnpinnedIndex, 0, newItem);
             }
-            addLog(`添加收藏: ${title}`);
+            nsCollectLog(`添加收藏: ${title}`);
         }
 
         setFavorites(list);
@@ -532,7 +217,7 @@
             const title = list[index].title;
             list.splice(index, 1);
             setFavorites(list);
-            addLog(`移除收藏: ${title}`);
+            nsCollectLog(`移除收藏: ${title}`);
             return true;
         }
         return false;
@@ -646,7 +331,7 @@
         setFavorites(list);
         let logMsg = `NS站内收藏导入：新增 ${added} 条，跳过已存在 ${skipped} 条（接口共 ${allRows.length} 条）`;
         if (skippedPrivate > 0) logMsg += `，未导入私有 ${skippedPrivate} 条`;
-        addLog(logMsg);
+        nsCollectLog(logMsg);
         return { added, skipped, skippedPrivate, totalApi: allRows.length };
     }
 
@@ -664,7 +349,6 @@
         const item = list.find(item => item.url === url);
         return item ? item.remark : '';
     }
-
 
     // 显示收藏列表对话框
     function showFavoritesDialog() {
@@ -1208,6 +892,7 @@
                 const rowPaddingY = '0px';
                 tdTitle.style.paddingTop = rowPaddingY;
                 tdTitle.style.paddingBottom = rowPaddingY;
+                tdTitle.style.verticalAlign = 'bottom';
                 const titleLink = document.createElement('a');
                 titleLink.href = item.url;
                 titleLink.textContent = item.title;
@@ -1218,15 +903,15 @@
                 titleLink.style.textDecoration = 'none';
                 titleLink.style.display = 'inline-block';
                 titleLink.style.lineHeight = '1.1';
+                titleLink.style.verticalAlign = 'bottom';
                 // 修复标题末尾无法点击的问题（被备注列padding遮挡）
                 titleLink.style.position = 'relative';
                 titleLink.style.zIndex = '5';
                 // 单行省略，保持横向布局不换行
                 // 桌面端让标题向右延伸到备注列左移产生的空白区
                 if (window.innerWidth > 767) {
-                    const extraTitleWidth = getCollapsedState() ? 5 : 0;
+                    const extraTitleWidth = nsCollectGetCollapsedState() ? 5 : 0;
                     titleLink.style.maxWidth = `calc(100% + ${121 + extraTitleWidth}px)`;
-                    titleLink.style.top = '3px';
                 } else {
                     titleLink.style.maxWidth = '100%';
                 }
@@ -1242,6 +927,7 @@
                 const isMobile = window.innerWidth <= 767;
                 tdRemark.style.paddingTop = rowPaddingY;
                 tdRemark.style.paddingBottom = rowPaddingY;
+                tdRemark.style.verticalAlign = 'bottom';
                 tdRemark.style.color = '#888';
                 tdRemark.style.fontSize = '12px';
                 tdRemark.style.textAlign = 'left';
@@ -1263,11 +949,27 @@
                 const renderRemark = () => {
                     tdRemark.textContent = '';
                     tdRemark.style.cursor = 'pointer';
+                    tdRemark.style.fontSize = '12px';
+                    tdRemark.style.lineHeight = '1.1';
                     tdRemark.title = item.remark || '点击编辑备注';
 
                     const span = document.createElement('span');
                     const hasRemark = !!(item.remark && item.remark.trim());
                     span.textContent = hasRemark ? item.remark : '\u00A0';
+                    span.style.fontSize = '12px';
+                    span.style.lineHeight = '1.1';
+                    if (!isMobile) {
+                        /* 块级 + 100% 宽，省略号作用在文本节点上（inline-block 无 max-width 会撑破单元格导致只裁剪无 …） */
+                        span.style.display = 'block';
+                        span.style.maxWidth = '100%';
+                        span.style.overflow = 'hidden';
+                        span.style.textOverflow = 'ellipsis';
+                        span.style.whiteSpace = 'nowrap';
+                    } else {
+                        span.style.display = 'block';
+                        span.style.maxWidth = '100%';
+                        span.style.wordBreak = 'break-word';
+                    }
 
                     tdRemark.appendChild(span);
 
@@ -1292,6 +994,8 @@
 
                         tdRemark.textContent = '';
                         tdRemark.style.cursor = 'default';
+                        tdRemark.style.fontSize = '12px';
+                        tdRemark.style.lineHeight = '1.1';
                         tdRemark.onclick = null;
                         tdRemark.appendChild(input);
                         input.focus();
@@ -1306,7 +1010,7 @@
                             if (index !== -1) {
                                 favorites[index].remark = newRemark;
                                 setFavorites(favorites);
-                                addLog(`更新收藏备注: ${item.title}`);
+                                nsCollectLog(`更新收藏备注: ${item.title}`);
                             }
                             renderRemark();
                         };
@@ -1339,7 +1043,7 @@
                 tdCategory.style.paddingLeft = '42px';
                 tdCategory.style.whiteSpace = 'nowrap';
                 tdCategory.style.position = 'relative';
-                tdCategory.style.top = '-1px';
+                tdCategory.style.verticalAlign = 'bottom';
                 tdCategory.style.left = '78px';
                 tdCategory.style.zIndex = '1';
                 tdCategory.style.cursor = 'default';
@@ -1357,7 +1061,7 @@
                     categoryText.style.textOverflow = 'ellipsis';
                     categoryText.style.whiteSpace = 'nowrap';
                     categoryText.style.cursor = 'pointer';
-                    categoryText.style.verticalAlign = 'middle';
+                    categoryText.style.verticalAlign = 'bottom';
                     categoryText.title = '点击修改分类: ' + displayText;
 
                     categoryText.onclick = function (e) {
@@ -1448,7 +1152,7 @@
                         if (index !== -1) {
                             favorites[index].category = newCategory;
                             setFavorites(favorites);
-                            addLog(`更新收藏分类: ${item.title} -> ${newCategory}`);
+                            nsCollectLog(`更新收藏分类: ${item.title} -> ${newCategory}`);
                             item.category = newCategory;
                         }
                     };
@@ -1477,6 +1181,7 @@
                 } else { tdTime.textContent = ''; }
                 tdTime.style.paddingTop = rowPaddingY;
                 tdTime.style.paddingBottom = rowPaddingY;
+                tdTime.style.verticalAlign = 'bottom';
                 tdTime.style.fontSize = '12px';
                 tdTime.style.whiteSpace = 'nowrap';
                 tdTime.style.paddingLeft = '0px';
@@ -1489,6 +1194,7 @@
                 const tdOp = document.createElement('td');
                 tdOp.style.paddingTop = rowPaddingY;
                 tdOp.style.paddingBottom = rowPaddingY;
+                tdOp.style.verticalAlign = 'bottom';
                 tdOp.style.textAlign = 'right';
                 tdOp.style.whiteSpace = 'nowrap';
 
@@ -1751,7 +1457,7 @@
                                     favoritesDialog.remove();
                                     showFavoritesDialog();
                                 }
-                                addLog(`重命名分类: ${category} -> ${normalized}`);
+                                nsCollectLog(`重命名分类: ${category} -> ${normalized}`);
                             } else {
                                 alert('重命名失败：分类名称已存在或超过字符限制');
                             }
@@ -1775,7 +1481,7 @@
                                     favoritesDialog.remove();
                                     showFavoritesDialog();
                                 }
-                                addLog(`删除分类: ${category}`);
+                                nsCollectLog(`删除分类: ${category}`);
                             } else {
                                 alert('删除失败');
                             }
@@ -1879,7 +1585,7 @@
                     favoritesDialog.remove();
                     showFavoritesDialog();
                 }
-                addLog(`添加分类: ${categoryName}`);
+                nsCollectLog(`添加分类: ${categoryName}`);
             } else {
                 alert('添加失败：分类名称已存在或超过数量/字符限制');
             }
@@ -2127,36 +1833,21 @@
         buttonContainer.appendChild(favoriteBtn);
         headerArea.appendChild(buttonContainer);
     }
-
-    function handlePanelFavoriteClick() {
-        const url = window.location.href;
-        if (isCurrentPageFavorited()) {
-            if (confirm('当前页面已收藏，是否取消收藏？')) {
-                removeFromFavorites(url);
-            }
-        } else {
-            showAddFavoriteDialog();
-        }
-    }
-
     window.NodeSeekCollect = {
-        getFavorites: getFavorites,
-        setFavorites: setFavorites,
-        getFavoriteCategories: getFavoriteCategories,
-        setFavoriteCategories: setFavoriteCategories,
-        normalizeFavoriteCategoryName: normalizeFavoriteCategoryName,
-        addFavoriteCategory: addFavoriteCategory,
-        removeFavoriteCategory: removeFavoriteCategory,
-        renameFavoriteCategory: renameFavoriteCategory,
-        addToFavorites: addToFavorites,
-        removeFromFavorites: removeFromFavorites,
-        importOfficialNsCollectionsIntoFavorites: importOfficialNsCollectionsIntoFavorites,
-        isCurrentPageFavorited: isCurrentPageFavorited,
-        getCurrentPageFavoriteRemark: getCurrentPageFavoriteRemark,
-        showFavoritesDialog: showFavoritesDialog,
-        showCategoryManageDialog: showCategoryManageDialog,
-        showAddFavoriteDialog: showAddFavoriteDialog,
-        addFavoriteButton: addFavoriteButton,
-        handlePanelFavoriteClick: handlePanelFavoriteClick
+        getFavorites,
+        setFavorites,
+        getFavoriteCategories,
+        setFavoriteCategories,
+        addFavoriteCategory,
+        removeFavoriteCategory,
+        renameFavoriteCategory,
+        addToFavorites,
+        removeFromFavorites,
+        isCurrentPageFavorited,
+        getCurrentPageFavoriteRemark,
+        importOfficialNsCollectionsIntoFavorites,
+        showFavoritesDialog,
+        showAddFavoriteDialog,
+        addFavoriteButton,
     };
 })();
