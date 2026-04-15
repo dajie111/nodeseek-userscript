@@ -2109,6 +2109,17 @@
             return;
         }
 
+        // 排除 /ruling 页面（帖子聚合/榜单页面）不显示阅读记忆
+        const rulingPage = /\/ruling/.test(window.location.pathname);
+        if (rulingPage) {
+            const marked = document.querySelectorAll('.ns-viewed-title');
+            for (const el of marked) {
+                el.classList.remove('ns-viewed-title');
+                el.style.removeProperty('color');
+            }
+            return;
+        }
+
         const visitedSet = getVisitedUrlSet();
         const isSpaceTab = isUserSpaceTab();
 
