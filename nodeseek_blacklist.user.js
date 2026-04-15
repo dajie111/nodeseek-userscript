@@ -1898,9 +1898,6 @@
         if (anchorTextLooksLikeReplyOrPostTime(text)) return false;
         if (anchorTextLooksLikeFloorLink(text)) return false;
         if (isSamePostThreadPageLink(a)) return false;
-        const minLen = isUserSpaceTab() ? 1 : 3;
-        const maxLen = isUserSpaceTab() ? 500 : 140;
-        if (text.length < minLen || text.length > maxLen) return false;
         const href = a.getAttribute('href') || '';
         if (!/\/post-\d+|\/topic\/|\/article\//.test(href) && !/\/post-\d+|\/topic\/|\/article\//.test(a.href)) return false;
         return true;
@@ -2192,7 +2189,6 @@
         processUsernames();
         highlightBlacklisted();
         highlightFriends(); // 新增调用
-        if (nsCollect() && nsCollect().addFavoriteButton) nsCollect().addFavoriteButton(); // 新增收藏按钮
         processUserAvatars(); // 新增：处理用户头像信息显示
         replaceRelativeTimeWithAbsolute(); // 新增：替换相对时间为完整时间
         markViewedTitles();
@@ -3739,15 +3735,6 @@
         // quickEditBtn.style.width = btnWidth; // 设置快捷编辑按钮宽度
         quickEditBtn.style.minWidth = btnWidth;
 
-        // 新增：查看按钮
-        const viewFavoritesBtn = document.createElement('button');
-        viewFavoritesBtn.id = 'favorites-view-btn';
-        viewFavoritesBtn.className = 'blacklist-btn';
-        viewFavoritesBtn.style.background = '#1890ff'; // 蓝色背景
-        viewFavoritesBtn.textContent = '查看';
-        viewFavoritesBtn.style.width = '50%'; // 设置为50%宽度，与收藏按钮共享一行
-        viewFavoritesBtn.onclick = showFavoritesDialog;
-
         // 新增：关键词过滤按钮
         const filterBtn = document.createElement('button');
         filterBtn.id = 'keyword-filter-btn';
@@ -3764,33 +3751,6 @@
             }
         };
 
-        // 新增：收藏当前页面按钮
-        const addFavoriteBtn = document.createElement('button');
-        addFavoriteBtn.id = 'favorite-add-btn';
-        addFavoriteBtn.className = 'blacklist-btn';
-        addFavoriteBtn.style.background = '#1890ff'; // 蓝色背景
-        addFavoriteBtn.textContent = '收藏';
-        addFavoriteBtn.style.width = '50%'; // 设置为50%宽度，与查看按钮共享一行
-        addFavoriteBtn.onclick = function () {
-            // 获取当前页面URL
-            const url = window.location.href;
-            // 获取当前页面标题
-            const title = document.title.replace(' - NodeSeek', '').trim();
-
-            // 检查是否已收藏
-            const isFavorited = isCurrentPageFavorited();
-            if (isFavorited) {
-                // 已收藏，询问是否取消收藏
-                if (confirm('当前页面已收藏，是否取消收藏？')) {
-                    removeFromFavorites(url);
-                    // 不显示弹窗提示
-                }
-            } else {
-                // 未收藏，添加收藏 - 使用自定义弹窗选择分类
-                showAddFavoriteDialog();
-            }
-        };
-
         // 创建一个水平排列的容器，用于收藏相关按钮
         const favoriteContainer = document.createElement('div');
         favoriteContainer.style.display = 'flex';
@@ -3798,9 +3758,10 @@
         favoriteContainer.style.gap = '10px';
         favoriteContainer.style.width = '100%';
 
-        // 将收藏和查看按钮添加到水平容器中
-        favoriteContainer.appendChild(addFavoriteBtn); // 收藏
-        favoriteContainer.appendChild(viewFavoritesBtn); // 查看收藏列表
+        // 调用 collect.js 创建收藏按钮
+        if (nsCollect() && typeof nsCollect().createFavoriteButtons === 'function') {
+            nsCollect().createFavoriteButtons(favoriteContainer);
+        }
 
         // 新增：关键词过滤按钮单独一行
         const filterBtnContainer = document.createElement('div');
@@ -3987,17 +3948,28 @@
     function showAddFavoriteDialog() {
         if (nsCollect() && typeof nsCollect().showAddFavoriteDialog === 'function') {
             nsCollect().showAddFavoriteDialog();
+        } else {
+            console.error('收藏模块 collect.js 未加载');
         }
     }
     function isCurrentPageFavorited() {
-        return nsCollect() && typeof nsCollect().isCurrentPageFavorited === 'function'
-            ? nsCollect().isCurrentPageFavorited()
-            : false;
+        if (!nsCollect()) return false;
+        return nsCollect().isCurrentPageFavorited();
     }
     function removeFromFavorites(url) {
-        return nsCollect() && typeof nsCollect().removeFromFavorites === 'function'
-            ? nsCollect().removeFromFavorites(url)
-            : false;
+        if (!nsCollect()) return false;
+        nsCollect().removeFromFavorites(url);
+        return true;
+    }
+
+    // 更新收藏按钮状态
+    function updateFavoriteButton() {
+        const btn = document.getElementById('favorite-add-btn');
+        if (btn) {
+            const isFavorited = isCurrentPageFavorited();
+            btn.textContent = isFavorited ? '已收藏' : '收藏';
+            btn.style.background = isFavorited ? '#52c41a' : '#1890ff';
+        }
     }
 
     // 防止重复记录的变量
