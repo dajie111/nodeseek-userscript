@@ -2096,7 +2096,7 @@
         if (a.closest('#nodeseek-plugin-container, #browse-history-dialog, #favorites-dialog, #blacklist-dialog, #friends-dialog, #logs-dialog, footer')) return;
 
         // 立即记录到已读历史（任意进帖链接均可记录）；仅标题链接触发阅读记忆颜色（帖子详情页不着色）
-        if (getViewedHistoryEnabled()) {
+        if (getViewedHistoryEnabled() && !isRulingPage()) {
             addToViewedTitles(a.href);
             if (!isPostThreadDetailPage()) {
                 const normalized = normalizeVisitedUrl(a.href);
@@ -2227,8 +2227,9 @@
         // 列表项底部元信息行（作者、浏览、回复、最后回复时间等）内的帖子链不是标题
         if (a.closest('.nsk-content-meta-info')) return false;
         const path = window.location.pathname || '';
+        // ruling 页面(#/p-1, #/p-2 等)不应应用阅读记忆
         const isDetailPage = path.includes('/topic/') || path.includes('/article/') || /\/post-\d+/.test(path);
-        if (isDetailPage) {
+        if (isDetailPage || isRulingPage()) {
             if (a.closest('.topic-header, .thread-header, .article-header, .topic-detail-header')) return false;
             if (a.closest('h1')) return false;
         }
@@ -2236,10 +2237,11 @@
         if (anchorTextLooksLikeReplyOrPostTime(text)) return false;
         if (anchorTextLooksLikeFloorLink(text)) return false;
         if (isSamePostThreadPageLink(a)) return false;
-        const minLen = isUserSpaceTab() ? 1 : 3;
+        const minLen = isUserSpaceTab() ? 1 : 1;
         const maxLen = isUserSpaceTab() ? 500 : 140;
         if (text.length < minLen || text.length > maxLen) return false;
         const href = a.getAttribute('href') || '';
+        // 检测是否为帖子链接（post-xxxx 格式），任意长度都记录阅读颜色
         if (!/\/post-\d+|\/topic\/|\/article\//.test(href) && !/\/post-\d+|\/topic\/|\/article\//.test(a.href)) return false;
         return true;
     }
@@ -2261,6 +2263,13 @@
     function isPostThreadDetailPage() {
         const path = window.location.pathname || '';
         return /^\/post-\d+/i.test(path);
+    }
+
+    /** 黑名单规则页面（/ruling#/p-1）；不在此页应用阅读记忆标题颜色 */
+    function isRulingPage() {
+        const path = window.location.pathname || '';
+        const hash = window.location.hash || '';
+        return path === '/ruling' && /^#\/p-\d+$/.test(hash);
     }
 
     /** 帖子内翻页、省略号跳转等与当前帖同 ID（/post-{id}-*），应保持站点默认打开方式，不强制新标签页 */
@@ -2442,6 +2451,15 @@
         }
 
         if (isPostThreadDetailPage()) {
+            const marked = document.querySelectorAll('.ns-viewed-title');
+            for (const el of marked) {
+                el.classList.remove('ns-viewed-title');
+                el.style.removeProperty('color');
+            }
+            return;
+        }
+
+        if (isRulingPage()) {
             const marked = document.querySelectorAll('.ns-viewed-title');
             for (const el of marked) {
                 el.classList.remove('ns-viewed-title');
