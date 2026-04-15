@@ -1919,7 +1919,7 @@
     /** 论坛帖子详情页（/post-123-1）；不在此页应用阅读记忆标题颜色 */
     function isPostThreadDetailPage() {
         const path = window.location.pathname || '';
-        return /^\/post-\d+/i.test(path);
+        return /^\/post-\d+/i.test(path) || path === '/ruling';
     }
 
     /** 帖子内翻页、省略号跳转等与当前帖同 ID（/post-{id}-*），应保持站点默认打开方式，不强制新标签页 */
@@ -2101,17 +2101,6 @@
         }
 
         if (isPostThreadDetailPage()) {
-            const marked = document.querySelectorAll('.ns-viewed-title');
-            for (const el of marked) {
-                el.classList.remove('ns-viewed-title');
-                el.style.removeProperty('color');
-            }
-            return;
-        }
-
-        // 排除 /ruling 页面（帖子聚合/榜单页面）不显示阅读记忆
-        const rulingPage = /\/ruling/.test(window.location.pathname);
-        if (rulingPage) {
             const marked = document.querySelectorAll('.ns-viewed-title');
             for (const el of marked) {
                 el.classList.remove('ns-viewed-title');
