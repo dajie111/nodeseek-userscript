@@ -2227,7 +2227,7 @@
         // 列表项底部元信息行（作者、浏览、回复、最后回复时间等）内的帖子链不是标题
         if (a.closest('.nsk-content-meta-info')) return false;
         const path = window.location.pathname || '';
-        // ruling 页面(#/p-1, #/p-2 等)不应应用阅读记忆
+        // ruling 页面(/ruling)不应应用阅读记忆
         const isDetailPage = path.includes('/topic/') || path.includes('/article/') || /\/post-\d+/.test(path);
         if (isDetailPage || isRulingPage()) {
             if (a.closest('.topic-header, .thread-header, .article-header, .topic-detail-header')) return false;
@@ -2265,11 +2265,10 @@
         return /^\/post-\d+/i.test(path);
     }
 
-    /** 黑名单规则页面（/ruling#/p-1）；不在此页应用阅读记忆标题颜色 */
+    /** 黑名单规则页面（/ruling）；只要路径出现/ruling就不应用阅读记忆颜色 */
     function isRulingPage() {
         const path = window.location.pathname || '';
-        const hash = window.location.hash || '';
-        return path === '/ruling' && /^#\/p-\d+$/.test(hash);
+        return path.includes('/ruling');
     }
 
     /** 帖子内翻页、省略号跳转等与当前帖同 ID（/post-{id}-*），应保持站点默认打开方式，不强制新标签页 */
