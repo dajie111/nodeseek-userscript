@@ -1081,7 +1081,7 @@
 
         const closeBtn = document.createElement('span');
         closeBtn.textContent = '\u00d7';
-        closeBtn.style.cssText = 'cursor:pointer;font-size:22px;color:#999;margin-left:8px;line-height:1;';
+        closeBtn.style.cssText = 'cursor:pointer;font-size:22px;color:#999;margin-left:8px;line-height:1;position:relative;top:-2px;';
         closeBtn.onclick = function() { dialog.remove(); };
         headerBtns.appendChild(closeBtn);
 
