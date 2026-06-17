@@ -591,6 +591,21 @@
             } catch (error) {
             }
 
+            // 获取 NS 图床分类与置顶设置
+            try {
+                const nsImageSettings = {};
+                const cats = localStorage.getItem('ns_ni_categories');
+                if (cats) nsImageSettings.categories = JSON.parse(cats);
+                const imgCatMap = localStorage.getItem('ns_ni_img_cats');
+                if (imgCatMap) nsImageSettings.imageCatMap = JSON.parse(imgCatMap);
+                const pins = localStorage.getItem('ns_ni_pins');
+                if (pins) nsImageSettings.pinnedIds = JSON.parse(pins);
+                if (Object.keys(nsImageSettings).length > 0) {
+                    config.nsImageSettings = nsImageSettings;
+                }
+            } catch (error) {
+            }
+
             try {
                 const enabledRaw = localStorage.getItem('nodeseek_auto_sync_enabled');
                 const itemsRaw = localStorage.getItem('nodeseek_auto_sync_items');
@@ -899,6 +914,38 @@
                         applied.push(`设置(阅读记忆${count}条)`);
                     } catch (error) {
                         applied.push("设置(失败)");
+                    }
+                }
+
+                // 应用 NS 图床分类与置顶设置
+                if (config.nsImageSettings && typeof config.nsImageSettings === 'object') {
+                    try {
+                        const ns = config.nsImageSettings;
+                        let nsApplied = [];
+                        if (Array.isArray(ns.categories)) {
+                            localStorage.setItem('ns_ni_categories', JSON.stringify(ns.categories));
+                            nsApplied.push(ns.categories.length + '个分类');
+                        }
+                        if (ns.imageCatMap && typeof ns.imageCatMap === 'object') {
+                            localStorage.setItem('ns_ni_img_cats', JSON.stringify(ns.imageCatMap));
+                        }
+                        if (Array.isArray(ns.pinnedIds)) {
+                            localStorage.setItem('ns_ni_pins', JSON.stringify(ns.pinnedIds));
+                            nsApplied.push(ns.pinnedIds.length + '个置顶');
+                        }
+                        // 同步到 GM_setValue（nodeImage.js 优先从 GM 读取）
+                        if (typeof GM_setValue === 'function') {
+                            try {
+                                if (Array.isArray(ns.categories)) GM_setValue('ns_ni_categories', ns.categories);
+                                if (ns.imageCatMap && typeof ns.imageCatMap === 'object') GM_setValue('ns_ni_img_cats', ns.imageCatMap);
+                                if (Array.isArray(ns.pinnedIds)) GM_setValue('ns_ni_pins', ns.pinnedIds);
+                            } catch (e) { /* ignore */ }
+                        }
+                        if (nsApplied.length > 0) {
+                            applied.push('NS图床(' + nsApplied.join(', ') + ')');
+                        }
+                    } catch (error) {
+                        applied.push('NS图床(失败)');
                     }
                 }
 
