@@ -2712,25 +2712,26 @@
                     });
                 }
 
-                // 置顶排前：置顶图片排在前面，非置顶保持原序
-                items = items.slice().sort(function (a, b) {
-                    var pidA = pickId(a);
-                    var uA = pickUrl(a);
-                    var idA = pidA || extractIdFromCdnUrl(uA);
-                    var pidB = pickId(b);
-                    var uB = pickUrl(b);
-                    var idB = pidB || extractIdFromCdnUrl(uB);
-                    var pinA = idA && pinnedIds.indexOf(idA) >= 0 ? 0 : 1;
-                    var pinB = idB && pinnedIds.indexOf(idB) >= 0 ? 0 : 1;
-                    if (pinA !== pinB) return pinA - pinB;
-                    // 同为置顶的按置顶顺序
-                    if (pinA === 0) {
-                        var idxA = pinnedIds.indexOf(idA);
-                        var idxB = pinnedIds.indexOf(idB);
-                        return idxA - idxB;
-                    }
-                    return 0;
-                });
+                // 仅在自定义分类标签下置顶排前，"全部"保持原始顺序
+                if (currentCatFilter !== 'all') {
+                    items = items.slice().sort(function (a, b) {
+                        var pidA = pickId(a);
+                        var uA = pickUrl(a);
+                        var idA = pidA || extractIdFromCdnUrl(uA);
+                        var pidB = pickId(b);
+                        var uB = pickUrl(b);
+                        var idB = pidB || extractIdFromCdnUrl(uB);
+                        var pinA = idA && pinnedIds.indexOf(idA) >= 0 ? 0 : 1;
+                        var pinB = idB && pinnedIds.indexOf(idB) >= 0 ? 0 : 1;
+                        if (pinA !== pinB) return pinA - pinB;
+                        if (pinA === 0) {
+                            var idxA = pinnedIds.indexOf(idA);
+                            var idxB = pinnedIds.indexOf(idB);
+                            return idxA - idxB;
+                        }
+                        return 0;
+                    });
+                }
                 return items;
             }
 
