@@ -52,6 +52,154 @@
             }
         } catch (e) {}
     }
+    // ========== 分类与置顶本地存储 ==========
+    var NI_CAT_KEY = 'ns_ni_categories';
+    var NI_IMG_CAT_KEY = 'ns_ni_img_cats';
+    var NI_PIN_KEY = 'ns_ni_pins';
+    var NI_CAT_ID_SEQ_KEY = 'ns_ni_cat_id_seq';
+
+    /** 读取GM/本地存储值 */
+    function niStoreGet(key, fallback) {
+        var raw = null;
+        try {
+            if (typeof GM_getValue === 'function') raw = GM_getValue(key, null);
+        } catch (e) {}
+        if (raw == null) {
+            try { raw = localStorage.getItem(key); } catch (e2) {}
+        }
+        if (raw == null) return fallback;
+        if (typeof raw === 'string') {
+            try { return JSON.parse(raw); } catch (e3) { return fallback; }
+        }
+        return raw;
+    }
+    /** 写入GM/本地存储值 */
+    function niStoreSet(key, val) {
+        var json = JSON.stringify(val);
+        try { localStorage.setItem(key, json); } catch (e) {}
+        try { if (typeof GM_setValue === 'function') GM_setValue(key, val); } catch (e2) {}
+    }
+
+    /** 获取所有分类 [{id,name}] */
+    function niGetCategories() {
+        return niStoreGet(NI_CAT_KEY, []);
+    }
+    /** 保存所有分类 */
+    function niSaveCategories(cats) {
+        niStoreSet(NI_CAT_KEY, cats);
+    }
+    /** 生成分类ID */
+    function niNewCatId() {
+        var seq = niStoreGet(NI_CAT_ID_SEQ_KEY, 1);
+        niStoreSet(NI_CAT_ID_SEQ_KEY, seq + 1);
+        return 'cat_' + Date.now() + '_' + seq;
+    }
+    /** 计算分类名字符宽度：中文/全角算2，英文/半角算1，上限10 */
+    function niCatNameWidth(name) {
+        var w = 0;
+        for (var i = 0; i < name.length; i++) {
+            var c = name.charCodeAt(i);
+            w += (c > 0x7f) ? 2 : 1;
+        }
+        return w;
+    }
+    /** 添加分类 */
+    function niAddCategory(name) {
+        name = (name || '').trim();
+        if (!name) return null;
+        var cats = niGetCategories();
+        if (cats.length >= 4) return 'MAX';
+        if (niCatNameWidth(name) > 10) return 'LONG';
+        for (var i = 0; i < cats.length; i++) {
+            if (cats[i].name === name) return null;
+        }
+        var cat = { id: niNewCatId(), name: name };
+        cats.push(cat);
+        niSaveCategories(cats);
+        return cat;
+    }
+    /** 重命名分类 */
+    function niRenameCategory(catId, newName) {
+        newName = (newName || '').trim();
+        if (!newName) return false;
+        if (niCatNameWidth(newName) > 10) return 'LONG';
+        var cats = niGetCategories();
+        for (var i = 0; i < cats.length; i++) {
+            if (cats[i].id === catId) {
+                cats[i].name = newName;
+                niSaveCategories(cats);
+                return true;
+            }
+        }
+        return false;
+    }
+    /** 删除分类（不删除图片，只移除分类归属） */
+    function niDeleteCategory(catId) {
+        var cats = niGetCategories();
+        var out = [];
+        for (var i = 0; i < cats.length; i++) {
+            if (cats[i].id !== catId) out.push(cats[i]);
+        }
+        niSaveCategories(out);
+        var map = niGetImgCatMap();
+        var changed = false;
+        for (var k in map) {
+            if (map[k] === catId) { delete map[k]; changed = true; }
+        }
+        if (changed) niSaveImgCatMap(map);
+    }
+    /** 获取图片-分类映射 {imageId: categoryId} */
+    function niGetImgCatMap() {
+        return niStoreGet(NI_IMG_CAT_KEY, {});
+    }
+    /** 保存图片-分类映射 */
+    function niSaveImgCatMap(map) {
+        niStoreSet(NI_IMG_CAT_KEY, map);
+    }
+    /** 设置图片所属分类 */
+    function niSetImageCategory(imageId, catId) {
+        if (!imageId) return;
+        var map = niGetImgCatMap();
+        if (catId) map[imageId] = catId;
+        else delete map[imageId];
+        niSaveImgCatMap(map);
+    }
+    /** 获取图片所属分类ID */
+    function niGetImageCategoryId(imageId) {
+        if (!imageId) return '';
+        var map = niGetImgCatMap();
+        return map[imageId] || '';
+    }
+
+    /** 获取置顶图片ID列表 */
+    function niGetPinnedIds() {
+        return niStoreGet(NI_PIN_KEY, []);
+    }
+    /** 保存置顶列表 */
+    function niSavePinnedIds(arr) {
+        niStoreSet(NI_PIN_KEY, arr);
+    }
+    /** 切换置顶状态 */
+    function niTogglePin(imageId) {
+        if (!imageId) return false;
+        var pins = niGetPinnedIds();
+        var idx = pins.indexOf(imageId);
+        if (idx >= 0) {
+            pins.splice(idx, 1);
+            niSavePinnedIds(pins);
+            return false;
+        } else {
+            pins.unshift(imageId);
+            niSavePinnedIds(pins);
+            return true;
+        }
+    }
+    /** 判断是否置顶 */
+    function niIsPinned(imageId) {
+        if (!imageId) return false;
+        return niGetPinnedIds().indexOf(imageId) >= 0;
+    }
+
     function pickApiErrorText(body, responseText) {
         if (body && typeof body === 'object') {
             if (body.message != null && String(body.message).trim()) return String(body.message).trim();
@@ -751,6 +899,34 @@
         nsNiGlobalFileInput = inp;
         return inp;
     }
+    // 当前激活的分类筛选：'all' | 'pinned' | catId。上传图片时自动归类到当前分类
+    var currentCatFilter = 'all';
+
+    /** 根据当前分类筛选上下文，自动将上传图片归入分类或置顶 */
+    function niApplyUploadFilterContext(body) {
+        if (!body || currentCatFilter === 'all') return;
+        var urls = collectUrls(body, []);
+        var seen = {};
+        urls.forEach(function (u) {
+            if (seen[u]) return;
+            seen[u] = true;
+            // 从 URL 中提取图片 ID（cdn.nodeimage.com/i/xxx 或 /i/xxx）
+            var m = u.match(/cdn\.nodeimage\.com\/i\/([^/?#\s]+)/i) || u.match(/\/i\/([^/?#\s]+)/i);
+            var id = '';
+            if (m) {
+                try { id = decodeURIComponent(m[1]); } catch (e) { id = m[1]; }
+            }
+            // 尝试去除文件扩展名
+            if (id) id = id.replace(/\.(jpe?g|png|gif|webp)$/i, '');
+            if (!id) return;
+            if (currentCatFilter === 'pinned') {
+                if (!niIsPinned(id)) niTogglePin(id);
+            } else {
+                niSetImageCategory(id, currentCatFilter);
+            }
+        });
+    }
+
     function niQuickUploadRunBatch(files) {
         if (!files || !files.length) return;
         var k = getK();
@@ -792,6 +968,7 @@
                 })
                     .then(function (r) {
                         rowUi.doneOk();
+                        niApplyUploadFilterContext(r.body);
                         niNotifyUploadSuccessToEditor(r.body, niQuickToast, function () {});
                         setTimeout(niCloseQuickUploadPanel, 900);
                     })
@@ -836,6 +1013,7 @@
                             return;
                         }
                         rowUi.doneOk();
+                        niApplyUploadFilterContext(r.body);
                         var urls = collectUrls(r && r.body ? r.body : null, []);
                         var seen = {};
                         var batchUniq = [];
@@ -895,6 +1073,7 @@
             })
                 .then(function (r) {
                     rowUi.doneOk();
+                    niApplyUploadFilterContext(r.body);
                     niNotifyUploadSuccessToEditor(r.body, niQuickToast, function () {});
                     setTimeout(niCloseQuickUploadPanel, 900);
                 })
@@ -937,6 +1116,7 @@
                         return;
                     }
                     rowUi.doneOk();
+                    niApplyUploadFilterContext(r.body);
                     var urls = collectUrls(r && r.body ? r.body : null, []);
                     var seen = {};
                     var batchUniq = [];
@@ -1284,35 +1464,284 @@
         refBtn.textContent = '刷新图片列表';
         refBtn.style.cssText = 'width:100%;padding:8px;background:#e2e8f0;border:none;border-radius:4px;cursor:pointer;';
         niScroll.appendChild(refBtn);
+
+        // ========== 分类筛选栏 ==========
+        // currentCatFilter 在顶层作用域声明，自动跟随分类/置顶标签页切换
+        var catBarWrap = document.createElement('div');
+        catBarWrap.style.cssText =
+            'display:flex;align-items:center;gap:4px;margin:8px 0;flex-wrap:wrap;';
+        var catTabsWrap = document.createElement('div');
+        catTabsWrap.style.cssText = 'display:flex;gap:3px;flex-wrap:wrap;flex:1;min-width:0;align-items:center;';
+        var catManageBtn = document.createElement('button');
+        catManageBtn.type = 'button';
+        catManageBtn.textContent = '管理分类';
+        catManageBtn.title = '创建、重命名或删除分类';
+        catManageBtn.style.cssText =
+            'flex-shrink:0;padding:' + (niIsMobile() ? '6px 10px' : '3px 8px') +
+            ';border:1px solid #cbd5e1;background:#f1f5f9;border-radius:4px;cursor:pointer;font-size:' + (niIsMobile() ? '13px' : '11px') +
+            ';color:#475569;' + (niIsMobile() ? 'min-height:36px;' : '');
+        catBarWrap.appendChild(catTabsWrap);
+        catBarWrap.appendChild(catManageBtn);
+        niScroll.appendChild(catBarWrap);
+
+        /** 渲染分类筛选标签 */
+        function renderCatTabs() {
+            catTabsWrap.innerHTML = '';
+            var cats = niGetCategories();
+            var allTab = [{ id: 'all', name: '全部' }, { id: 'pinned', name: '📌 置顶' }].concat(cats);
+            allTab.forEach(function (c) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = c.name;
+                btn.style.cssText =
+                    'padding:' + (niIsMobile() ? '6px 10px' : '3px 8px') +
+                    ';border:1px solid ' + (currentCatFilter === c.id ? '#0d9488' : '#cbd5e1') +
+                    ';background:' + (currentCatFilter === c.id ? '#0d9488' : '#fff') +
+                    ';color:' + (currentCatFilter === c.id ? '#fff' : '#475569') +
+                    ';border-radius:9999px;cursor:pointer;font-size:' + (niIsMobile() ? '13px' : '11px') +
+                    ';white-space:nowrap;transition:all .15s;' + (niIsMobile() ? 'min-height:36px;' : '');
+                btn.onclick = function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    currentCatFilter = c.id;
+                    galleryPageIndex = 1;
+                    renderCatTabs();
+                    renderGalleryPage();
+                };
+                catTabsWrap.appendChild(btn);
+            });
+        }
+        renderCatTabs();
+
+        /** 打开分类管理弹窗 */
+        catManageBtn.onclick = function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (document.getElementById('ns-ni-cat-manage-overlay')) return;
+            var ov = document.createElement('div');
+            ov.id = 'ns-ni-cat-manage-overlay';
+            ov.style.cssText =
+                'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
+            var box = document.createElement('div');
+            box.style.cssText =
+                'background:#fff;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.2);padding:16px;' +
+                'width:min(420px,92vw);max-height:70vh;display:flex;flex-direction:column;font:13px system-ui,sans-serif;';
+            var bHdr = document.createElement('div');
+            bHdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;';
+            var bTitle = document.createElement('b');
+            bTitle.style.cssText = 'color:#0d9488;font-size:14px;';
+            bTitle.textContent = '管理分类';
+            var bClose = document.createElement('button');
+            bClose.type = 'button';
+            bClose.textContent = '×';
+            bClose.style.cssText = 'border:none;background:none;font-size:20px;cursor:pointer;line-height:1;';
+            bClose.onclick = function () { ov.remove(); };
+            bHdr.appendChild(bTitle);
+            bHdr.appendChild(bClose);
+            box.appendChild(bHdr);
+
+            // 新建分类
+            var addRow = document.createElement('div');
+            addRow.style.cssText = 'display:flex;gap:6px;margin-bottom:10px;';
+            var addIn = document.createElement('input');
+            addIn.type = 'text';
+            addIn.placeholder = '输入新分类名称（中文≤5 / 英文≤10）';
+            addIn.style.cssText =
+                'flex:1;min-width:0;padding:' + (niIsMobile() ? '10px 8px' : '6px 8px') +
+                ';border:1px solid #cbd5e1;border-radius:4px;font:inherit;' + (niIsMobile() ? 'font-size:14px;' : '');
+            var addBtn = document.createElement('button');
+            addBtn.type = 'button';
+            addBtn.textContent = '添加';
+            addBtn.style.cssText =
+                'flex-shrink:0;padding:' + (niIsMobile() ? '10px 14px' : '6px 12px') +
+                ';background:#0d9488;color:#fff;border:none;border-radius:4px;cursor:pointer;' + (niIsMobile() ? 'font-size:14px;' : '');
+            addRow.appendChild(addIn);
+            addRow.appendChild(addBtn);
+            box.appendChild(addRow);
+
+            // 分类列表
+            var catList = document.createElement('div');
+            catList.style.cssText = 'flex:1;min-height:0;overflow-y:auto;max-height:50vh;';
+            box.appendChild(catList);
+
+            function renderCatList() {
+                catList.innerHTML = '';
+                var cats = niGetCategories();
+                if (!cats.length) {
+                    var empty = document.createElement('div');
+                    empty.style.cssText = 'text-align:center;color:#94a3b8;padding:20px;';
+                    empty.textContent = '暂无分类，请在上方输入名称创建';
+                    catList.appendChild(empty);
+                    return;
+                }
+                var map = niGetImgCatMap();
+                cats.forEach(function (c) {
+                    var count = 0;
+                    for (var k in map) { if (map[k] === c.id) count++; }
+                    var row = document.createElement('div');
+                    row.style.cssText =
+                        'display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid #f1f5f9;';
+                    var nameSpan = document.createElement('span');
+                    nameSpan.style.cssText = 'flex:1;min-width:0;color:#334155;font-size:13px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;';
+                    nameSpan.textContent = c.name;
+                    nameSpan.title = c.name;
+                    var countSpan = document.createElement('span');
+                    countSpan.style.cssText = 'font-size:11px;color:#94a3b8;flex-shrink:0;';
+                    countSpan.textContent = count + ' 张';
+                    var renameBtn = document.createElement('button');
+                    renameBtn.type = 'button';
+                    renameBtn.textContent = '重命名';
+                    renameBtn.style.cssText =
+                        'flex-shrink:0;padding:2px 6px;font-size:10px;border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;color:#475569;';
+                    renameBtn.onclick = function () {
+                        var newName = prompt('重命名分类「' + c.name + '」为：\n限制：中文≤5字 / 英文≤10字符', c.name);
+                        if (newName && newName.trim() && newName.trim() !== c.name) {
+                            var res = niRenameCategory(c.id, newName.trim());
+                            if (res === 'LONG') {
+                                alert('名称超限：中文≤5字 / 英文≤10字符');
+                                return;
+                            }
+                            if (res) {
+                                renderCatList();
+                                renderCatTabs();
+                                renderGalleryPage();
+                            }
+                        }
+                    };
+                    var delBtn = document.createElement('button');
+                    delBtn.type = 'button';
+                    delBtn.textContent = '删除';
+                    delBtn.style.cssText =
+                        'flex-shrink:0;padding:2px 6px;font-size:10px;border:1px solid #fecaca;background:#fef2f2;border-radius:4px;cursor:pointer;color:#b91c1c;';
+                    delBtn.onclick = function () {
+                        if (!confirm('确定删除分类「' + c.name + '」？分类下的图片不会被删除。')) return;
+                        niDeleteCategory(c.id);
+                        if (currentCatFilter === c.id) currentCatFilter = 'all';
+                        renderCatList();
+                        renderCatTabs();
+                        renderGalleryPage();
+                    };
+                    row.appendChild(nameSpan);
+                    row.appendChild(countSpan);
+                    row.appendChild(renameBtn);
+                    row.appendChild(delBtn);
+                    catList.appendChild(row);
+                });
+            }
+            addBtn.onclick = function () {
+                var name = addIn.value.trim();
+                if (!name) return;
+                var cat = niAddCategory(name);
+                if (cat === 'MAX') {
+                    addIn.placeholder = '最多4个分类';
+                    addIn.value = '';
+                    addIn.style.borderColor = '#f87171';
+                    setTimeout(function () { addIn.placeholder = '输入新分类名称（中文≤5 / 英文≤10）'; addIn.style.borderColor = '#cbd5e1'; }, 1800);
+                    return;
+                }
+                if (cat === 'LONG') {
+                    addIn.placeholder = '中文≤5字 / 英文≤10字符';
+                    addIn.value = '';
+                    addIn.style.borderColor = '#f87171';
+                    setTimeout(function () { addIn.placeholder = '输入新分类名称（中文≤5 / 英文≤10）'; addIn.style.borderColor = '#cbd5e1'; }, 1800);
+                    return;
+                }
+                if (!cat) {
+                    addIn.placeholder = '名称重复';
+                    addIn.style.borderColor = '#f87171';
+                    setTimeout(function () { addIn.placeholder = '输入新分类名称（中文≤5 / 英文≤10）'; addIn.style.borderColor = '#cbd5e1'; }, 1500);
+                    return;
+                }
+                addIn.value = '';
+                addIn.placeholder = '输入新分类名称（中文≤5 / 英文≤10）';
+                renderCatList();
+                renderCatTabs();
+            };
+            addIn.onkeydown = function (ev) {
+                if (ev.key === 'Enter') { ev.preventDefault(); addBtn.click(); }
+            };
+            // 点击遮罩外不关闭弹窗
+            ov.onclick = function (ev) { ev.stopPropagation(); };
+            // 拖拽：弹窗左侧20px竖条区域可拖拽
+            (function () {
+                var dragging = false;
+                var startX = 0, startY = 0;
+                var boxRect = null;
+                // 创建左侧20px拖拽条
+                var dragHandle = document.createElement('div');
+                dragHandle.style.cssText =
+                    'position:absolute;left:0;top:0;width:20px;height:100%;cursor:move;z-index:10;';
+                box.style.position = 'relative';
+                box.appendChild(dragHandle);
+
+                function onDown(ev) {
+                    dragging = true;
+                    boxRect = box.getBoundingClientRect();
+                    startX = ev.clientX;
+                    startY = ev.clientY;
+                    box.style.position = 'fixed';
+                    box.style.left = boxRect.left + 'px';
+                    box.style.top = boxRect.top + 'px';
+                    box.style.margin = '0';
+                    // 更新拖拽条位置
+                    dragHandle.style.height = boxRect.height + 'px';
+                    ev.preventDefault();
+                }
+                function onMove(ev) {
+                    if (!dragging) return;
+                    var dx = ev.clientX - startX;
+                    var dy = ev.clientY - startY;
+                    box.style.left = (boxRect.left + dx) + 'px';
+                    box.style.top = (boxRect.top + dy) + 'px';
+                }
+                function onUp() { dragging = false; }
+                dragHandle.onmousedown = onDown;
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+                // 清理
+                var cleaned = false;
+                function cleanup() {
+                    if (cleaned) return;
+                    cleaned = true;
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                }
+                bClose.onclick = function () { cleanup(); ov.remove(); };
+            })();
+            renderCatList();
+            ov.appendChild(box);
+            document.body.appendChild(ov);
+        };
+
         var GALLERY_PAGE_SIZE = 40;
         var galleryAllItems = [];
         var galleryPageIndex = 1;
         var listPagerBar = document.createElement('div');
         listPagerBar.style.cssText =
             'display:none;align-items:center;justify-content:center;gap:' + (niIsMobile() ? '6px;' : '10px;') +
-            'margin:8px 0;flex-wrap:wrap;font-size:12px;color:#64748b;';
+            'margin:8px 0;flex-wrap:nowrap;font-size:12px;color:#64748b;overflow:hidden;';
         var listPagerPrev = document.createElement('button');
         listPagerPrev.type = 'button';
         listPagerPrev.textContent = '上一页';
         listPagerPrev.style.cssText =
-            'padding:' + (niIsMobile() ? '8px 14px' : '4px 12px') + ';border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;font-size:12px;' + (niIsMobile() ? 'min-height:40px;' : '');
+            'flex-shrink:0;white-space:nowrap;padding:' + (niIsMobile() ? '8px 14px' : '4px 12px') + ';border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;font-size:12px;' + (niIsMobile() ? 'min-height:40px;' : '');
         var listPagerInfo = document.createElement('span');
-        listPagerInfo.style.cssText = 'min-width:120px;text-align:center;';
+        listPagerInfo.style.cssText = 'flex:1;min-width:0;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;';
         var listPagerNext = document.createElement('button');
         listPagerNext.type = 'button';
         listPagerNext.textContent = '下一页';
         listPagerNext.style.cssText =
-            'padding:' + (niIsMobile() ? '8px 14px' : '4px 12px') + ';border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;font-size:12px;' + (niIsMobile() ? 'min-height:40px;' : '');
+            'flex-shrink:0;white-space:nowrap;padding:' + (niIsMobile() ? '8px 14px' : '4px 12px') + ';border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;font-size:12px;' + (niIsMobile() ? 'min-height:40px;' : '');
         var listPagerSelectAll = document.createElement('button');
         listPagerSelectAll.type = 'button';
         listPagerSelectAll.textContent = '全选本页';
         listPagerSelectAll.style.cssText =
-            'padding:' + (niIsMobile() ? '8px 14px' : '4px 12px') + ';border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;font-size:12px;' + (niIsMobile() ? 'min-height:40px;' : '');
+            'flex-shrink:0;white-space:nowrap;padding:' + (niIsMobile() ? '8px 14px' : '4px 12px') + ';border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;font-size:12px;' + (niIsMobile() ? 'min-height:40px;' : '');
         var listPagerDelSel = document.createElement('button');
         listPagerDelSel.type = 'button';
         listPagerDelSel.textContent = '删除选中';
         listPagerDelSel.style.cssText =
-            'padding:' + (niIsMobile() ? '8px 14px' : '4px 12px') + ';border:1px solid #fecaca;background:#fef2f2;border-radius:4px;cursor:pointer;font-size:12px;color:#b91c1c;' + (niIsMobile() ? 'min-height:40px;' : '');
+            'flex-shrink:0;white-space:nowrap;padding:' + (niIsMobile() ? '8px 14px' : '4px 12px') + ';border:1px solid #fecaca;background:#fef2f2;border-radius:4px;cursor:pointer;font-size:12px;color:#b91c1c;' + (niIsMobile() ? 'min-height:40px;' : '');
         listPagerBar.appendChild(listPagerPrev);
         listPagerBar.appendChild(listPagerInfo);
         listPagerBar.appendChild(listPagerNext);
@@ -1524,6 +1953,76 @@
                 fmtRow.appendChild(b);
             });
             card.appendChild(fmtRow);
+
+            // ========== 置顶 & 分类操作行 ==========
+            var pinCatRow = document.createElement('div');
+            pinCatRow.style.cssText = 'display:flex;align-items:center;gap:4px;margin-top:5px;';
+            var pinBtn = document.createElement('button');
+            pinBtn.type = 'button';
+            var isPinned = niIsPinned(imageId);
+            pinBtn.textContent = isPinned ? '📌' : '📍';
+            pinBtn.title = isPinned ? '取消置顶' : '置顶';
+            pinBtn.style.cssText =
+                'flex-shrink:0;width:' + (niIsMobile() ? '34px' : '24px') + ';height:' + (niIsMobile() ? '34px' : '24px') +
+                ';border:1px solid ' + (isPinned ? '#f59e0b' : '#cbd5e1') + ';background:' + (isPinned ? '#fef3c7' : '#fff') +
+                ';color:' + (isPinned ? '#d97706' : '#94a3b8') + ';border-radius:4px;cursor:pointer;font-size:' + (niIsMobile() ? '16px' : '12px') +
+                ';display:flex;align-items:center;justify-content:center;line-height:1;padding:0;' + (niIsMobile() ? 'min-width:34px;min-height:34px;' : '');
+            pinBtn.onclick = function (e) {
+                e.stopPropagation();
+                e.preventDefault();
+                if (!imageId) { st('无图片 ID', true); return; }
+                var nowPinned = niTogglePin(imageId);
+                pinBtn.textContent = nowPinned ? '📌' : '📍';
+                pinBtn.title = nowPinned ? '取消置顶' : '置顶';
+                pinBtn.style.borderColor = nowPinned ? '#f59e0b' : '#cbd5e1';
+                pinBtn.style.background = nowPinned ? '#fef3c7' : '#fff';
+                pinBtn.style.color = nowPinned ? '#d97706' : '#94a3b8';
+                if (nowPinned) st('已置顶');
+                else st('已取消置顶');
+                card.style.borderColor = nowPinned ? '#f59e0b' : '#e2e8f0';
+                renderGalleryPage();
+            };
+            card.style.borderColor = isPinned ? '#f59e0b' : '#e2e8f0';
+            pinCatRow.appendChild(pinBtn);
+
+            // 分类下拉
+            var catSelectWrap = document.createElement('div');
+            catSelectWrap.style.cssText = 'flex:1;min-width:0;position:relative;';
+            var catSelect = document.createElement('select');
+            catSelect.style.cssText =
+                'width:100%;box-sizing:border-box;padding:' + (niIsMobile() ? '8px 4px' : '3px 4px') +
+                ';border:1px solid #cbd5e1;border-radius:4px;font-size:' + (niIsMobile() ? '13px' : '10px') +
+                ';background:#fff;color:#475569;cursor:pointer;appearance:auto;' + (niIsMobile() ? 'min-height:34px;' : 'height:24px;');
+            var curCatId = niGetImageCategoryId(imageId);
+            var cats = niGetCategories();
+            var optNone = document.createElement('option');
+            optNone.value = '';
+            optNone.textContent = '未分类';
+            catSelect.appendChild(optNone);
+            cats.forEach(function (c) {
+                var opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.name;
+                catSelect.appendChild(opt);
+            });
+            catSelect.value = curCatId;
+            catSelect.onchange = function (e) {
+                e.stopPropagation();
+                if (!imageId) { st('无图片 ID', true); return; }
+                niSetImageCategory(imageId, catSelect.value);
+                var selName = '未分类';
+                for (var ci = 0; ci < cats.length; ci++) {
+                    if (cats[ci].id === catSelect.value) { selName = cats[ci].name; break; }
+                }
+                st('已设为「' + selName + '」');
+                renderCatTabs();
+                renderGalleryPage();
+            };
+            catSelect.onclick = function (e) { e.stopPropagation(); };
+            catSelectWrap.appendChild(catSelect);
+            pinCatRow.appendChild(catSelectWrap);
+            card.appendChild(pinCatRow);
+
             syncInput();
             paintFmt();
             host.appendChild(card);
@@ -1615,6 +2114,7 @@
             return niPostImageUpload(file, k, uploadAbortState, progressCb)
                 .then(function (r) {
                     if (progressUi && typeof progressUi.doneOk === 'function') progressUi.doneOk();
+                    niApplyUploadFilterContext(r.body);
                     if (!batchMode) {
                         linksBox.innerHTML = '';
                         niNotifyUploadSuccessToEditor(r.body, st, function (body) {
@@ -2188,12 +2688,59 @@
         }
         function renderGalleryPage() {
             listWrap.innerHTML = '';
-            var total = galleryAllItems.length;
+
+            /** 获取经过分类筛选 + 置顶排序后的图片列表 */
+            function getFilteredItems() {
+                var items = galleryAllItems;
+                var imgCatMap = niGetImgCatMap();
+                var pinnedIds = niGetPinnedIds();
+
+                // 按分类筛选
+                if (currentCatFilter === 'pinned') {
+                    items = items.filter(function (it) {
+                        var pid = pickId(it);
+                        var u = pickUrl(it);
+                        var id = pid || extractIdFromCdnUrl(u);
+                        return id && pinnedIds.indexOf(id) >= 0;
+                    });
+                } else if (currentCatFilter && currentCatFilter !== 'all') {
+                    items = items.filter(function (it) {
+                        var pid = pickId(it);
+                        var u = pickUrl(it);
+                        var id = pid || extractIdFromCdnUrl(u);
+                        return id && imgCatMap[id] === currentCatFilter;
+                    });
+                }
+
+                // 置顶排前：置顶图片排在前面，非置顶保持原序
+                items = items.slice().sort(function (a, b) {
+                    var pidA = pickId(a);
+                    var uA = pickUrl(a);
+                    var idA = pidA || extractIdFromCdnUrl(uA);
+                    var pidB = pickId(b);
+                    var uB = pickUrl(b);
+                    var idB = pidB || extractIdFromCdnUrl(uB);
+                    var pinA = idA && pinnedIds.indexOf(idA) >= 0 ? 0 : 1;
+                    var pinB = idB && pinnedIds.indexOf(idB) >= 0 ? 0 : 1;
+                    if (pinA !== pinB) return pinA - pinB;
+                    // 同为置顶的按置顶顺序
+                    if (pinA === 0) {
+                        var idxA = pinnedIds.indexOf(idA);
+                        var idxB = pinnedIds.indexOf(idB);
+                        return idxA - idxB;
+                    }
+                    return 0;
+                });
+                return items;
+            }
+
+            var filtered = getFilteredItems();
+            var total = filtered.length;
             var pages = Math.max(1, Math.ceil(total / GALLERY_PAGE_SIZE));
             if (galleryPageIndex > pages) galleryPageIndex = pages;
             if (galleryPageIndex < 1) galleryPageIndex = 1;
             var start = (galleryPageIndex - 1) * GALLERY_PAGE_SIZE;
-            var slice = galleryAllItems.slice(start, start + GALLERY_PAGE_SIZE);
+            var slice = filtered.slice(start, start + GALLERY_PAGE_SIZE);
             slice.forEach(function (it) {
                 var pid = pickId(it);
                 var u = pickUrl(it);
@@ -2214,28 +2761,28 @@
             });
             if (total > 0) {
                 listPagerBar.style.display = 'flex';
-                listPagerInfo.textContent = '第 ' + galleryPageIndex + ' / ' + pages + ' 页（每页 ' + GALLERY_PAGE_SIZE + ' 张）';
+                var catHint = '';
+                if (currentCatFilter === 'pinned') catHint = ' · 置顶';
+                else if (currentCatFilter && currentCatFilter !== 'all') {
+                    var catsAll = niGetCategories();
+                    for (var ci = 0; ci < catsAll.length; ci++) {
+                        if (catsAll[ci].id === currentCatFilter) { catHint = ' · ' + catsAll[ci].name; break; }
+                    }
+                }
+                listPagerInfo.textContent = '第 ' + galleryPageIndex + ' / ' + pages + ' 页' + catHint + '（共 ' + total + ' 张）';
                 listPagerPrev.disabled = galleryPageIndex <= 1;
                 listPagerNext.disabled = galleryPageIndex >= pages;
                 listPagerPrev.style.opacity = galleryPageIndex <= 1 ? '0.45' : '1';
                 listPagerNext.style.opacity = galleryPageIndex >= pages ? '0.45' : '1';
-                var nextStart = galleryPageIndex * GALLERY_PAGE_SIZE;
-                if (nextStart < total) {
-                    setTimeout(function () {
-                        preloadGalleryThumbUrls(nextStart, GALLERY_PAGE_SIZE);
-                    }, 0);
-                }
-                if (galleryPageIndex > 1) {
-                    var prevStart = (galleryPageIndex - 2) * GALLERY_PAGE_SIZE;
-                    if (prevStart >= 0) {
-                        setTimeout(function () {
-                            preloadGalleryThumbUrls(prevStart, GALLERY_PAGE_SIZE);
-                        }, 0);
-                    }
-                }
                 syncGallerySelectAllBtn();
             } else {
                 listPagerBar.style.display = 'none';
+                if (currentCatFilter !== 'all' && galleryAllItems.length > 0) {
+                    var emptyHint = document.createElement('div');
+                    emptyHint.style.cssText = 'text-align:center;color:#94a3b8;padding:20px;font-size:12px;';
+                    emptyHint.textContent = '当前分类下暂无图片';
+                    listWrap.appendChild(emptyHint);
+                }
             }
         }
         function loadL() {
@@ -2290,6 +2837,7 @@
                     } else {
                         st('暂无图片');
                     }
+                    renderCatTabs();
                     renderGalleryPage();
                 })
                 .catch(function (e) {
@@ -2438,7 +2986,7 @@
         span.className = 'toolbar-item ' + NS_NI_MDE_BTN_CLASS;
         span.setAttribute('role', 'button');
         span.tabIndex = 0;
-        span.title = '输入框获取焦点时，Ctrl+v 快捷上传剪贴板图片（Shift+点击打开管理面板）';
+        span.title = '选择图片上传到 NS 图床（Shift+点击打开管理面板）';
         span.textContent = 'NS图床';
         span.style.cssText =
             'font-size:12px;font-weight:600;color:#0d9488;padding:0 8px;white-space:nowrap;line-height:1;cursor:pointer;user-select:none;';
@@ -2553,5 +3101,16 @@
             if (!k) return Promise.reject(new Error('无 API Key'));
             return deleteImageRequest(k, imageId);
         },
+        // 分类管理
+        getCategories: niGetCategories,
+        addCategory: niAddCategory,
+        renameCategory: niRenameCategory,
+        deleteCategory: niDeleteCategory,
+        setImageCategory: niSetImageCategory,
+        getImageCategoryId: niGetImageCategoryId,
+        // 置顶管理
+        togglePin: niTogglePin,
+        isPinned: niIsPinned,
+        getPinnedIds: niGetPinnedIds,
     };
 })();
