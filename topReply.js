@@ -4,7 +4,7 @@
 
     const STORAGE_KEY = 'nodeseek_top_reply_data';
     const SETTINGS_KEY = 'nodeseek_top_reply_settings';
-    const FETCH_URL = 'https://www.nodeseek.com/page-1?sortBy=postTime';
+    const FETCH_URL = 'https://www.nodeseek.com/page-1?sortBy=replyTime';
     const MIN_INTERVAL = 30; // 秒
     const MAX_INTERVAL = 60; // 秒
     const TOP_COUNT = 10;
