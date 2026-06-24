@@ -236,7 +236,7 @@
             const dialog = document.createElement('div');
             dialog.id = 'hot-topics-dialog';
             Object.assign(dialog.style, {
-                position: 'fixed', top: '60px', right: '16px', zIndex: '10000',
+                position: 'fixed', top: '60px', right: '156px', zIndex: '10000',
                 width: '520px', height: HB_STATS_PANEL_H, maxHeight: HB_STATS_PANEL_H,
                 margin: '0', padding: '0', background: 'transparent',
                 border: 'none', boxShadow: 'none', overflow: 'visible',
@@ -250,7 +250,7 @@
                 });
             } else {
                 Object.assign(dialog.style, {
-                    position: 'fixed', top: '60px', right: '16px', zIndex: '10000',
+                    position: 'fixed', top: '60px', right: '156px', zIndex: '10000',
                     width: '520px', height: HB_STATS_PANEL_H, maxHeight: HB_STATS_PANEL_H,
                     margin: '0', padding: '0', background: 'transparent',
                     border: 'none', boxShadow: 'none', overflow: 'visible',
@@ -331,6 +331,10 @@
                 });
             }
 
+            // 关闭按钮初始隐藏，iframe加载完再显示，避免闪烁
+            closeBtn.style.visibility = 'hidden';
+
+            // 弹窗立即显示，iframe在后台加载
             dialog.appendChild(iframe);
             dialog.appendChild(dragArea);
             dialog.appendChild(closeBtn);
@@ -339,7 +343,11 @@
             self._initDraggable(dialog, dragArea, closeBtn);
             self._bindStatsMessageOnce();
 
-            // 先挂到 DOM 使弹窗立即可见，再设 src 让 iframe 在后台加载（显示加载中状态）
+            // iframe加载完成后显示关闭按钮
+            iframe.onload = function () {
+                closeBtn.style.visibility = 'visible';
+            };
+            // 设置iframe的src，让内容在后台加载
             iframe.src = self.hbServiceBase + '/hotspot_stats.html?embed=1';
         },
 
@@ -361,6 +369,13 @@
                     } else {
                         cb.style.visibility = '';
                         cb.style.pointerEvents = '';
+                    }
+                    return;
+                }
+
+                if (d && d.type === 'hb-topreply-open') {
+                    if (window.NodeSeekTopReply && typeof window.NodeSeekTopReply.showTopReplyDialog === 'function') {
+                        window.NodeSeekTopReply.showTopReplyDialog();
                     }
                     return;
                 }
