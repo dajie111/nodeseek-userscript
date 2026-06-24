@@ -750,7 +750,7 @@
         var panel = document.createElement('div');
         panel.id = NS_NI_QUICK_PANEL_ID;
         panel.style.cssText =
-            'position:fixed;' + (niIsMobile() ? 'left:8px;right:8px;bottom:16px;' : 'left:50%;bottom:24px;transform:translateX(-50%);') +
+            'position:fixed;' + (niIsMobile() ? 'left:8px;right:8px;bottom:116px;' : 'left:50%;bottom:124px;transform:translateX(-50%);') +
             'z-index:10002;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.15);padding:10px 12px;font:13px system-ui,sans-serif;' +
             (niIsMobile() ? 'width:auto;' : 'min-width:min(420px,94vw);max-width:96vw;');
         var hdr = document.createElement('div');
@@ -1575,6 +1575,17 @@
                     return;
                 }
                 var map = niGetImgCatMap();
+                // 构建当前画廊中有效图片 ID 集合，过滤已删除图片的残留映射
+                var validIds = {};
+                for (var gi = 0; gi < galleryAllItems.length; gi++) {
+                    var gId = pickId(galleryAllItems[gi]);
+                    if (gId) validIds[gId] = true;
+                }
+                var mapChanged = false;
+                for (var mk in map) {
+                    if (!validIds[mk]) { delete map[mk]; mapChanged = true; }
+                }
+                if (mapChanged) niSaveImgCatMap(map);
                 cats.forEach(function (c) {
                     var count = 0;
                     for (var k in map) { if (map[k] === c.id) count++; }
@@ -2712,26 +2723,25 @@
                     });
                 }
 
-                // 仅在自定义分类标签下置顶排前，"全部"保持原始顺序
-                if (currentCatFilter !== 'all') {
-                    items = items.slice().sort(function (a, b) {
-                        var pidA = pickId(a);
-                        var uA = pickUrl(a);
-                        var idA = pidA || extractIdFromCdnUrl(uA);
-                        var pidB = pickId(b);
-                        var uB = pickUrl(b);
-                        var idB = pidB || extractIdFromCdnUrl(uB);
-                        var pinA = idA && pinnedIds.indexOf(idA) >= 0 ? 0 : 1;
-                        var pinB = idB && pinnedIds.indexOf(idB) >= 0 ? 0 : 1;
-                        if (pinA !== pinB) return pinA - pinB;
-                        if (pinA === 0) {
-                            var idxA = pinnedIds.indexOf(idA);
-                            var idxB = pinnedIds.indexOf(idB);
-                            return idxA - idxB;
-                        }
-                        return 0;
-                    });
-                }
+                // 置顶排前：置顶图片排在前面，非置顶保持原序
+                items = items.slice().sort(function (a, b) {
+                    var pidA = pickId(a);
+                    var uA = pickUrl(a);
+                    var idA = pidA || extractIdFromCdnUrl(uA);
+                    var pidB = pickId(b);
+                    var uB = pickUrl(b);
+                    var idB = pidB || extractIdFromCdnUrl(uB);
+                    var pinA = idA && pinnedIds.indexOf(idA) >= 0 ? 0 : 1;
+                    var pinB = idB && pinnedIds.indexOf(idB) >= 0 ? 0 : 1;
+                    if (pinA !== pinB) return pinA - pinB;
+                    // 同为置顶的按置顶顺序
+                    if (pinA === 0) {
+                        var idxA = pinnedIds.indexOf(idA);
+                        var idxB = pinnedIds.indexOf(idB);
+                        return idxA - idxB;
+                    }
+                    return 0;
+                });
                 return items;
             }
 
@@ -3066,6 +3076,81 @@
             NS_NI_GLOBAL_PASTE_LISTENED = true;
             document.addEventListener('paste', niGlobalPasteHandler, true);
         }
+    })();
+
+    // ========== 编辑器拖拽上传 ==========
+    // 支持将图片文件拖拽到论坛 CodeMirror 编辑器区域，自动上传到 NS 图床
+    (function () {
+        var niEditorHideTimer = null;
+
+        function niDataTransferHasFiles(dt) {
+            if (!dt || !dt.types) return false;
+            try {
+                return dt.types.contains ? dt.types.contains('Files') : Array.prototype.indexOf.call(dt.types, 'Files') >= 0;
+            } catch (e) { return false; }
+        }
+        function niFindEditorDom() {
+            var el = document.querySelector('.CodeMirror');
+            if (el) return el;
+            var wrappers = document.querySelectorAll('#code-mirror-editor, .cm-editor, [class*="CodeMirror"]');
+            for (var i = 0; i < wrappers.length; i++) return wrappers[i];
+            return null;
+        }
+        function niShowEditorDropOverlay(editorEl) {
+            if (niEditorHideTimer) { clearTimeout(niEditorHideTimer); niEditorHideTimer = null; }
+            var ov = document.getElementById('ns-ni-editor-drop-overlay');
+            if (!ov) {
+                ov = document.createElement('div');
+                ov.id = 'ns-ni-editor-drop-overlay';
+                ov.style.cssText =
+                    'pointer-events:none;position:absolute;inset:0;z-index:10;' +
+                    'border:3px dashed #0d9488;border-radius:6px;background:rgba(13,148,136,.08);' +
+                    'display:flex;align-items:center;justify-content:center;' +
+                    'font:600 15px system-ui,sans-serif;color:#0d9488;';
+                ov.textContent = '松开鼠标上传图片到 NS 图床';
+            }
+            if (!editorEl.contains(ov)) editorEl.appendChild(ov);
+            ov.style.display = 'flex';
+        }
+        function niHideEditorDropOverlay() {
+            var ov = document.getElementById('ns-ni-editor-drop-overlay');
+            if (ov) ov.style.display = 'none';
+        }
+        document.addEventListener('dragover', function (ev) {
+            var DIALOG_ID = 'ns-nodeimage-dialog';
+            if (document.getElementById(DIALOG_ID)) return;
+            if (!niDataTransferHasFiles(ev.dataTransfer)) return;
+            var editorEl = niFindEditorDom();
+            if (!editorEl || !editorEl.contains(ev.target)) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            try { ev.dataTransfer.dropEffect = 'copy'; } catch (e) {}
+            niShowEditorDropOverlay(editorEl);
+        }, true);
+        document.addEventListener('dragleave', function (ev) {
+            var editorEl = niFindEditorDom();
+            if (!editorEl) return;
+            // relatedTarget 仍在编辑器内则忽略
+            if (ev.relatedTarget && editorEl.contains(ev.relatedTarget)) return;
+            if (niEditorHideTimer) clearTimeout(niEditorHideTimer);
+            niEditorHideTimer = setTimeout(niHideEditorDropOverlay, 80);
+        }, true);
+        document.addEventListener('drop', function (ev) {
+            var DIALOG_ID = 'ns-nodeimage-dialog';
+            if (document.getElementById(DIALOG_ID)) return;
+            var editorEl = niFindEditorDom();
+            if (!editorEl || !editorEl.contains(ev.target)) return;
+            if (!niDataTransferHasFiles(ev.dataTransfer)) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (niEditorHideTimer) { clearTimeout(niEditorHideTimer); niEditorHideTimer = null; }
+            niHideEditorDropOverlay();
+            var dt = ev.dataTransfer;
+            if (!dt || !dt.files || !dt.files.length) return;
+            var arr = [];
+            for (var d = 0; d < dt.files.length; d++) arr.push(dt.files[d]);
+            niQuickUploadRunBatch(arr);
+        }, true);
     })();
 
     window.NodeSeekNodeImage = {
