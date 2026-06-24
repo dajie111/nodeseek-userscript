@@ -750,7 +750,7 @@
         var panel = document.createElement('div');
         panel.id = NS_NI_QUICK_PANEL_ID;
         panel.style.cssText =
-            'position:fixed;' + (niIsMobile() ? 'left:8px;right:8px;bottom:116px;' : 'left:50%;bottom:124px;transform:translateX(-50%);') +
+            'position:fixed;' + (niIsMobile() ? 'left:8px;right:8px;bottom:366px;' : 'left:50%;bottom:374px;transform:translateX(calc(-50% - 150px));') +
             'z-index:10002;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.15);padding:10px 12px;font:13px system-ui,sans-serif;' +
             (niIsMobile() ? 'width:auto;' : 'min-width:min(420px,94vw);max-width:96vw;');
         var hdr = document.createElement('div');
