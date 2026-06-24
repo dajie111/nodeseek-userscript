@@ -175,15 +175,14 @@
             content.style.cssText = 'flex:1;min-width:0;';
 
             const titleLink = document.createElement('a');
+            titleLink.className = 'top-reply-title';
             titleLink.textContent = post.title;
             titleLink.href = post.url.startsWith('http') ? post.url : 'https://www.nodeseek.com' + post.url;
             titleLink.target = '_blank';
-            titleLink.style.cssText = 'color:#2c3e50;text-decoration:none;font-size:13px;font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.5;transition:color 0.15s;';
+            titleLink.style.cssText = 'text-decoration:none;font-size:13px;font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.5;';
             titleLink.onmouseenter = function() {
-                this.style.color = '#3498db';
                 this.title = this.scrollWidth > this.clientWidth ? post.title : '';
             };
-            titleLink.onmouseleave = () => titleLink.style.color = '#2c3e50';
 
             const meta = document.createElement('div');
             meta.style.cssText = 'display:flex;gap:6px;margin-top:3px;font-size:11px;align-items:center;flex-wrap:wrap;';
@@ -262,7 +261,7 @@
         let topOffset = 0;
         if (document.getElementById('logs-dialog')) topOffset = 30;
         if (document.getElementById('chicken-leg-stats-dialog')) topOffset = 60;
-        const dialogLeft = Math.floor((window.innerWidth - dialogWidth) / 2) + 500;
+        const dialogLeft = Math.floor((window.innerWidth - dialogWidth) / 2) + 180;
         const dialogTop = Math.floor(window.innerHeight * 0.1) + topOffset;
         dialog.style.left = Math.max(0, dialogLeft) + 'px';
         dialog.style.top = Math.max(0, dialogTop) + 'px';
@@ -324,7 +323,7 @@
         if (!document.getElementById('top-reply-spin-style')) {
             const style = document.createElement('style');
             style.id = 'top-reply-spin-style';
-            style.textContent = '@keyframes topReplySpin{to{transform:rotate(360deg)}}#top-reply-list::-webkit-scrollbar{width:6px}#top-reply-list::-webkit-scrollbar-track{background:transparent}#top-reply-list::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px}#top-reply-list::-webkit-scrollbar-thumb:hover{background:#ccc}';
+            style.textContent = '@keyframes topReplySpin{to{transform:rotate(360deg)}}#top-reply-list::-webkit-scrollbar{width:6px}#top-reply-list::-webkit-scrollbar-track{background:transparent}#top-reply-list::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px}#top-reply-list::-webkit-scrollbar-thumb:hover{background:#ccc}.top-reply-title{color:#2c3e50;transition:color 0.15s}.top-reply-title:hover{color:#3498db}';
             document.head.appendChild(style);
         }
         dialog.appendChild(listDiv);
