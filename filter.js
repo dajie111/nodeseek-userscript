@@ -465,6 +465,13 @@ function filterPosts(blacklistKeywords = [], whitelistKeywords = []) {
     let showCount = 0;
     let blockedCount = 0;
 
+    // 获取要屏蔽的等级列表
+    const blockedLevels = getBlockedLevels();
+    const shouldFilterByLevel = blockedLevels.length > 0;
+
+    // 收集需要异步获取等级的用户uid
+    const usersToFetch = [];
+
     postItems.forEach((item, index) => {
         // 尝试多种方式获取帖子标题
         let titleEl = item.querySelector('.post-title a');
@@ -495,8 +502,6 @@ function filterPosts(blacklistKeywords = [], whitelistKeywords = []) {
                 }
             }
         }
-
-
 
         // 尝试获取作者
         let authorEl = item.querySelector('.post-author a');
@@ -549,6 +554,38 @@ function filterPosts(blacklistKeywords = [], whitelistKeywords = []) {
             }
         }
 
+        // ========== 等级屏蔽逻辑 ==========
+        if (shouldShow && shouldFilterByLevel) {
+            // 从作者链接中提取uid
+            let authorUid = null;
+            if (authorEl) {
+                const href = authorEl.getAttribute('href');
+                if (href) {
+                    const match = href.match(/\/space\/(\d+)/);
+                    if (match && match[1]) {
+                        authorUid = match[1];
+                    }
+                }
+            }
+
+            if (authorUid) {
+                const cache = getUserLevelCache();
+                const cached = cache[authorUid];
+                const blockedLevelsStr = blockedLevels.map(l => String(l));
+
+                if (cached && cached.level !== undefined && cached.level !== null) {
+                    // 等级在缓存中
+                    if (blockedLevelsStr.includes(String(cached.level))) {
+                        shouldShow = false;
+                    }
+                } else {
+                    // 等级未缓存或缓存无效，需要异步获取
+                    usersToFetch.push({ uid: authorUid, item: item });
+                }
+            }
+        }
+        // ========== 等级屏蔽逻辑结束 ==========
+
         if (shouldShow) {
             // 如果开启了“只显示屏蔽”模式，正常显示的反而要隐藏
             if (isShowingOnlyBlocked) {
@@ -574,6 +611,102 @@ function filterPosts(blacklistKeywords = [], whitelistKeywords = []) {
     
     currentBlockedCount = blockedCount;
     updateStatsUI();
+
+    // 异步获取未缓存用户的等级并更新显示
+    if (usersToFetch.length > 0 && shouldFilterByLevel) {
+        processUserLevelsAsync(usersToFetch, blockedLevels);
+    }
+}
+
+// 异步处理用户等级获取和显示更新（分批并发，不阻塞主线程）
+function processUserLevelsAsync(usersToFetch, blockedLevels) {
+    // 使用Map去重uid，同时保留item引用
+    const uidItemMap = new Map();
+    usersToFetch.forEach(({ uid, item }) => {
+        if (!uidItemMap.has(uid)) {
+            uidItemMap.set(uid, item);
+        }
+    });
+    const uniqueUids = [...uidItemMap.keys()];
+
+    // 获取缓存和未缓存的uid
+    const cache = getUserLevelCache();
+    const uncachedUids = uniqueUids.filter(uid => !(cache[uid] && cache[uid].level !== undefined));
+
+    // 先处理已缓存的用户（立即更新）
+    const blockedLevelsStr = blockedLevels.map(l => String(l));
+    uniqueUids.forEach(uid => {
+        const cached = cache[uid];
+        if (cached && cached.level !== undefined) {
+            const item = uidItemMap.get(uid);
+            if (item && blockedLevelsStr.includes(String(cached.level))) {
+                if (!isShowingOnlyBlocked) {
+                    item.style.display = 'none';
+                }
+            }
+        }
+    });
+
+    // 未缓存的用户，分批并发获取（每批5个）
+    if (uncachedUids.length > 0) {
+        const BATCH_SIZE = 5;
+        const batches = [];
+
+        for (let i = 0; i < uncachedUids.length; i += BATCH_SIZE) {
+            batches.push(uncachedUids.slice(i, i + BATCH_SIZE));
+        }
+
+        let completedBatches = 0;
+        let blockedCount = 0;
+
+        function processNextBatch() {
+            if (completedBatches >= batches.length) {
+                // 所有批次完成，更新统计
+                const hiddenItems = document.querySelectorAll('ul.post-list > li[style*="display: none"], .post-list-item[style*="display: none"]');
+                currentBlockedCount = hiddenItems.length;
+                updateStatsUI();
+                return;
+            }
+
+            const batch = batches[completedBatches];
+            completedBatches++;
+
+            // 并发获取这一批
+            Promise.all(batch.map(uid => {
+                return fetch(`https://www.nodeseek.com/api/account/getInfo/${uid}`, {
+                    credentials: 'same-origin'
+                }).then(response => {
+                    if (response.ok) {
+                        return response.json().then(data => {
+                            if (data.success && data.detail && data.detail.rank !== undefined) {
+                                const level = String(data.detail.rank);
+                                setUserLevelCache(uid, level);
+                                // 立即更新该用户的帖子显示
+                                const item = uidItemMap.get(uid);
+                                if (item && blockedLevels.map(l => String(l)).includes(level)) {
+                                    if (!isShowingOnlyBlocked) {
+                                        item.style.display = 'none';
+                                        blockedCount++;
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }).catch(() => {});
+            })).then(() => {
+                // 这一批完成后，延迟一下再处理下一批，让出主线程
+                setTimeout(processNextBatch, 10);
+            });
+        }
+
+        // 开始处理第一批
+        processNextBatch();
+    } else {
+        // 更新统计
+        const hiddenItems = document.querySelectorAll('ul.post-list > li[style*="display: none"], .post-list-item[style*="display: none"]');
+        currentBlockedCount = hiddenItems.length;
+        updateStatsUI();
+    }
 }
 
 // 保存关键词到 localStorage
@@ -590,8 +723,6 @@ function getKeywords() {
     const saved = localStorage.getItem('ns-filter-keywords');
     return saved ? JSON.parse(saved) : [];
 }
-
-
 
 // 保存自定义关键词列表到 localStorage
 function saveCustomKeywords(keywords) {
@@ -681,6 +812,154 @@ function removeWhitelistUser(username) {
     saveWhitelistUsers(filtered);
     if (window.addLog) window.addLog(`删除不屏蔽用户：${username}`);
     return filtered;
+}
+
+// ========== 屏蔽特定等级用户功能管理 ==========
+
+const BLOCKED_LEVEL_CACHE_KEY = 'ns-filter-blocked-level-cache';
+const BLOCKED_LEVEL_SETTINGS_KEY = 'ns-filter-blocked-levels';
+const BLOCKED_LEVEL_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 缓存7天过期
+
+// 保存要屏蔽的等级列表到 localStorage
+function saveBlockedLevels(levels) {
+    if (Array.isArray(levels) && levels.length > 0) {
+        localStorage.setItem(BLOCKED_LEVEL_SETTINGS_KEY, JSON.stringify(levels));
+    } else {
+        localStorage.removeItem(BLOCKED_LEVEL_SETTINGS_KEY);
+    }
+}
+
+// 从 localStorage 获取要屏蔽的等级列表
+function getBlockedLevels() {
+    const saved = localStorage.getItem(BLOCKED_LEVEL_SETTINGS_KEY);
+    return saved ? JSON.parse(saved) : [];
+}
+
+// 获取用户等级数据缓存
+function getUserLevelCache() {
+    try {
+        const cache = JSON.parse(localStorage.getItem(BLOCKED_LEVEL_CACHE_KEY) || '{}');
+        const now = Date.now();
+        // 清理过期缓存
+        Object.keys(cache).forEach(uid => {
+            if (cache[uid] && cache[uid].timestamp) {
+                if (now - cache[uid].timestamp > BLOCKED_LEVEL_CACHE_TTL) {
+                    delete cache[uid];
+                }
+            }
+        });
+        return cache;
+    } catch (e) {
+        return {};
+    }
+}
+
+// 设置用户等级数据缓存
+function setUserLevelCache(uid, level) {
+    const cache = getUserLevelCache();
+    cache[uid] = {
+        level: level,
+        timestamp: Date.now()
+    };
+    localStorage.setItem(BLOCKED_LEVEL_CACHE_KEY, JSON.stringify(cache));
+}
+
+// 异步获取用户等级信息
+async function fetchUserLevel(uid) {
+    if (!uid) return null;
+
+    // 先检查缓存
+    const cache = getUserLevelCache();
+    if (cache[uid] && cache[uid].level !== undefined) {
+        return cache[uid].level;
+    }
+
+    try {
+        const response = await fetch(`https://www.nodeseek.com/api/account/getInfo/${uid}`, {
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.success && data.detail && data.detail.rank !== undefined) {
+            const level = String(data.detail.rank);
+            setUserLevelCache(uid, level);
+            return level;
+        }
+        return null;
+    } catch (error) {
+        console.warn('[NodeSeek Filter] 获取用户等级失败:', uid, error);
+        return null;
+    }
+}
+
+// 批量获取用户等级（用于优化性能）
+async function batchFetchUserLevels(uids) {
+    const results = {};
+    const uncachedUids = [];
+
+    // 先检查缓存
+    const cache = getUserLevelCache();
+    uids.forEach(uid => {
+        if (cache[uid] && cache[uid].level !== undefined) {
+            results[uid] = cache[uid].level;
+        } else {
+            uncachedUids.push(uid);
+        }
+    });
+
+    // 并发获取未缓存的用户等级
+    if (uncachedUids.length > 0) {
+        // 同时发起所有请求，不逐个等待
+        const fetchPromises = uncachedUids.map(uid => {
+            return fetch(`https://www.nodeseek.com/api/account/getInfo/${uid}`, {
+                credentials: 'same-origin'
+            }).then(response => {
+                if (response.ok) {
+                    return response.json().then(data => {
+                        if (data.success && data.detail && data.detail.rank !== undefined) {
+                            const level = String(data.detail.rank);
+                            setUserLevelCache(uid, level);
+                            results[uid] = level;
+                        }
+                    });
+                }
+            }).catch(() => {
+                // 忽略单次失败
+            });
+        });
+
+        // 等待所有请求完成
+        await Promise.all(fetchPromises);
+    }
+
+    return results;
+}
+
+// 根据作者uid获取其等级
+function extractUidFromAuthorLink(authorElement) {
+    if (!authorElement) return null;
+
+    // 尝试从 href 中提取 uid
+    const href = authorElement.getAttribute('href');
+    if (href) {
+        const match = href.match(/\/space\/(\d+)/);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+
+    // 尝试从 class 中提取
+    const classes = authorElement.className || '';
+    const uidMatch = classes.match(/uid[_-]?(\d+)/i);
+    if (uidMatch && uidMatch[1]) {
+        return uidMatch[1];
+    }
+
+    return null;
 }
 
 // ========== 关键词高亮功能管理 ==========
@@ -959,9 +1238,11 @@ function createFilterUI(onFilter) {
         </div>
 
         <div id="ns-filter-main-content">
-        
+
         <div style="margin-bottom:12px;">
-            <label style="font-weight:bold;color:#f44336;">🚫屏蔽关键词：</label><br>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px;">
+                <label style="font-weight:bold;color:#f44336;">🚫屏蔽关键词：</label>
+            </div>
             <div style="margin-bottom:6px;font-size:13px;color:#666;line-height:1.4;">
                 添加后永久隐藏包含这些关键词的帖子 • 限制15个字符以内
             </div>
@@ -1487,8 +1768,6 @@ function createFilterUI(onFilter) {
         listContainer.innerHTML = '';
         listContainer.appendChild(fragment);
     }
-
-    // 不再需要getAllActiveKeywords函数
 
     // 初始渲染关键词列表
     renderCustomKeywordsList();
@@ -3371,5 +3650,10 @@ window.NodeSeekFilter = {
     updateStatsUI,
     getHighlightStats,
     renderHighlightStatsToContainer,
-    scrollToHighlight
+    scrollToHighlight,
+    // 屏蔽等级用户功能
+    getBlockedLevels,
+    saveBlockedLevels,
+    fetchUserLevel,
+    getUserLevelCache
 };
