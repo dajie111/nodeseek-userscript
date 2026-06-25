@@ -8,6 +8,10 @@
     const SORT_PARAM = '?sortBy=replyTime';
     const MAX_PAGE = 10;
     const TOP_COUNT = 15;
+    /** 刷新冷却时间（毫秒），避免频繁请求 */
+    const REFRESH_COOLDOWN_MS = 30000;
+    /** 上次刷新时间戳，用于冷却判断 */
+    let _lastRefreshTime = 0;
 
     // ---- 存储 ----
     function loadSettings() {
@@ -95,7 +99,18 @@
             });
     }
 
-    function fetchTopPosts() {
+    function fetchTopPosts(forceRefresh) {
+        /* 强制刷新：先清空当前数据并显示加载态 */
+        if (forceRefresh) {
+            const dialog = document.getElementById('top-reply-dialog');
+            if (dialog) {
+                const listDiv = dialog.querySelector('#top-reply-list');
+                if (listDiv) {
+                    listDiv.innerHTML = '<div style="text-align:center;padding:50px 0;"><div style="display:inline-block;width:28px;height:28px;border:3px solid #e8e8e8;border-top-color:#3498db;border-radius:50%;animation:topReplySpin 0.8s linear infinite;"></div><div style="margin-top:12px;color:#aaa;font-size:13px;">刷新中…</div></div>';
+                }
+            }
+        }
+
         const promises = [];
         for (let i = 1; i <= MAX_PAGE; i++) {
             promises.push(fetchPage(i));
@@ -123,7 +138,23 @@
 
                 refreshDialogIfOpen(topPosts);
             })
-            .catch(() => {});
+            .catch(err => {
+                /* 刷新失败时恢复显示已有数据，避免卡在加载态 */
+                console.error('[热帖排行] 拉取失败:', err);
+                const dialog = document.getElementById('top-reply-dialog');
+                if (dialog) {
+                    const listDiv = dialog.querySelector('#top-reply-list');
+                    if (listDiv) {
+                        const cached = loadPosts();
+                        if (cached && cached.length > 0) {
+                            listDiv.innerHTML = '<div style="text-align:center;color:#e74c3c;padding:12px;font-size:12px;">拉取失败，显示缓存数据</div>';
+                            renderPostList(listDiv, cached);
+                        } else {
+                            listDiv.innerHTML = '<div style="text-align:center;color:#e74c3c;padding:50px 0;font-size:13px;">拉取失败，请稍后重试</div>';
+                        }
+                    }
+                }
+            });
     }
 
     // ---- 弹窗 ----
@@ -175,14 +206,15 @@
             content.style.cssText = 'flex:1;min-width:0;';
 
             const titleLink = document.createElement('a');
-            titleLink.className = 'top-reply-title';
             titleLink.textContent = post.title;
             titleLink.href = post.url.startsWith('http') ? post.url : 'https://www.nodeseek.com' + post.url;
             titleLink.target = '_blank';
-            titleLink.style.cssText = 'text-decoration:none;font-size:13px;font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.5;';
+            titleLink.style.cssText = 'color:#2c3e50;text-decoration:none;font-size:13px;font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.5;transition:color 0.15s;';
             titleLink.onmouseenter = function() {
+                this.style.color = '#3498db';
                 this.title = this.scrollWidth > this.clientWidth ? post.title : '';
             };
+            titleLink.onmouseleave = () => titleLink.style.color = '#2c3e50';
 
             const meta = document.createElement('div');
             meta.style.cssText = 'display:flex;gap:6px;margin-top:3px;font-size:11px;align-items:center;flex-wrap:wrap;';
@@ -292,11 +324,43 @@
 
         const refreshBtn = document.createElement('span');
         refreshBtn.title = '立即刷新';
-        refreshBtn.style.cssText = 'cursor:pointer;transition:all 0.2s;display:flex;align-items:center;padding:4px;border-radius:6px;';
+        refreshBtn.style.cssText = 'cursor:pointer;transition:all 0.2s;display:flex;align-items:center;padding:4px;border-radius:6px;user-select:none;';
         refreshBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
-        refreshBtn.onmouseenter = function() { this.style.background = '#f5f5f5'; };
-        refreshBtn.onmouseleave = function() { this.style.background = 'transparent'; };
-        refreshBtn.onclick = () => fetchTopPosts();
+        refreshBtn.onmouseenter = function() { if (!this.dataset.cooldown) this.style.background = '#f5f5f5'; };
+        refreshBtn.onmouseleave = function() { if (!this.dataset.cooldown) this.style.background = 'transparent'; };
+
+        /* 刷新冷却：30 秒内只允许刷新一次，冷却期间按钮禁用并显示倒计时 */
+        let refreshTimer = null;
+        function startRefreshCooldown() {
+            _lastRefreshTime = Date.now();
+            refreshBtn.dataset.cooldown = '1';
+            refreshBtn.style.cursor = 'not-allowed';
+            refreshBtn.style.opacity = '0.5';
+            refreshBtn.title = '冷却中…';
+            const tick = function () {
+                const elapsed = Date.now() - _lastRefreshTime;
+                const remaining = Math.ceil((REFRESH_COOLDOWN_MS - elapsed) / 1000);
+                if (remaining <= 0) {
+                    refreshBtn.removeAttribute('data-cooldown');
+                    refreshBtn.style.cursor = 'pointer';
+                    refreshBtn.style.opacity = '';
+                    refreshBtn.title = '立即刷新';
+                    refreshBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
+                    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+                    return;
+                }
+                refreshBtn.innerHTML = '<span style="font-size:11px;color:#999;font-weight:600;min-width:15px;text-align:center;">' + remaining + '</span>';
+            };
+            tick();
+            refreshTimer = setInterval(tick, 1000);
+        }
+
+        refreshBtn.onclick = function () {
+            /* 冷却中：忽略点击 */
+            if (this.dataset.cooldown) return;
+            startRefreshCooldown();
+            fetchTopPosts(true);
+        };
 
         const closeBtn = document.createElement('span');
         closeBtn.style.cssText = 'cursor:pointer;display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;transition:all 0.15s;';
@@ -323,7 +387,7 @@
         if (!document.getElementById('top-reply-spin-style')) {
             const style = document.createElement('style');
             style.id = 'top-reply-spin-style';
-            style.textContent = '@keyframes topReplySpin{to{transform:rotate(360deg)}}#top-reply-list::-webkit-scrollbar{width:6px}#top-reply-list::-webkit-scrollbar-track{background:transparent}#top-reply-list::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px}#top-reply-list::-webkit-scrollbar-thumb:hover{background:#ccc}.top-reply-title{color:#2c3e50;transition:color 0.15s}.top-reply-title:hover{color:#3498db}';
+            style.textContent = '@keyframes topReplySpin{to{transform:rotate(360deg)}}#top-reply-list::-webkit-scrollbar{width:6px}#top-reply-list::-webkit-scrollbar-track{background:transparent}#top-reply-list::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px}#top-reply-list::-webkit-scrollbar-thumb:hover{background:#ccc}';
             document.head.appendChild(style);
         }
         dialog.appendChild(listDiv);
