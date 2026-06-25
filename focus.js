@@ -200,11 +200,24 @@
         showHotTopicsDialog() {
             const existing = document.getElementById('hot-topics-dialog');
             if (existing) {
-                const keepSubs = this._subPanels && this._subPanels.size > 0;
-                if (keepSubs) this._parkStatsIframeBridge(existing);
-                else this._closeAllSubDialogs();
-                existing.remove();
-                if (!keepSubs) this._statsIframe = null;
+                /* 弹窗已存在 → 前置聚焦，而非关闭（避免用户以为没弹出又点一次反而关掉） */
+                existing.style.zIndex = '10000';
+                document.body.appendChild(existing); /* 移到 DOM 末尾，确保层级最上 */
+                /* 若弹窗被拖到屏幕外，重置到默认位置 */
+                const rect = existing.getBoundingClientRect();
+                if (rect.left < -50 || rect.top < -50 ||
+                    rect.right > window.innerWidth + 50 ||
+                    rect.bottom > window.innerHeight + 50 ||
+                    rect.width === 0) {
+                    if (isMobile()) {
+                        existing.style.top = '0px';
+                        existing.style.left = '0px';
+                    } else {
+                        existing.style.top = '60px';
+                        existing.style.right = '156px';
+                        existing.style.left = '';
+                    }
+                }
                 return;
             }
             this._createStatsDialog();
@@ -297,6 +310,7 @@
 
             let iframe = this._statsIframe;
             const canReuseBridge = iframe && iframe.parentNode && document.body.contains(iframe) &&
+                iframe.contentWindow &&
                 !document.getElementById('hot-topics-dialog') &&
                 String(iframe.src || '').indexOf('hotspot_stats') !== -1;
 
@@ -306,6 +320,9 @@
                     width: '100%', height: '100%', minHeight: '0',
                     border: '0', borderRadius: '12px', display: 'block', background: 'transparent',
                 });
+                /* 复用路径也要确保关闭按钮可见 */
+                closeBtn.style.visibility = 'visible';
+                closeBtn.style.pointerEvents = '';
                 dialog.appendChild(iframe);
                 dialog.appendChild(dragArea);
                 dialog.appendChild(closeBtn);
