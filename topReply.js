@@ -5,9 +5,8 @@
     const STORAGE_KEY = 'nodeseek_top_reply_data';
     const SETTINGS_KEY = 'nodeseek_top_reply_settings';
     const BASE_URL = 'https://www.nodeseek.com/page-';
-    /* 不带排序参数，避免论坛将 sortBy=replyTime 更新到当前页面状态 */
     const MAX_PAGE = 10;
-    const TOP_COUNT = 15;
+    const TOP_COUNT = 20;
     /** 刷新冷却时间（毫秒），避免频繁请求 */
     const REFRESH_COOLDOWN_MS = 30000;
     /** 上次刷新时间戳，用于冷却判断 */
@@ -95,6 +94,7 @@
                     const post = parsePostFromItem(item);
                     if (post) posts.push(post);
                 });
+                console.log('[热帖排行] 第' + pageNum + '页: 解析到 ' + posts.length + ' 条帖子');
                 return posts;
             });
     }
@@ -111,23 +111,51 @@
             }
         }
 
-        const promises = [];
-        for (let i = 1; i <= MAX_PAGE; i++) {
-            promises.push(fetchPage(i));
+        /* 分两批并行拉取，每批 5 页，兼顾速度与限流 */
+        const allPosts = [];
+        const BATCH_SIZE = 5;
+
+        function fetchPageWithRetry(pageNum, retries) {
+            return fetchPage(pageNum)
+                .catch(err => {
+                    console.warn('[热帖排行] 第' + pageNum + '页拉取失败:', err.message);
+                    if (retries > 0) {
+                        return new Promise(resolve => setTimeout(resolve, 1000))
+                            .then(() => fetchPageWithRetry(pageNum, retries - 1));
+                    }
+                    return [];
+                });
         }
-        Promise.all(promises)
-            .then(results => {
+
+        function fetchBatch(start) {
+            const batch = [];
+            for (let i = start; i < Math.min(start + BATCH_SIZE, MAX_PAGE + 1); i++) {
+                batch.push(fetchPageWithRetry(i, 1));
+            }
+            return Promise.all(batch).then(results => {
+                results.forEach(posts => allPosts.push(...posts));
+            });
+        }
+
+        /* 第一批 1-5 页并行，完成后第二批 6-10 页并行 */
+        fetchBatch(1)
+            .then(() => fetchBatch(6))
+            .then(() => {
+                if (allPosts.length === 0) {
+                    throw new Error('所有页面拉取均失败');
+                }
+
                 // 按 url 去重
                 const seen = new Set();
-                const allPosts = [].concat(...results).filter(p => {
+                const uniquePosts = allPosts.filter(p => {
                     if (seen.has(p.url)) return false;
                     seen.add(p.url);
                     return true;
                 });
 
-                // 找到当前批次中最新的帖子 ID，过滤掉老帖（ID 差距超过 10000）
-                const maxId = allPosts.reduce((max, p) => Math.max(max, p.postId || 0), 0);
-                const freshPosts = allPosts.filter(p => (p.postId || 0) >= maxId - 10000);
+                // 找到当前批次中最新的帖子 ID，过滤掉老帖（ID 差距超过 5000）
+                const maxId = uniquePosts.reduce((max, p) => Math.max(max, p.postId || 0), 0);
+                const freshPosts = uniquePosts.filter(p => (p.postId || 0) >= maxId - 5000);
 
                 freshPosts.sort((a, b) => b.comments - a.comments);
                 const topPosts = freshPosts.slice(0, TOP_COUNT);
