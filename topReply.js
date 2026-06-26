@@ -5,7 +5,7 @@
     const STORAGE_KEY = 'nodeseek_top_reply_data';
     const SETTINGS_KEY = 'nodeseek_top_reply_settings';
     const BASE_URL = 'https://www.nodeseek.com/page-';
-    const SORT_PARAM = '?sortBy=replyTime';
+    /* 不带排序参数，避免论坛将 sortBy=replyTime 更新到当前页面状态 */
     const MAX_PAGE = 10;
     const TOP_COUNT = 15;
     /** 刷新冷却时间（毫秒），避免频繁请求 */
@@ -80,7 +80,7 @@
     }
 
     function fetchPage(pageNum) {
-        const url = BASE_URL + pageNum + SORT_PARAM;
+        const url = BASE_URL + pageNum;
         return fetch(url, { credentials: 'include' })
             .then(resp => {
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -408,8 +408,9 @@
 
         document.body.appendChild(dialog);
 
-        // 打开弹窗时拉取最新数据
+        // 打开弹窗时拉取最新数据，并立即启动冷却
         fetchTopPosts();
+        startRefreshCooldown();
 
         // 左上角 20x20 拖拽实现
         (function initDrag() {
