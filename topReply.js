@@ -9,8 +9,75 @@
     const TOP_COUNT = 20;
     /** 刷新冷却时间（毫秒），避免频繁请求 */
     const REFRESH_COOLDOWN_MS = 30000;
-    /** 上次刷新时间戳，用于冷却判断 */
+    /** 自动刷新/缓存间隔（毫秒） */
+    const FETCH_CACHE_MS = 300000;
+    const AUTO_REFRESH_INTERVAL = 300000;
+    const COOLDOWN_KEY = STORAGE_KEY + '_cooldown';
+    /** 上次刷新时间戳，从 localStorage 初始化，跨页面保持冷却状态 */
     let _lastRefreshTime = 0;
+    try { _lastRefreshTime = parseInt(localStorage.getItem(COOLDOWN_KEY), 10) || 0; } catch (e) {}
+    // 若已过冷却期，重置为 0
+    if (_lastRefreshTime > 0 && Date.now() - _lastRefreshTime >= REFRESH_COOLDOWN_MS) {
+        _lastRefreshTime = 0;
+        try { localStorage.removeItem(COOLDOWN_KEY); } catch (e) {}
+    }
+    /** 全局冷却计时器 */
+    let _globalCooldownTimer = null;
+
+    // ---- 全局冷却管理 ----
+    function clearGlobalCooldown() {
+        if (_globalCooldownTimer) { clearInterval(_globalCooldownTimer); _globalCooldownTimer = null; }
+    }
+
+    /** 将冷却状态同步到指定的刷新按钮 UI */
+    function applyCooldownToBtn(btn) {
+        if (!btn) return;
+        var elapsed = Date.now() - _lastRefreshTime;
+        var remaining = Math.ceil((REFRESH_COOLDOWN_MS - elapsed) / 1000);
+        if (remaining <= 0 || _lastRefreshTime === 0) {
+            btn.removeAttribute('data-cooldown');
+            btn.style.cursor = 'pointer';
+            btn.style.opacity = '';
+            btn.title = '立即刷新';
+            btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
+            return;
+        }
+        btn.dataset.cooldown = '1';
+        btn.style.cursor = 'not-allowed';
+        btn.style.opacity = '0.5';
+        btn.title = '冷却中…';
+        btn.innerHTML = '<span style="font-size:11px;color:#999;font-weight:600;min-width:15px;text-align:center;">' + remaining + '</span>';
+    }
+
+    function _cooldownTick() {
+        var elapsed = Date.now() - _lastRefreshTime;
+        if (elapsed >= REFRESH_COOLDOWN_MS) {
+            _lastRefreshTime = 0;
+            try { localStorage.removeItem(COOLDOWN_KEY); } catch (e) {}
+            clearGlobalCooldown();
+            var dialogBtn = document.getElementById('top-reply-dialog') && document.getElementById('top-reply-dialog').querySelector('.top-reply-refresh-btn');
+            applyCooldownToBtn(dialogBtn);
+            return;
+        }
+        var remaining = Math.ceil((REFRESH_COOLDOWN_MS - elapsed) / 1000);
+        var dialogBtn = document.getElementById('top-reply-dialog') && document.getElementById('top-reply-dialog').querySelector('.top-reply-refresh-btn');
+        if (dialogBtn && dialogBtn.dataset.cooldown) {
+            dialogBtn.innerHTML = '<span style="font-size:11px;color:#999;font-weight:600;min-width:15px;text-align:center;">' + remaining + '</span>';
+        }
+    }
+
+    function startGlobalCooldown() {
+        _lastRefreshTime = Date.now();
+        try { localStorage.setItem(COOLDOWN_KEY, String(_lastRefreshTime)); } catch (e) {}
+        clearGlobalCooldown();
+        _globalCooldownTimer = setInterval(_cooldownTick, 1000);
+    }
+
+    /** 恢复跨页面后的冷却计时器（不重置时间戳） */
+    function resumeGlobalCooldown() {
+        clearGlobalCooldown();
+        _globalCooldownTimer = setInterval(_cooldownTick, 1000);
+    }
 
     // ---- 存储 ----
     function loadSettings() {
@@ -94,12 +161,22 @@
                     const post = parsePostFromItem(item);
                     if (post) posts.push(post);
                 });
-                console.log('[热帖排行] 第' + pageNum + '页: 解析到 ' + posts.length + ' 条帖子');
+                // console.log('[热帖排行] 第' + pageNum + '页: 解析到 ' + posts.length + ' 条帖子');
                 return posts;
             });
     }
 
     function fetchTopPosts(forceRefresh) {
+        /* 非强制刷新且缓存新鲜（5分钟内），跳过拉取 */
+        if (!forceRefresh) {
+            var cacheTime = 0;
+            try { cacheTime = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
+            var posts = loadPosts();
+            if (posts.length > 0 && Date.now() - cacheTime < FETCH_CACHE_MS) {
+                return;
+            }
+        }
+
         /* 强制刷新：先清空当前数据并显示加载态 */
         if (forceRefresh) {
             const dialog = document.getElementById('top-reply-dialog');
@@ -162,9 +239,13 @@
 
                 if (topPosts.length > 0) {
                     savePosts(topPosts);
+                    _lastRefreshTime = Date.now();
+                    try { localStorage.setItem(STORAGE_KEY + '_time', _lastRefreshTime.toString()); } catch (e) {}
                 }
 
                 refreshDialogIfOpen(topPosts);
+                // 同步刷新侧边栏面板
+                refreshSidebarContent();
             })
             .catch(err => {
                 /* 刷新失败时恢复显示已有数据，避免卡在加载态 */
@@ -182,6 +263,8 @@
                         }
                     }
                 }
+                // 同步刷新侧边栏面板（显示缓存）
+                refreshSidebarContent();
             });
     }
 
@@ -196,7 +279,9 @@
         }
         const tsSpan = dialog.querySelector('#top-reply-timestamp');
         if (tsSpan) {
-            tsSpan.textContent = '更新于 ' + new Date().toLocaleTimeString();
+            var fetchTime = 0;
+            try { fetchTime = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
+            tsSpan.textContent = '更新于 ' + (fetchTime ? new Date(fetchTime).toLocaleTimeString() : new Date().toLocaleTimeString());
         }
     }
 
@@ -206,9 +291,13 @@
             return;
         }
 
+        const listIsMobile = isMobile();
         posts.forEach((post, idx) => {
             const row = document.createElement('div');
-            row.style.cssText = 'display:flex;align-items:center;padding:8px 14px;margin:0 0 1px;border-radius:8px;gap:12px;transition:background 0.2s ease;cursor:default;';
+            // 移动端：缩小 padding 和 gap，增大触摸区域
+            const rowPad = listIsMobile ? '10px 10px' : '8px 14px';
+            const rowGap = listIsMobile ? '8px' : '12px';
+            row.style.cssText = 'display:flex;align-items:center;padding:' + rowPad + ';margin:0 0 1px;border-radius:8px;gap:' + rowGap + ';transition:background 0.2s ease;cursor:default;' + (listIsMobile ? 'min-height:44px;' : '');
             row.onmouseenter = function() { this.style.background = '#f7f8fa'; };
             row.onmouseleave = function() { this.style.background = 'transparent'; };
 
@@ -237,12 +326,13 @@
             titleLink.textContent = post.title;
             titleLink.href = post.url.startsWith('http') ? post.url : 'https://www.nodeseek.com' + post.url;
             titleLink.target = '_blank';
-            titleLink.style.cssText = 'color:#2c3e50;text-decoration:none;font-size:13px;font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.5;transition:color 0.15s;';
+            titleLink.className = 'top-reply-title-link';
+            // 移动端：标题字号略大，行高更紧凑
+            const titleFontSize = listIsMobile ? '14px' : '13px';
+            titleLink.style.cssText = 'color:#2c3e50;text-decoration:none;font-size:' + titleFontSize + ';font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.5;transition:color 0.15s;';
             titleLink.onmouseenter = function() {
-                this.style.color = '#3498db';
                 this.title = this.scrollWidth > this.clientWidth ? post.title : '';
             };
-            titleLink.onmouseleave = () => titleLink.style.color = '#2c3e50';
 
             const meta = document.createElement('div');
             meta.style.cssText = 'display:flex;gap:6px;margin-top:3px;font-size:11px;align-items:center;flex-wrap:wrap;';
@@ -304,10 +394,10 @@
             return;
         }
 
-        const isMobile = window.innerWidth <= 767;
+        const dialogIsMobile = isMobile();
         const dialog = document.createElement('div');
         dialog.id = dialogId;
-        const dialogWidth = isMobile ? Math.floor(window.innerWidth * 0.95) : 720;
+        const dialogWidth = dialogIsMobile ? Math.floor(window.innerWidth * 0.95) : 720;
         dialog.style.cssText = [
             'position:fixed', 'z-index:10000', 'background:#fff',
             'border:1px solid rgba(0,0,0,0.08)', 'border-radius:16px',
@@ -321,14 +411,18 @@
         let topOffset = 0;
         if (document.getElementById('logs-dialog')) topOffset = 30;
         if (document.getElementById('chicken-leg-stats-dialog')) topOffset = 60;
-        const dialogLeft = Math.floor((window.innerWidth - dialogWidth) / 2) + 180;
+        // PC 端向右偏移 180 避开左侧面板；移动端居中
+        const dialogLeft = dialogIsMobile
+            ? Math.floor((window.innerWidth - dialogWidth) / 2)
+            : Math.floor((window.innerWidth - dialogWidth) / 2) + 180;
         const dialogTop = Math.floor(window.innerHeight * 0.1) + topOffset;
         dialog.style.left = Math.max(0, dialogLeft) + 'px';
         dialog.style.top = Math.max(0, dialogTop) + 'px';
 
-        // 标题栏
+        // 标题栏（移动端缩小 padding）
         const header = document.createElement('div');
-        header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:14px 20px;background:#fff;border-bottom:1px solid #f0f0f0;flex-shrink:0;user-select:none;';
+        const headerPad = dialogIsMobile ? '12px 12px' : '14px 20px';
+        header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:' + headerPad + ';background:#fff;border-bottom:1px solid #f0f0f0;flex-shrink:0;user-select:none;';
 
         // 左上角拖拽手柄 20x20
         const dragHandle = document.createElement('div');
@@ -351,42 +445,20 @@
         titleArea.appendChild(tsSpan);
 
         const refreshBtn = document.createElement('span');
+        refreshBtn.className = 'top-reply-refresh-btn';
         refreshBtn.title = '立即刷新';
         refreshBtn.style.cssText = 'cursor:pointer;transition:all 0.2s;display:flex;align-items:center;padding:4px;border-radius:6px;user-select:none;';
         refreshBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
         refreshBtn.onmouseenter = function() { if (!this.dataset.cooldown) this.style.background = '#f5f5f5'; };
         refreshBtn.onmouseleave = function() { if (!this.dataset.cooldown) this.style.background = 'transparent'; };
 
-        /* 刷新冷却：30 秒内只允许刷新一次，冷却期间按钮禁用并显示倒计时 */
-        let refreshTimer = null;
-        function startRefreshCooldown() {
-            _lastRefreshTime = Date.now();
-            refreshBtn.dataset.cooldown = '1';
-            refreshBtn.style.cursor = 'not-allowed';
-            refreshBtn.style.opacity = '0.5';
-            refreshBtn.title = '冷却中…';
-            const tick = function () {
-                const elapsed = Date.now() - _lastRefreshTime;
-                const remaining = Math.ceil((REFRESH_COOLDOWN_MS - elapsed) / 1000);
-                if (remaining <= 0) {
-                    refreshBtn.removeAttribute('data-cooldown');
-                    refreshBtn.style.cursor = 'pointer';
-                    refreshBtn.style.opacity = '';
-                    refreshBtn.title = '立即刷新';
-                    refreshBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
-                    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
-                    return;
-                }
-                refreshBtn.innerHTML = '<span style="font-size:11px;color:#999;font-weight:600;min-width:15px;text-align:center;">' + remaining + '</span>';
-            };
-            tick();
-            refreshTimer = setInterval(tick, 1000);
-        }
+        // 打开弹窗时，恢复冷却状态
+        applyCooldownToBtn(refreshBtn);
 
         refreshBtn.onclick = function () {
-            /* 冷却中：忽略点击 */
             if (this.dataset.cooldown) return;
-            startRefreshCooldown();
+            startGlobalCooldown();
+            applyCooldownToBtn(refreshBtn);
             fetchTopPosts(true);
         };
 
@@ -415,7 +487,7 @@
         if (!document.getElementById('top-reply-spin-style')) {
             const style = document.createElement('style');
             style.id = 'top-reply-spin-style';
-            style.textContent = '@keyframes topReplySpin{to{transform:rotate(360deg)}}#top-reply-list::-webkit-scrollbar{width:6px}#top-reply-list::-webkit-scrollbar-track{background:transparent}#top-reply-list::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px}#top-reply-list::-webkit-scrollbar-thumb:hover{background:#ccc}';
+            style.textContent = '@keyframes topReplySpin{to{transform:rotate(360deg)}}@keyframes hotPostsSpin{to{transform:rotate(360deg)}}#top-reply-list::-webkit-scrollbar{width:6px}#top-reply-list::-webkit-scrollbar-track{background:transparent}#top-reply-list::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px}#top-reply-list::-webkit-scrollbar-thumb:hover{background:#ccc}.top-reply-title-link:hover{color:#3498db !important;}';
             document.head.appendChild(style);
         }
         dialog.appendChild(listDiv);
@@ -428,17 +500,26 @@
             else if (this.scrollTop >= maxScrollTop && e.deltaY > 0) e.preventDefault();
         }, { passive: false });
 
-        // 底部
+        // 底部（移动端缩小 padding）
         const footer = document.createElement('div');
-        footer.style.cssText = 'padding:10px 20px;border-top:1px solid #f0f0f0;font-size:11px;color:#c0c0c0;display:flex;justify-content:space-between;flex-shrink:0;background:#fafbfc;';
+        const footerPad = dialogIsMobile ? '8px 12px' : '10px 20px';
+        footer.style.cssText = 'padding:' + footerPad + ';border-top:1px solid #f0f0f0;font-size:11px;color:#c0c0c0;display:flex;justify-content:space-between;flex-shrink:0;background:#fafbfc;';
         footer.innerHTML = '<span style="display:flex;align-items:center;gap:4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>点击刷新获取最新</span><span>NodeSeek 热门评论</span>';
         dialog.appendChild(footer);
 
         document.body.appendChild(dialog);
 
-        // 打开弹窗时拉取最新数据，并立即启动冷却
-        fetchTopPosts();
-        startRefreshCooldown();
+        // 检查缓存是否新鲜（5分钟内），是则直接显示缓存，否则拉取新数据
+        var cachedPosts = loadPosts();
+        var cacheTime = 0;
+        try { cacheTime = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
+        if (cachedPosts.length > 0 && Date.now() - cacheTime < FETCH_CACHE_MS) {
+            // 缓存新鲜，直接显示
+            refreshDialogIfOpen(cachedPosts);
+        } else {
+            // 缓存过期，拉取新数据
+            fetchTopPosts();
+        }
 
         // 左上角 20x20 拖拽实现
         (function initDrag() {
@@ -462,11 +543,263 @@
         })();
     }
 
+    // ---- 侧边栏面板 ----
+
+    // 设备检测：与项目其他模块（collect.js）保持一致
+    function isMobile() {
+        if (window.NodeSeekFilter && typeof window.NodeSeekFilter.isMobileDevice === 'function') {
+            return window.NodeSeekFilter.isMobileDevice();
+        }
+        return window.innerWidth <= 767;
+    }
+
+    function setPanelWidth(panel) {
+        // 移动端不强制固定宽度，跟随父容器自适应
+        if (isMobile()) {
+            panel.style.width = '100%';
+            panel.style.maxWidth = '100%';
+            panel.style.boxSizing = 'border-box';
+            panel.style.overflow = 'hidden';
+            return;
+        }
+        const quickAccess = document.querySelector('.nsk-panel.quick-access');
+        if (!quickAccess) return;
+        const width = quickAccess.offsetWidth;
+        if (width > 0) {
+            panel.style.width = width + 'px';
+            panel.style.maxWidth = width + 'px';
+            panel.style.boxSizing = 'border-box';
+            panel.style.overflow = 'hidden';
+        }
+    }
+
+    function createSidebarPanel() {
+        // 注入侧边栏面板专属样式，覆盖 .nsk-panel 默认 padding
+        if (!document.getElementById('hot-posts-sidebar-style')) {
+            const sbStyle = document.createElement('style');
+            sbStyle.id = 'hot-posts-sidebar-style';
+            sbStyle.textContent = [
+                '#hot-posts-sidebar-panel{padding:0 5px !important;}',
+                '#hot-posts-sidebar-panel *{box-sizing:border-box;}',
+                '#hot-posts-sidebar-panel h4{padding:0 !important;margin:0 !important;text-indent:0 !important;}',
+                '#hot-posts-sidebar-panel h4 .iconpark-icon{margin:0 !important;margin-right:2px !important;}',
+                '#hot-posts-sidebar-panel h4 span{margin:0 !important;padding:0 !important;}',
+                '#hot-posts-sidebar-panel > div[id]{padding:0 !important;margin:0 !important;}',
+                '#hot-posts-sidebar-panel > div[id] > div{padding-left:0 !important;padding-right:0 !important;}',
+                '#hot-posts-sidebar-list a:hover span{color:#3498db !important;text-decoration:none;}',
+                '#hot-posts-sidebar-list > div:hover{background:#f5f5f5 !important;}'
+            ].join('');
+            document.head.appendChild(sbStyle);
+        }
+
+        const panel = document.createElement('div');
+        panel.id = 'hot-posts-sidebar-panel';
+        panel.className = 'nsk-panel';
+        panel.style.cssText = 'margin-top:12px;padding:0;';
+
+        // 标题行（与原生 nsk-panel h4 结构一致：svg + span）
+        const header = document.createElement('h4');
+        header.setAttribute('aria-level', '2');
+        // 移动端：增大 padding 便于触摸
+        const headerTouchPad = isMobile() ? '8px 4px' : '0';
+        header.style.cssText = 'display:flex;align-items:center;gap:4px;cursor:pointer;padding:' + headerTouchPad + ';margin:0;';
+        header.innerHTML = [
+            '<svg class="iconpark-icon"><use href="#ranking"></use></svg>',
+            '<span>热帖排行</span>',
+            '<span id="hot-posts-sidebar-time" style="font-size:11px;color:#999;font-weight:normal;margin-left:2px;"></span>'
+        ].join('');
+
+        // 点击标题打开弹窗
+        header.addEventListener('click', function () {
+            showTopReplyDialog();
+        });
+
+        panel.appendChild(header);
+
+        // 列表区域
+        const listDiv = document.createElement('div');
+        listDiv.id = 'hot-posts-sidebar-list';
+        listDiv.style.cssText = 'padding:0;width:100%;box-sizing:border-box;overflow:hidden;';
+        listDiv.innerHTML = '<div style="text-align:center;color:#bbb;padding:20px 0;font-size:12px;">加载中…</div>';
+        panel.appendChild(listDiv);
+
+        return panel;
+    }
+
+    // ---- 阅读记忆辅助 ----
+    function getViewedColor() {
+        try { return localStorage.getItem('nodeseek_viewed_color') || '#9aa0a6'; } catch (e) { return '#9aa0a6'; }
+    }
+
+    function normalizePostUrl(urlStr) {
+        try {
+            var urlObj = new URL(urlStr, window.location.origin);
+            var pathname = urlObj.pathname;
+            var m = pathname.match(/^\/post-(\d+)-\d+$/);
+            if (m) pathname = '/post-' + m[1] + '-1';
+            return urlObj.origin + pathname + urlObj.search;
+        } catch (e) {
+            return (urlStr || '').split('#')[0];
+        }
+    }
+
+    function getViewedUrlSet() {
+        try {
+            var raw = localStorage.getItem('nodeseek_viewed_titles_data');
+            if (raw) return new Set(JSON.parse(raw));
+        } catch (e) {}
+        return new Set();
+    }
+
+    function markUrlAsViewed(normalizedUrl) {
+        try {
+            var raw = localStorage.getItem('nodeseek_viewed_titles_data');
+            var list = raw ? JSON.parse(raw) : [];
+            if (!Array.isArray(list)) list = [];
+            if (!list.includes(normalizedUrl)) {
+                list.push(normalizedUrl);
+                localStorage.setItem('nodeseek_viewed_titles_data', JSON.stringify(list));
+            }
+            if (window.NodeSeekViewedTitles && typeof window.NodeSeekViewedTitles.add === 'function') {
+                window.NodeSeekViewedTitles.add(normalizedUrl);
+            }
+        } catch (e) {}
+    }
+
+    function renderSidebarList(container, posts) {
+        if (!posts || posts.length === 0) {
+            container.innerHTML = '<div style="text-align:center;color:#bbb;padding:20px 0;font-size:12px;">暂无数据</div>';
+            return;
+        }
+
+        var viewedEnabled = localStorage.getItem('nodeseek_viewed_history_enabled') !== 'false';
+        var viewedSet = viewedEnabled ? getViewedUrlSet() : new Set();
+        var viewedColor = getViewedColor();
+
+        container.innerHTML = '';
+
+        var sbIsMobile = isMobile();
+        posts.forEach(function (post) {
+            var fullUrl = post.url.startsWith('http') ? post.url : 'https://www.nodeseek.com' + post.url;
+            var normalized = normalizePostUrl(fullUrl);
+            var isViewed = viewedEnabled && viewedSet.has(normalized);
+            var color = isViewed ? viewedColor : '#333';
+            var title = (post.title || '').replace(/"/g, '&quot;');
+
+            var row = document.createElement('div');
+            // 移动端：增大 padding 和字号，便于触摸
+            var rowPad = sbIsMobile ? '10px 8px' : '6px 12px';
+            row.style.cssText = 'padding:' + rowPad + ';border-bottom:1px solid #eee;' + (sbIsMobile ? 'min-height:44px;display:flex;align-items:center;' : '');
+
+            var link = document.createElement('a');
+            link.href = fullUrl;
+            link.target = '_blank';
+            link.style.cssText = 'display:flex;align-items:center;text-decoration:none;color:inherit;min-width:0;' + (sbIsMobile ? 'width:100%;' : '');
+
+            var span = document.createElement('span');
+            var spanFontSize = sbIsMobile ? '14px' : '13px';
+            span.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + color + ';font-size:' + spanFontSize + ';min-width:0;';
+            span.textContent = post.title;
+            span.title = title;
+
+            link.appendChild(span);
+            row.appendChild(link);
+            container.appendChild(row);
+
+            link.addEventListener('click', function () {
+                markUrlAsViewed(normalized);
+                span.style.color = viewedColor;
+            });
+        });
+    }
+
+    function refreshSidebarContent() {
+        var listDiv = document.getElementById('hot-posts-sidebar-list');
+        var timeSpan = document.getElementById('hot-posts-sidebar-time');
+        if (!listDiv) return;
+
+        var posts = loadPosts();
+        if (posts && posts.length > 0) {
+            renderSidebarList(listDiv, posts);
+            if (timeSpan) {
+                var fetchTime = 0;
+                try { fetchTime = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
+                timeSpan.textContent = '更新于 ' + (fetchTime ? new Date(fetchTime).toLocaleTimeString() : new Date().toLocaleTimeString());
+            }
+        }
+    }
+
+    function injectSidebarPanel() {
+        if (document.getElementById('hot-posts-sidebar-panel')) return;
+
+        var quickAccess = document.querySelector('.nsk-panel.quick-access');
+        if (!quickAccess) {
+            // 如果快捷功能区还没加载，延迟重试
+            setTimeout(injectSidebarPanel, 1000);
+            return;
+        }
+
+        var panel = createSidebarPanel();
+        quickAccess.after(panel);
+        setPanelWidth(panel);
+
+        // 窗口变化时调整宽度
+        var resizeTimer = null;
+        window.addEventListener('resize', function () {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(function () {
+                var p = document.getElementById('hot-posts-sidebar-panel');
+                if (p) setPanelWidth(p);
+            }, 200);
+        });
+
+        // 先显示缓存，再拉取最新数据
+        refreshSidebarContent();
+        fetchTopPosts(false);
+    }
+
+    // ---- 自动刷新 ----
+    let _autoRefreshTimer = null;
+
+    function startAutoRefresh() {
+        if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+        _autoRefreshTimer = setInterval(function () {
+            fetchTopPosts(false);
+        }, AUTO_REFRESH_INTERVAL);
+    }
+
+    function resumeCooldownIfNeeded() {
+        if (_lastRefreshTime <= 0) return;
+        var elapsed = Date.now() - _lastRefreshTime;
+        if (elapsed >= REFRESH_COOLDOWN_MS) {
+            _lastRefreshTime = 0;
+            try { localStorage.removeItem(COOLDOWN_KEY); } catch (e) {}
+            return;
+        }
+        // 仍在冷却期，重启全局计时器（跨页面后计时器已销毁，不重置时间戳）
+        resumeGlobalCooldown();
+    }
+
+    // ---- 初始化 ----
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () {
+            injectSidebarPanel();
+            resumeCooldownIfNeeded();
+            startAutoRefresh();
+        });
+    } else {
+        injectSidebarPanel();
+        resumeCooldownIfNeeded();
+        startAutoRefresh();
+    }
+
     // ---- 公共 API ----
     window.NodeSeekTopReply = {
         showTopReplyDialog,
         fetchTopPosts,
-        getTopPosts: loadPosts
+        getTopPosts: loadPosts,
+        injectSidebarPanel,
+        refreshSidebarContent
     };
 
 })();
