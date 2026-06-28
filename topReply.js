@@ -700,7 +700,11 @@
             var spanFontSize = sbIsMobile ? '14px' : '13px';
             span.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + color + ';font-size:' + spanFontSize + ';min-width:0;';
             span.textContent = post.title;
-            span.title = title;
+            // 仅截断时鼠标悬停显示完整内容
+            span.onmouseenter = function() {
+                this.title = this.scrollWidth > this.clientWidth ? post.title : '';
+            };
+            span.onmouseleave = function() { this.title = ''; };
 
             link.appendChild(span);
             row.appendChild(link);
