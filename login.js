@@ -117,9 +117,9 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                timeout: isSyncOperation ? 60000 : 15000, // 同步操作60秒，其他15秒
-                retries: isSyncOperation ? 3 : 2, // 同步操作重试3次（原为5次），减少网络负担
-                retryDelay: isSyncOperation ? 5000 : 1000, // 同步操作延迟5秒（原为2秒），给予更多恢复时间
+                timeout: isSyncOperation ? 90000 : 15000, // 同步操作90秒（原60秒，给予慢网络更多恢复时间），其他15秒
+                retries: isSyncOperation ? 3 : 2, // 同步操作重试3次（保持不变），减少网络负担
+                retryDelay: isSyncOperation ? 5000 : 1000, // 同步操作基础延迟5秒，实际使用指数退避
             };
 
             if (authToken) {
@@ -245,14 +245,32 @@
 
                     // 对于网络错误，尝试重试
                     if (attempt < maxRetries && (error.name === 'AbortError' || error instanceof TypeError)) {
-                        const retryDelay = finalOptions.retryDelay || 1000;
+                        // 离线检测：网络已断开时跳过重试，避免无谓等待
+                        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                            lastError = new Error('网络已断开，请检查网络连接');
+                            throw lastError;
+                        }
 
-                        // 同步操作显示重试提示
-                        if (isSyncOperation) {
+                        // 指数退避算法：第1次 baseDelay*1，第2次 baseDelay*2，第3次 baseDelay*4
+                        // 加入 ±20% 随机抖动，避免多标签页/多客户端同步重试造成雪崩
+                        const baseRetryDelay = finalOptions.retryDelay || 1000;
+                        const exponentialDelay = baseRetryDelay * Math.pow(2, attempt);
+                        const jitter = exponentialDelay * (0.8 + Math.random() * 0.4);
+                        const retryDelay = Math.floor(jitter);
+
+                        // 提示策略优化：第1次重试静默（多数为瞬时抖动，无需打扰用户）
+                        // 第2、3次重试才显示提示，让用户感知到正在恢复
+                        if (isSyncOperation && attempt >= 1) {
                             if (typeof Utils.showMessage === 'function') {
                                 const errorType = error.name === 'AbortError' ? '请求超时' : '网络连接失败';
                                 // 同步重试仅记录日志，不显示弹窗
                                 Utils.showMessage(`${errorType}，正在重试... (${attempt + 1}/${maxRetries})`, 'warning', false);
+                            }
+                        } else if (isSyncOperation) {
+                            // 第1次重试仅记录日志，不显示任何提示
+                            if (typeof window.addLog === 'function') {
+                                const errorType = error.name === 'AbortError' ? '请求超时' : '网络连接失败';
+                                window.addLog(`${errorType}，正在静默重试... (1/${maxRetries})`);
                             }
                         }
 
@@ -1852,7 +1870,8 @@
                 const configJson = JSON.stringify({ config, syncMode: 'auto', backupLimit });
                 const size = new Blob([configJson]).size;
                 const mb = size / (1024 * 1024);
-                let dynamicTimeout = 60000;
+                // 动态超时：基础90秒（匹配 request 默认值），每 MB 额外增加 30 秒，上限 5 分钟
+                let dynamicTimeout = 90000;
                 if (mb > 1) dynamicTimeout += Math.ceil(mb - 1) * 30000;
                 dynamicTimeout = Math.min(dynamicTimeout, 300000);
                 const data = await Utils.request(`${CONFIG.SERVER_URL}/api/sync`, {
