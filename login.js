@@ -172,7 +172,19 @@
                                 timeout,
                                 responseType: 'text',
                                 onload: resolve,
-                                onerror: () => reject(new TypeError('fetch failed')),
+                                onerror: (errResp) => {
+                                    // GM_xmlhttpRequest 的 onerror 不一定是"网络错误"，
+                                    // 某些实现会把服务器有响应但被视为错误的情况也走 onerror。
+                                    // 这里保留详细信息用于诊断，并尽可能恢复响应数据。
+                                    const info = errResp || {};
+                                    const e = new TypeError('fetch failed');
+                                    e.gmStatus = info.status || 0;
+                                    e.gmStatusText = info.statusText || '';
+                                    e.gmResponseText = typeof info.responseText === 'string' ? info.responseText : '';
+                                    e.gmError = info.error || '';
+                                    e.gmReadyState = info.readyState;
+                                    reject(e);
+                                },
                                 ontimeout: () => {
                                     const err = new Error('timeout');
                                     err.name = 'AbortError';
@@ -236,11 +248,39 @@
                     if (error.name === 'AbortError') {
                         lastError = new Error('请求超时，请检查网络连接');
                     } else if (error instanceof TypeError && error.message.includes('fetch')) {
-                        lastError = new Error('网络连接失败，请检查网络或服务器状态');
+                        // GM onerror 可能携带服务器响应：若存在有效响应文本，尝试恢复
+                        const gmText = error.gmResponseText;
+                        const gmStatus = error.gmStatus || 0;
+                        if (gmText) {
+                            // 尝试解析响应体，若成功且服务器明确返回业务消息，则用业务消息
+                            try {
+                                const parsed = JSON.parse(gmText);
+                                const msg = (parsed && parsed.message) ? parsed.message : `HTTP ${gmStatus}`;
+                                lastError = new Error(msg);
+                                lastError.status = gmStatus;
+                                lastError.recoveredFromGmError = true;
+                            } catch {
+                                // 非 JSON 响应，按状态码归类
+                                if (gmStatus > 0) {
+                                    lastError = new Error(`服务器返回错误 HTTP ${gmStatus}${error.gmStatusText ? ': ' + error.gmStatusText : ''}`);
+                                    lastError.status = gmStatus;
+                                    lastError.recoveredFromGmError = true;
+                                } else {
+                                    lastError = new Error('网络连接失败，请检查网络或服务器状态');
+                                }
+                            }
+                        } else {
+                            lastError = new Error('网络连接失败，请检查网络或服务器状态');
+                        }
                     } else if (error.message.includes('JSON')) {
                         lastError = new Error('服务器响应格式错误');
                     } else {
                         lastError = error;
+                    }
+
+                    // 若已从 GM onerror 恢复出业务响应，则不再重试，直接抛出
+                    if (lastError && lastError.recoveredFromGmError) {
+                        throw lastError;
                     }
 
                     // 对于网络错误，尝试重试
@@ -265,12 +305,22 @@
                                 const errorType = error.name === 'AbortError' ? '请求超时' : '网络连接失败';
                                 // 同步重试仅记录日志，不显示弹窗
                                 Utils.showMessage(`${errorType}，正在重试... (${attempt + 1}/${maxRetries})`, 'warning', false);
+                                // 记录诊断信息，便于排查"服务正常但报网络错误"的情况
+                                if (typeof window.addLog === 'function' && error instanceof TypeError) {
+                                    const diag = `诊断: status=${error.gmStatus || 0}, readyState=${error.gmReadyState}, err=${error.gmError || 'N/A'}, bodyLen=${error.gmResponseText ? error.gmResponseText.length : 0}`;
+                                    window.addLog(diag);
+                                }
                             }
                         } else if (isSyncOperation) {
                             // 第1次重试仅记录日志，不显示任何提示
                             if (typeof window.addLog === 'function') {
                                 const errorType = error.name === 'AbortError' ? '请求超时' : '网络连接失败';
                                 window.addLog(`${errorType}，正在静默重试... (1/${maxRetries})`);
+                                // 第1次静默重试也记录诊断，避免日志被后续覆盖
+                                if (error instanceof TypeError) {
+                                    const diag = `诊断: status=${error.gmStatus || 0}, readyState=${error.gmReadyState}, err=${error.gmError || 'N/A'}, bodyLen=${error.gmResponseText ? error.gmResponseText.length : 0}`;
+                                    window.addLog(diag);
+                                }
                             }
                         }
 
