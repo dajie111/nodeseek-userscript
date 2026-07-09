@@ -149,7 +149,11 @@
         const url = BASE_URL + pageNum;
         return fetch(url, { credentials: 'include' })
             .then(resp => {
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                if (!resp.ok) {
+                    const err = new Error('HTTP ' + resp.status);
+                    err.status = resp.status;
+                    throw err;
+                }
                 return resp.text();
             })
             .then(html => {
@@ -188,38 +192,80 @@
             }
         }
 
-        /* 分两批并行拉取，每批 5 页，兼顾速度与限流 */
+        /* 串行拉取 10 页：任何时刻只有 1 个请求在飞，避免并发触发 CF；
+           遇 429 立即停止后续页面，用已获取数据渲染（智能降级） */
         const allPosts = [];
-        const BATCH_SIZE = 5;
+        let rateLimitHit = false;
+        let fetchedPageCount = 0;
+        /* 串行模式下每页间隔（毫秒）：300~600ms，单请求不会触发并发限流 */
+        const PAGE_INTERVAL_MIN = 300;
+        const PAGE_INTERVAL_MAX = 600;
+        /* 非限流错误的重试间隔（毫秒） */
+        const RETRY_BACKOFF_MIN = 2000;
+        const RETRY_BACKOFF_MAX = 4000;
+        const MAX_RETRIES = 1;
+
+        function randomBetween(min, max) {
+            return min + Math.random() * (max - min);
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
 
         function fetchPageWithRetry(pageNum, retries) {
             return fetchPage(pageNum)
                 .catch(err => {
+                    const status = err && err.status;
+                    if (status === 429) {
+                        // 429：不重试，向上抛出由串行循环决定是否停止
+                        throw err;
+                    }
                     console.warn('[热帖排行] 第' + pageNum + '页拉取失败:', err.message);
                     if (retries > 0) {
-                        return new Promise(resolve => setTimeout(resolve, 1000))
+                        return sleep(randomBetween(RETRY_BACKOFF_MIN, RETRY_BACKOFF_MAX))
                             .then(() => fetchPageWithRetry(pageNum, retries - 1));
                     }
-                    return [];
+                    return []; // 重试耗尽，返回空跳过该页继续下一页
                 });
         }
 
-        function fetchBatch(start) {
-            const batch = [];
-            for (let i = start; i < Math.min(start + BATCH_SIZE, MAX_PAGE + 1); i++) {
-                batch.push(fetchPageWithRetry(i, 1));
+        function fetchSequential(currentPage) {
+            if (currentPage > MAX_PAGE || rateLimitHit) {
+                return Promise.resolve();
             }
-            return Promise.all(batch).then(results => {
-                results.forEach(posts => allPosts.push(...posts));
-            });
+            return fetchPageWithRetry(currentPage, MAX_RETRIES)
+                .then(posts => {
+                    if (posts && posts.length > 0) {
+                        allPosts.push(...posts);
+                        fetchedPageCount++;
+                    }
+                    // 下一页前等待短间隔
+                    if (currentPage < MAX_PAGE && !rateLimitHit) {
+                        return sleep(randomBetween(PAGE_INTERVAL_MIN, PAGE_INTERVAL_MAX))
+                            .then(() => fetchSequential(currentPage + 1));
+                    }
+                })
+                .catch(err => {
+                    const status = err && err.status;
+                    if (status === 429) {
+                        console.warn('[热帖排行] 第' + currentPage + '页触发 CF 限流，停止拉取后续页面（已获取 ' + fetchedPageCount + ' 页数据）');
+                        rateLimitHit = true;
+                    } else {
+                        console.warn('[热帖排行] 第' + currentPage + '页异常:', err.message);
+                    }
+                });
         }
 
-        /* 第一批 1-5 页并行，完成后第二批 6-10 页并行 */
-        fetchBatch(1)
-            .then(() => fetchBatch(6))
+        /* 串行拉取 1-10 页，遇 429 智能降级 */
+        fetchSequential(1)
             .then(() => {
                 if (allPosts.length === 0) {
                     throw new Error('所有页面拉取均失败');
+                }
+
+                if (rateLimitHit) {
+                    console.warn('[热帖排行] 因 CF 限流，仅获取到 ' + fetchedPageCount + ' 页数据，使用部分数据渲染');
                 }
 
                 // 按 url 去重
@@ -469,8 +515,13 @@
         closeBtn.onmouseleave = function() { this.style.background = 'transparent'; };
         closeBtn.onclick = () => dialog.remove();
 
+        const hintLabel = document.createElement('span');
+        hintLabel.style.cssText = 'font-size:11px;color:#aaa;margin-right:4px;white-space:nowrap;';
+        hintLabel.textContent = '点击刷新约10秒加载完整数据';
+
         const rightBtns = document.createElement('div');
         rightBtns.style.cssText = 'display:flex;align-items:center;gap:4px;';
+        rightBtns.appendChild(hintLabel);
         rightBtns.appendChild(refreshBtn);
         rightBtns.appendChild(closeBtn);
 
