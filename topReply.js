@@ -13,6 +13,8 @@
     const FETCH_CACHE_MS = 300000;
     const AUTO_REFRESH_INTERVAL = 300000;
     const COOLDOWN_KEY = STORAGE_KEY + '_cooldown';
+    const FETCH_LOCK_KEY = STORAGE_KEY + '_fetching';
+    const FETCH_LOCK_TIMEOUT_MS = 30000; // 锁超时（防 tab 崩溃遗留锁）
     /** 上次刷新时间戳，从 localStorage 初始化，跨页面保持冷却状态 */
     let _lastRefreshTime = 0;
     try { _lastRefreshTime = parseInt(localStorage.getItem(COOLDOWN_KEY), 10) || 0; } catch (e) {}
@@ -170,8 +172,32 @@
             });
     }
 
+    // ---- 跨 tab 拉取锁 ----
+    function tryAcquireFetchLock() {
+        try {
+            var now = Date.now();
+            var lockData = localStorage.getItem(FETCH_LOCK_KEY);
+            if (lockData) {
+                var parsed = JSON.parse(lockData);
+                // 锁未超时：其他 tab 正在拉取，跳过
+                if (parsed && now - parsed.time < FETCH_LOCK_TIMEOUT_MS) {
+                    return false;
+                }
+                // 锁已超时：接管锁
+            }
+            localStorage.setItem(FETCH_LOCK_KEY, JSON.stringify({ time: now }));
+            return true;
+        } catch (e) { return true; } // localStorage 不可用时放行
+    }
+
+    function releaseFetchLock() {
+        try { localStorage.removeItem(FETCH_LOCK_KEY); } catch (e) {}
+    }
+
+    // ---- 核心拉取逻辑 ----
+
     function fetchTopPosts(forceRefresh) {
-        /* 非强制刷新且缓存新鲜（5分钟内），跳过拉取 */
+        // 缓存新鲜且非强制刷新 → 跳过
         if (!forceRefresh) {
             var cacheTime = 0;
             try { cacheTime = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
@@ -179,6 +205,11 @@
             if (posts.length > 0 && Date.now() - cacheTime < FETCH_CACHE_MS) {
                 return;
             }
+        }
+
+        /* 跨 tab 取锁：已有其他 tab 在拉取则跳过（缓存检查仍会更新弹窗） */
+        if (!tryAcquireFetchLock()) {
+            return;
         }
 
         /* 强制刷新：先清空当前数据并显示加载态 */
@@ -292,6 +323,8 @@
                 refreshDialogIfOpen(topPosts);
                 // 同步刷新侧边栏面板
                 refreshSidebarContent();
+                // 释放跨 tab 拉取锁
+                releaseFetchLock();
             })
             .catch(err => {
                 /* 刷新失败时恢复显示已有数据，避免卡在加载态 */
@@ -311,6 +344,8 @@
                 }
                 // 同步刷新侧边栏面板（显示缓存）
                 refreshSidebarContent();
+                // 释放跨 tab 拉取锁
+                releaseFetchLock();
             });
     }
 
