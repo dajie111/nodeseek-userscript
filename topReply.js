@@ -15,6 +15,8 @@
     const COOLDOWN_KEY = STORAGE_KEY + '_cooldown';
     const FETCH_LOCK_KEY = STORAGE_KEY + '_fetching';
     const FETCH_LOCK_TIMEOUT_MS = 30000; // 锁超时（防 tab 崩溃遗留锁）
+    /** 当前 tab 唯一标识，用于跨 tab 锁的持有者校验，避免多 tab 竞态写覆盖导致并发拉取 */
+    const _tabId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     /** 上次刷新时间戳，从 localStorage 初始化，跨页面保持冷却状态 */
     let _lastRefreshTime = 0;
     try { _lastRefreshTime = parseInt(localStorage.getItem(COOLDOWN_KEY), 10) || 0; } catch (e) {}
@@ -179,19 +181,36 @@
             var lockData = localStorage.getItem(FETCH_LOCK_KEY);
             if (lockData) {
                 var parsed = JSON.parse(lockData);
-                // 锁未超时：其他 tab 正在拉取，跳过
-                if (parsed && now - parsed.time < FETCH_LOCK_TIMEOUT_MS) {
+                // 锁未超时且非本 tab 持有：其他 tab 正在拉取，跳过
+                if (parsed && parsed.tabId !== _tabId && now - parsed.time < FETCH_LOCK_TIMEOUT_MS) {
                     return false;
                 }
-                // 锁已超时：接管锁
+                // 锁已超时或是本 tab 的旧锁：接管
             }
-            localStorage.setItem(FETCH_LOCK_KEY, JSON.stringify({ time: now }));
+            localStorage.setItem(FETCH_LOCK_KEY, JSON.stringify({ time: now, tabId: _tabId }));
+            // 双重检查：防止与另一 tab 竞态写覆盖（TOCTOU），确认锁仍属于自己
+            var recheck = localStorage.getItem(FETCH_LOCK_KEY);
+            if (recheck) {
+                var reparsed = JSON.parse(recheck);
+                if (reparsed && reparsed.tabId !== _tabId) {
+                    return false;
+                }
+            }
             return true;
         } catch (e) { return true; } // localStorage 不可用时放行
     }
 
     function releaseFetchLock() {
-        try { localStorage.removeItem(FETCH_LOCK_KEY); } catch (e) {}
+        try {
+            var lockData = localStorage.getItem(FETCH_LOCK_KEY);
+            if (lockData) {
+                var parsed = JSON.parse(lockData);
+                // 只有锁的持有者才能释放，避免误释放其他 tab 的锁
+                if (!parsed || parsed.tabId === _tabId) {
+                    localStorage.removeItem(FETCH_LOCK_KEY);
+                }
+            }
+        } catch (e) {}
     }
 
     // ---- 核心拉取逻辑 ----
@@ -267,6 +286,8 @@
             }
             return fetchPageWithRetry(currentPage, MAX_RETRIES)
                 .then(posts => {
+                    // 心跳：每页拉取后续期锁，避免长时间串行拉取（含重试）被其他 tab 误判超时接管
+                    try { localStorage.setItem(FETCH_LOCK_KEY, JSON.stringify({ time: Date.now(), tabId: _tabId })); } catch (e) {}
                     if (posts && posts.length > 0) {
                         allPosts.push(...posts);
                         fetchedPageCount++;
