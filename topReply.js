@@ -10,11 +10,14 @@
     /** 刷新冷却时间（毫秒），避免频繁请求 */
     const REFRESH_COOLDOWN_MS = 30000;
     /** 自动刷新/缓存间隔（毫秒） */
-    const FETCH_CACHE_MS = 300000;
-    const AUTO_REFRESH_INTERVAL = 300000;
+    const FETCH_CACHE_MS = 240000; // 缓存 4 分钟，短于自动刷新间隔确保每次都能拉取新数据
+    const AUTO_REFRESH_INTERVAL = 300000; // 自动刷新 5 分钟
     const COOLDOWN_KEY = STORAGE_KEY + '_cooldown';
     const FETCH_LOCK_KEY = STORAGE_KEY + '_fetching';
     const FETCH_LOCK_TIMEOUT_MS = 30000; // 锁超时（防 tab 崩溃遗留锁）
+    /** 429 限流全局冷却：有 tab 触发 429 后，所有 tab 等待此时间再尝试，避免连环 429 */
+    const RATE_LIMIT_COOLDOWN_KEY = STORAGE_KEY + '_429_cooldown';
+    const RATE_LIMIT_COOLDOWN_MS = 120000; // 2分钟冷却
     /** 当前 tab 唯一标识，用于跨 tab 锁的持有者校验，避免多 tab 竞态写覆盖导致并发拉取 */
     const _tabId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     /** 上次刷新时间戳，从 localStorage 初始化，跨页面保持冷却状态 */
@@ -213,6 +216,27 @@
         } catch (e) {}
     }
 
+    /** 检查 429 全局冷却是否活跃：有 tab 触发过 429 且在冷却期内 */
+    function isRateLimitCooldownActive() {
+        try {
+            var ts = parseInt(localStorage.getItem(RATE_LIMIT_COOLDOWN_KEY), 10) || 0;
+            if (ts > 0 && Date.now() - ts < RATE_LIMIT_COOLDOWN_MS) {
+                return true;
+            }
+        } catch (e) {}
+        return false;
+    }
+
+    /** 设置 429 全局冷却时间戳，阻止所有 tab 在冷却期内拉取 */
+    function setRateLimitCooldown() {
+        try { localStorage.setItem(RATE_LIMIT_COOLDOWN_KEY, String(Date.now())); } catch (e) {}
+    }
+
+    /** 清除 429 全局冷却（全部 10 页拉取成功无 429 时调用） */
+    function clearRateLimitCooldown() {
+        try { localStorage.removeItem(RATE_LIMIT_COOLDOWN_KEY); } catch (e) {}
+    }
+
     // ---- 核心拉取逻辑 ----
 
     function fetchTopPosts(forceRefresh) {
@@ -224,6 +248,11 @@
             if (posts.length > 0 && Date.now() - cacheTime < FETCH_CACHE_MS) {
                 return;
             }
+        }
+
+        /* 429 全局冷却：有 tab 已触发限流，所有 tab 等待冷却结束再重试，避免连环 429 */
+        if (isRateLimitCooldownActive()) {
+            return;
         }
 
         /* 跨 tab 取锁：已有其他 tab 在拉取则跳过（缓存检查仍会更新弹窗） */
@@ -303,6 +332,8 @@
                     if (status === 429) {
                         console.warn('[热帖排行] 第' + currentPage + '页触发 CF 限流，停止拉取后续页面（已获取 ' + fetchedPageCount + ' 页数据）');
                         rateLimitHit = true;
+                        // 设置 429 全局冷却，阻止所有 tab 在冷却期内再次拉取，避免连环 429
+                        setRateLimitCooldown();
                     } else {
                         console.warn('[热帖排行] 第' + currentPage + '页异常:', err.message);
                     }
@@ -318,6 +349,9 @@
 
                 if (rateLimitHit) {
                     console.warn('[热帖排行] 因 CF 限流，仅获取到 ' + fetchedPageCount + ' 页数据，使用部分数据渲染');
+                } else {
+                    // 全部 10 页拉取成功无 429，清除 429 冷却标记
+                    clearRateLimitCooldown();
                 }
 
                 // 按 url 去重
@@ -875,6 +909,8 @@
     function startAutoRefresh() {
         if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
         _autoRefreshTimer = setInterval(function () {
+            // 无论拉取是否成功，先用缓存刷新侧边栏 UI，确保时间戳和数据始终最新
+            refreshSidebarContent();
             fetchTopPosts(false);
         }, AUTO_REFRESH_INTERVAL);
     }
@@ -892,16 +928,34 @@
     }
 
     // ---- 初始化 ----
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () {
-            injectSidebarPanel();
-            resumeCooldownIfNeeded();
-            startAutoRefresh();
-        });
-    } else {
+    function init() {
         injectSidebarPanel();
         resumeCooldownIfNeeded();
         startAutoRefresh();
+        // 监听页面可见性变化：切回标签页时如果缓存已过期，自动刷新
+        document.addEventListener('visibilitychange', function () {
+            if (document.hidden) return;
+            // 标签页变为可见，刷新侧边栏 UI 显示最新缓存数据
+            refreshSidebarContent();
+            // 缓存已过期且无 429 冷却 → 尝试拉取新数据
+            var cacheTime = 0;
+            try { cacheTime = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
+            if (Date.now() - cacheTime >= FETCH_CACHE_MS && !isRateLimitCooldownActive()) {
+                fetchTopPosts(false);
+            }
+        });
+        // 监听 localStorage 变化：其他 tab 更新数据后，本 tab 自动刷新侧边栏
+        window.addEventListener('storage', function (e) {
+            if (e.key === STORAGE_KEY || e.key === STORAGE_KEY + '_time') {
+                refreshSidebarContent();
+            }
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
     }
 
     // ---- 公共 API ----
