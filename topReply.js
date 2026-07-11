@@ -255,11 +255,6 @@
             return;
         }
 
-        /* 跨 tab 取锁：已有其他 tab 在拉取则跳过（缓存检查仍会更新弹窗） */
-        if (!tryAcquireFetchLock()) {
-            return;
-        }
-
         /* 强制刷新：先清空当前数据并显示加载态 */
         if (forceRefresh) {
             const dialog = document.getElementById('top-reply-dialog');
@@ -315,8 +310,6 @@
             }
             return fetchPageWithRetry(currentPage, MAX_RETRIES)
                 .then(posts => {
-                    // 心跳：每页拉取后续期锁，避免长时间串行拉取（含重试）被其他 tab 误判超时接管
-                    try { localStorage.setItem(FETCH_LOCK_KEY, JSON.stringify({ time: Date.now(), tabId: _tabId })); } catch (e) {}
                     if (posts && posts.length > 0) {
                         allPosts.push(...posts);
                         fetchedPageCount++;
@@ -340,68 +333,87 @@
                 });
         }
 
-        /* 串行拉取 1-10 页，遇 429 智能降级 */
-        fetchSequential(1)
-            .then(() => {
-                if (allPosts.length === 0) {
-                    throw new Error('所有页面拉取均失败');
-                }
+        /* 核心拉取+渲染逻辑（不含锁管理，由外层 navigator.locks 或降级方案管理锁生命周期） */
+        function doFetch() {
+            return fetchSequential(1)
+                .then(() => {
+                    if (allPosts.length === 0) {
+                        throw new Error('所有页面拉取均失败');
+                    }
 
-                if (rateLimitHit) {
-                    console.warn('[热帖排行] 因 CF 限流，仅获取到 ' + fetchedPageCount + ' 页数据，使用部分数据渲染');
-                } else {
-                    // 全部 10 页拉取成功无 429，清除 429 冷却标记
-                    clearRateLimitCooldown();
-                }
+                    if (rateLimitHit) {
+                        console.warn('[热帖排行] 因 CF 限流，仅获取到 ' + fetchedPageCount + ' 页数据，使用部分数据渲染');
+                    } else {
+                        // 全部 10 页拉取成功无 429，清除 429 冷却标记
+                        clearRateLimitCooldown();
+                    }
 
-                // 按 url 去重
-                const seen = new Set();
-                const uniquePosts = allPosts.filter(p => {
-                    if (seen.has(p.url)) return false;
-                    seen.add(p.url);
-                    return true;
-                });
+                    // 按 url 去重
+                    const seen = new Set();
+                    const uniquePosts = allPosts.filter(p => {
+                        if (seen.has(p.url)) return false;
+                        seen.add(p.url);
+                        return true;
+                    });
 
-                // 找到当前批次中最新的帖子 ID，过滤掉老帖（ID 差距超过 5000）
-                const maxId = uniquePosts.reduce((max, p) => Math.max(max, p.postId || 0), 0);
-                const freshPosts = uniquePosts.filter(p => (p.postId || 0) >= maxId - 5000);
+                    // 找到当前批次中最新的帖子 ID，过滤掉老帖（ID 差距超过 5000）
+                    const maxId = uniquePosts.reduce((max, p) => Math.max(max, p.postId || 0), 0);
+                    const freshPosts = uniquePosts.filter(p => (p.postId || 0) >= maxId - 5000);
 
-                freshPosts.sort((a, b) => b.comments - a.comments);
-                const topPosts = freshPosts.slice(0, TOP_COUNT);
+                    freshPosts.sort((a, b) => b.comments - a.comments);
+                    const topPosts = freshPosts.slice(0, TOP_COUNT);
 
-                if (topPosts.length > 0) {
-                    savePosts(topPosts);
-                    _lastRefreshTime = Date.now();
-                    try { localStorage.setItem(STORAGE_KEY + '_time', _lastRefreshTime.toString()); } catch (e) {}
-                }
+                    if (topPosts.length > 0) {
+                        savePosts(topPosts);
+                        _lastRefreshTime = Date.now();
+                        try { localStorage.setItem(STORAGE_KEY + '_time', _lastRefreshTime.toString()); } catch (e) {}
+                    }
 
-                refreshDialogIfOpen(topPosts);
-                // 同步刷新侧边栏面板
-                refreshSidebarContent();
-                // 释放跨 tab 拉取锁
-                releaseFetchLock();
-            })
-            .catch(err => {
-                /* 刷新失败时恢复显示已有数据，避免卡在加载态 */
-                console.error('[热帖排行] 拉取失败:', err);
-                const dialog = document.getElementById('top-reply-dialog');
-                if (dialog) {
-                    const listDiv = dialog.querySelector('#top-reply-list');
-                    if (listDiv) {
-                        const cached = loadPosts();
-                        if (cached && cached.length > 0) {
-                            listDiv.innerHTML = '<div style="text-align:center;color:#e74c3c;padding:12px;font-size:12px;">拉取失败，显示缓存数据</div>';
-                            renderPostList(listDiv, cached);
-                        } else {
-                            listDiv.innerHTML = '<div style="text-align:center;color:#e74c3c;padding:50px 0;font-size:13px;">拉取失败，请稍后重试</div>';
+                    refreshDialogIfOpen(topPosts);
+                    // 同步刷新侧边栏面板
+                    refreshSidebarContent();
+                })
+                .catch(err => {
+                    /* 刷新失败时恢复显示已有数据，避免卡在加载态 */
+                    console.error('[热帖排行] 拉取失败:', err);
+                    const dialog = document.getElementById('top-reply-dialog');
+                    if (dialog) {
+                        const listDiv = dialog.querySelector('#top-reply-list');
+                        if (listDiv) {
+                            const cached = loadPosts();
+                            if (cached && cached.length > 0) {
+                                listDiv.innerHTML = '<div style="text-align:center;color:#e74c3c;padding:12px;font-size:12px;">拉取失败，显示缓存数据</div>';
+                                renderPostList(listDiv, cached);
+                            } else {
+                                listDiv.innerHTML = '<div style="text-align:center;color:#e74c3c;padding:50px 0;font-size:13px;">拉取失败，请稍后重试</div>';
+                            }
                         }
                     }
+                    // 同步刷新侧边栏面板（显示缓存）
+                    refreshSidebarContent();
+                });
+        }
+
+        /* 跨 tab 原子锁：优先使用 navigator.locks API（浏览器原生原子锁，彻底消除 TOCTOU 竞态）；
+           降级方案：localStorage 锁（有竞态风险但比无锁好） */
+        var LOCK_NAME = 'nodeseek_topreply_fetch';
+        if (typeof navigator !== 'undefined' && navigator.locks && navigator.locks.request) {
+            navigator.locks.request(LOCK_NAME, { mode: 'exclusive', ifAvailable: true }, async function (lock) {
+                if (!lock) return;
+                /* 锁内二次检查：等待锁期间可能有其他 tab 触发了429或更新了缓存 */
+                if (isRateLimitCooldownActive()) return;
+                if (!forceRefresh) {
+                    var ct = 0;
+                    try { ct = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
+                    if (loadPosts().length > 0 && Date.now() - ct < FETCH_CACHE_MS) return;
                 }
-                // 同步刷新侧边栏面板（显示缓存）
-                refreshSidebarContent();
-                // 释放跨 tab 拉取锁
-                releaseFetchLock();
+                await doFetch();
             });
+        } else {
+            /* 降级：localStorage 锁（旧浏览器不支持 navigator.locks 时使用） */
+            if (!tryAcquireFetchLock()) return;
+            doFetch().finally(function () { releaseFetchLock(); });
+        }
     }
 
     // ---- 弹窗 ----
