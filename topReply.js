@@ -295,7 +295,7 @@
                         // 429：不重试，向上抛出由串行循环决定是否停止
                         throw err;
                     }
-                    console.warn('[热帖排行] 第' + pageNum + '页拉取失败:', err.message);
+                    // 拉取失败静默处理（重试或跳过），不污染控制台
                     if (retries > 0) {
                         return sleep(randomBetween(RETRY_BACKOFF_MIN, RETRY_BACKOFF_MAX))
                             .then(() => fetchPageWithRetry(pageNum, retries - 1));
@@ -323,12 +323,12 @@
                 .catch(err => {
                     const status = err && err.status;
                     if (status === 429) {
-                        console.warn('[热帖排行] 第' + currentPage + '页触发 CF 限流，停止拉取后续页面（已获取 ' + fetchedPageCount + ' 页数据）');
+                        // CF 限流静默处理：停止后续页面，用已获取数据渲染
                         rateLimitHit = true;
                         // 设置 429 全局冷却，阻止所有 tab 在冷却期内再次拉取，避免连环 429
                         setRateLimitCooldown();
                     } else {
-                        console.warn('[热帖排行] 第' + currentPage + '页异常:', err.message);
+                        // 其他异常静默处理
                     }
                 });
         }
@@ -342,7 +342,7 @@
                     }
 
                     if (rateLimitHit) {
-                        console.warn('[热帖排行] 因 CF 限流，仅获取到 ' + fetchedPageCount + ' 页数据，使用部分数据渲染');
+                        // CF 限流时用部分数据渲染，不输出日志
                     } else {
                         // 全部 10 页拉取成功无 429，清除 429 冷却标记
                         clearRateLimitCooldown();
