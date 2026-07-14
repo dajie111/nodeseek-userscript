@@ -9,7 +9,7 @@
         style.textContent = `
             #ns-fav-dialog .ns-fav-link { color: #1890ff !important; opacity: 1 !important; font-weight: normal !important; text-decoration: none !important; }
             #ns-fav-dialog .ns-fav-link:visited { color: #1890ff !important; }
-            #ns-fav-dialog .ns-fav-link:hover { color: #40a9ff !important; text-decoration: underline !important; }
+            #ns-fav-dialog .ns-fav-link:hover { color: #40a9ff !important; text-decoration: none !important; }
             #ns-fav-dialog .ns-fav-link * { color: inherit !important; opacity: inherit !important; font-weight: inherit !important; }
         `;
         document.head.appendChild(style);
