@@ -312,6 +312,13 @@
             data.forEach((item) => {
                 const tr = document.createElement('tr');
                 tr.style.borderBottom = '1px solid #eee';
+                // 鼠标悬停背景色，与查看收藏弹窗效果一致
+                tr.addEventListener('mouseenter', function() {
+                    tr.style.background = '#f0f0f0';
+                });
+                tr.addEventListener('mouseleave', function() {
+                    tr.style.background = '';
+                });
 
                 const tdTitle = document.createElement('td');
                 const rowPaddingY = '1px';
