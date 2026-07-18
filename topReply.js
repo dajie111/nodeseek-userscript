@@ -6,7 +6,7 @@
     const SETTINGS_KEY = 'nodeseek_top_reply_settings';
     const BASE_URL = 'https://www.nodeseek.com/page-';
     const MAX_PAGE = 10;
-    const TOP_COUNT = 20;
+    const TOP_COUNT = 25;
     /** 刷新冷却时间（毫秒），避免频繁请求 */
     const REFRESH_COOLDOWN_MS = 30000;
     /** 自动刷新/缓存间隔（毫秒） */
