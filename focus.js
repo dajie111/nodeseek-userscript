@@ -200,47 +200,14 @@
         showHotTopicsDialog() {
             const existing = document.getElementById('hot-topics-dialog');
             if (existing) {
-                /* 弹窗已存在 → 前置聚焦，而非关闭（避免用户以为没弹出又点一次反而关掉） */
-                existing.style.zIndex = '10000';
-                document.body.appendChild(existing); /* 移到 DOM 末尾，确保层级最上 */
-                /* 若弹窗被拖到屏幕外，重置到默认位置 */
-                const rect = existing.getBoundingClientRect();
-                if (rect.left < -50 || rect.top < -50 ||
-                    rect.right > window.innerWidth + 50 ||
-                    rect.bottom > window.innerHeight + 50 ||
-                    rect.width === 0) {
-                    if (isMobile()) {
-                        existing.style.top = '0px';
-                        existing.style.left = '0px';
-                    } else {
-                        existing.style.top = '60px';
-                        existing.style.right = '156px';
-                        existing.style.left = '';
-                    }
-                }
+                const keepSubs = this._subPanels && this._subPanels.size > 0;
+                if (keepSubs) this._parkStatsIframeBridge(existing);
+                else this._closeAllSubDialogs();
+                existing.remove();
+                if (!keepSubs) this._statsIframe = null;
                 return;
             }
-            /* 尝试复用预加载的 iframe（后台已加载完成的数据跳过重新加载） */
-            if (this._preloadedIframe && this._preloadedIframe.contentWindow) {
-                this._statsIframe = this._preloadedIframe;
-                this._preloadedIframe = null;
-            }
             this._createStatsDialog();
-        },
-
-        /** 后台预加载 iframe，用户点击时瞬间弹出 */
-        preloadStatsIframe() {
-            if (this._statsIframe || this._preloadedIframe) return;
-            const iframe = document.createElement('iframe');
-            iframe.setAttribute('title', '热点统计预加载');
-            Object.assign(iframe.style, {
-                position: 'fixed', left: '-9999px', top: '0', width: '520px', height: '800px',
-                opacity: '0', pointerEvents: 'none', border: '0', zIndex: '-1', display: 'block',
-                borderRadius: '0', minHeight: '0', background: 'transparent',
-            });
-            iframe.src = this.hbServiceBase + '/hotspot_stats.html?embed=1';
-            this._preloadedIframe = iframe;
-            document.body.appendChild(iframe);
         },
 
         /** 主卡片关闭但仍有子弹窗时：保留 iframe 到屏外，供 pills 继续 postMessage 重算数据 */
@@ -269,7 +236,7 @@
             const dialog = document.createElement('div');
             dialog.id = 'hot-topics-dialog';
             Object.assign(dialog.style, {
-                position: 'fixed', top: '60px', right: '156px', zIndex: '10000',
+                position: 'fixed', top: '60px', right: '16px', zIndex: '10000',
                 width: '520px', height: HB_STATS_PANEL_H, maxHeight: HB_STATS_PANEL_H,
                 margin: '0', padding: '0', background: 'transparent',
                 border: 'none', boxShadow: 'none', overflow: 'visible',
@@ -283,7 +250,7 @@
                 });
             } else {
                 Object.assign(dialog.style, {
-                    position: 'fixed', top: '60px', right: '156px', zIndex: '10000',
+                    position: 'fixed', top: '60px', right: '16px', zIndex: '10000',
                     width: '520px', height: HB_STATS_PANEL_H, maxHeight: HB_STATS_PANEL_H,
                     margin: '0', padding: '0', background: 'transparent',
                     border: 'none', boxShadow: 'none', overflow: 'visible',
@@ -330,7 +297,6 @@
 
             let iframe = this._statsIframe;
             const canReuseBridge = iframe && iframe.parentNode && document.body.contains(iframe) &&
-                iframe.contentWindow &&
                 !document.getElementById('hot-topics-dialog') &&
                 String(iframe.src || '').indexOf('hotspot_stats') !== -1;
 
@@ -340,9 +306,6 @@
                     width: '100%', height: '100%', minHeight: '0',
                     border: '0', borderRadius: '12px', display: 'block', background: 'transparent',
                 });
-                /* 复用路径也要确保关闭按钮可见 */
-                closeBtn.style.visibility = 'visible';
-                closeBtn.style.pointerEvents = '';
                 dialog.appendChild(iframe);
                 dialog.appendChild(dragArea);
                 dialog.appendChild(closeBtn);
@@ -368,10 +331,6 @@
                 });
             }
 
-            // 关闭按钮初始隐藏，iframe加载完再显示，避免闪烁
-            closeBtn.style.visibility = 'hidden';
-
-            // 弹窗立即显示，iframe在后台加载
             dialog.appendChild(iframe);
             dialog.appendChild(dragArea);
             dialog.appendChild(closeBtn);
@@ -380,11 +339,7 @@
             self._initDraggable(dialog, dragArea, closeBtn);
             self._bindStatsMessageOnce();
 
-            // iframe加载完成后显示关闭按钮
-            iframe.onload = function () {
-                closeBtn.style.visibility = 'visible';
-            };
-            // 设置iframe的src，让内容在后台加载
+            // 先挂到 DOM 使弹窗立即可见，再设 src 让 iframe 在后台加载（显示加载中状态）
             iframe.src = self.hbServiceBase + '/hotspot_stats.html?embed=1';
         },
 
@@ -406,13 +361,6 @@
                     } else {
                         cb.style.visibility = '';
                         cb.style.pointerEvents = '';
-                    }
-                    return;
-                }
-
-                if (d && d.type === 'hb-topreply-open') {
-                    if (window.NodeSeekTopReply && typeof window.NodeSeekTopReply.showTopReplyDialog === 'function') {
-                        window.NodeSeekTopReply.showTopReplyDialog();
                     }
                     return;
                 }
@@ -788,13 +736,4 @@
     };
 
     window.NodeSeekFocus = NodeSeekFocus;
-
-    // 页面加载后延迟预加载热点统计iframe，用户点击时瞬间弹出
-    if (document.readyState === 'complete') {
-        setTimeout(function () { NodeSeekFocus.preloadStatsIframe(); }, 1000);
-    } else {
-        window.addEventListener('load', function () {
-            setTimeout(function () { NodeSeekFocus.preloadStatsIframe(); }, 1000);
-        });
-    }
 })();
