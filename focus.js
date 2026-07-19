@@ -220,7 +220,27 @@
                 }
                 return;
             }
+            /* 尝试复用预加载的 iframe（后台已加载完成的数据跳过重新加载） */
+            if (this._preloadedIframe && this._preloadedIframe.contentWindow) {
+                this._statsIframe = this._preloadedIframe;
+                this._preloadedIframe = null;
+            }
             this._createStatsDialog();
+        },
+
+        /** 后台预加载 iframe，用户点击时瞬间弹出 */
+        preloadStatsIframe() {
+            if (this._statsIframe || this._preloadedIframe) return;
+            const iframe = document.createElement('iframe');
+            iframe.setAttribute('title', '热点统计预加载');
+            Object.assign(iframe.style, {
+                position: 'fixed', left: '-9999px', top: '0', width: '520px', height: '800px',
+                opacity: '0', pointerEvents: 'none', border: '0', zIndex: '-1', display: 'block',
+                borderRadius: '0', minHeight: '0', background: 'transparent',
+            });
+            iframe.src = this.hbServiceBase + '/hotspot_stats.html?embed=1';
+            this._preloadedIframe = iframe;
+            document.body.appendChild(iframe);
         },
 
         /** 主卡片关闭但仍有子弹窗时：保留 iframe 到屏外，供 pills 继续 postMessage 重算数据 */
@@ -768,4 +788,13 @@
     };
 
     window.NodeSeekFocus = NodeSeekFocus;
+
+    // 页面加载后延迟预加载热点统计iframe，用户点击时瞬间弹出
+    if (document.readyState === 'complete') {
+        setTimeout(function () { NodeSeekFocus.preloadStatsIframe(); }, 1000);
+    } else {
+        window.addEventListener('load', function () {
+            setTimeout(function () { NodeSeekFocus.preloadStatsIframe(); }, 1000);
+        });
+    }
 })();
