@@ -1,23 +1,5 @@
 #!/usr/bin/env bash
 
-# ==========================================
-# 优雅退出与清理机制
-# ==========================================
-cleanup() {
-    # 恢复终端光标显示
-    tput cnorm 2>/dev/null || printf '\033[?25h'
-    # 清屏并把光标移回到顶部
-    clear
-    echo -e "${GREEN}实时监控已安全退出。${NC}"
-    exit 0
-}
-
-# 捕获 Ctrl+C (SIGINT) 和 SIGTERM 信号
-trap cleanup SIGINT SIGTERM
-
-# 隐藏终端光标
-tput civis 2>/dev/null || printf '\033[?25l'
-
 # 设置输出颜色
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -30,14 +12,31 @@ NC='\033[0m' # 清除颜色
 # 刷新间隔时间（秒）
 INTERVAL=2
 
-# 清屏准备首次渲染
+# ==========================================
+# 优雅退出机制（保留画面，不清除终端内容）
+# ==========================================
+cleanup() {
+    # 1. 恢复终端光标显示
+    tput cnorm 2>/dev/null || printf '\033[?25h'
+    # 2. 移动光标到末尾并换行，防止下一条命令重叠
+    echo -e "\n${GREEN}实时监控已退出。${NC}"
+    exit 0
+}
+
+# 捕获 Ctrl+C (SIGINT) 和 SIGTERM 信号
+trap cleanup SIGINT SIGTERM
+
+# 隐藏终端光标，提供流畅的刷新视觉体验
+tput civis 2>/dev/null || printf '\033[?25l'
+
+# 首次运行清屏，准备渲染监控面板
 clear
 
 # ==========================================
 # 实时监控主循环
 # ==========================================
 while true; do
-    # 光标定位到左上角 (0,0) 实现原位刷新
+    # 将光标定位到左上角 (0,0) 实现原位覆盖刷新
     tput cup 0 0 2>/dev/null || printf '\033[H'
 
     # 1. 基本系统信息
@@ -89,15 +88,14 @@ while true; do
 
     echo -e "\n${CYAN}================================================================${NC}\033[K"
 
-    # 5. Top 5 CPU 占用进程
+    # 5. Top 5 CPU 占用进程（精准对齐版）
     echo -e "\n${GREEN}${BOLD}【 CPU 占用最高的前 5 个进程 】${NC}\033[K"
-    # 彻底解决表头错位问题：整行包裹 BOLD 样式，保证格式化模板干净
     echo -e "${BOLD}$(printf "  %-10s %-10s %-10s %-30s" "PID" "用户" "CPU(%)" "进程指令")${NC}\033[K"
     ps -eo pid,user,%cpu,comm --sort=-%cpu | head -n 6 | tail -n 5 | while read pid user cpu comm; do
         printf "  %-10s %-10s %-10s %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
     done
 
-    # 6. Top 5 内存占用进程
+    # 6. Top 5 内存占用进程（精准对齐版）
     echo -e "\n${GREEN}${BOLD}【 内存占用最高的前 5 个进程 】${NC}\033[K"
     echo -e "${BOLD}$(printf "  %-10s %-10s %-10s %-30s" "PID" "用户" "内存(%)" "进程指令")${NC}\033[K"
     ps -eo pid,user,%mem,comm --sort=-%mem | head -n 6 | tail -n 5 | while read pid user mem comm; do
@@ -136,7 +134,7 @@ while true; do
     echo -e "\n${CYAN}${BOLD}================================================================${NC}\033[K"
     echo -e "${YELLOW}按 Ctrl+C 即可退出监控${NC}\033[K"
 
-    # 清除末尾残存区域
+    # 清除下方残存行
     printf "\033[J"
 
     sleep "$INTERVAL"
