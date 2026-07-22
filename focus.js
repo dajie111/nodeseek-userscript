@@ -346,6 +346,11 @@
                 });
                 closeBtn.style.visibility = 'visible';
                 closeBtn.style.pointerEvents = '';
+                /* 复用路径内容已加载，dialog 直接用最终高度 */
+                if (!isMobile()) {
+                    dialog.style.height = HB_STATS_PANEL_H;
+                    dialog.style.maxHeight = HB_STATS_PANEL_H;
+                }
                 dialog.appendChild(iframe);
                 dialog.appendChild(dragArea);
                 dialog.appendChild(closeBtn);
@@ -385,6 +390,7 @@
             self._bindStatsMessageOnce();
 
             iframe.onload = function () {
+                clearTimeout(loadTimer);
                 loadingLayer.style.display = 'none';
                 iframe.style.visibility = 'visible';
                 if (!isMobile()) {
@@ -395,6 +401,29 @@
                 document.body.style.userSelect = '';
                 document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
             };
+
+            /* 超时检测：20 秒未加载完成则显示错误提示 */
+            const loadTimer = setTimeout(function () {
+                if (loadingLayer.style.display === 'none') return;
+                spinner.style.display = 'none';
+                loadingText.textContent = '连接失败，请稍后重试';
+                loadingText.style.fontSize = '15px';
+                loadingText.style.color = '#e74c3c';
+                const retryBtn = document.createElement('button');
+                retryBtn.textContent = '重新加载';
+                retryBtn.style.cssText = 'margin-top:12px;padding:6px 18px;border:1px solid #17a2b8;border-radius:6px;background:#17a2b8;color:#fff;font-size:13px;cursor:pointer;font-family:inherit;';
+                retryBtn.onclick = function () {
+                    loadingText.textContent = '加载中…';
+                    loadingText.style.fontSize = '14px';
+                    loadingText.style.color = '#666';
+                    retryBtn.remove();
+                    spinner.style.display = '';
+                    iframe.style.visibility = 'hidden';
+                    iframe.src = self.hbServiceBase + '/hotspot_stats.html?embed=1&t=' + Date.now();
+                };
+                loadingLayer.appendChild(retryBtn);
+            }, 20000);
+
             iframe.src = self.hbServiceBase + '/hotspot_stats.html?embed=1';
         },
 
