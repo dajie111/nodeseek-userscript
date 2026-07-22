@@ -5,6 +5,8 @@
 
     /** 与 hotspot_stats.html .shell 一致：min(90vh, 800px) */
     const HB_STATS_PANEL_H = 'min(90vh, 800px)';
+    /** 预加载占位层比最终弹窗矮 50px，避免加载态显得太高 */
+    const HB_STATS_LOADING_H = 'min(90vh, 720px)';
     /** 历史热词 / 时间分布 / 用户统计 外层弹窗：比主卡片矮 79px */
     const HB_SUB_PANEL_H = 'calc(min(90vh, 800px) - 79px)';
     const HB_SUB_PANEL_H_MOBILE = 'min(calc(100vh - 95px), 721px)';
@@ -200,24 +202,12 @@
         showHotTopicsDialog() {
             const existing = document.getElementById('hot-topics-dialog');
             if (existing) {
-                /* 弹窗已存在 → 前置聚焦，而非关闭（避免用户以为没弹出又点一次反而关掉） */
-                existing.style.zIndex = '10000';
-                document.body.appendChild(existing); /* 移到 DOM 末尾，确保层级最上 */
-                /* 若弹窗被拖到屏幕外，重置到默认位置 */
-                const rect = existing.getBoundingClientRect();
-                if (rect.left < -50 || rect.top < -50 ||
-                    rect.right > window.innerWidth + 50 ||
-                    rect.bottom > window.innerHeight + 50 ||
-                    rect.width === 0) {
-                    if (isMobile()) {
-                        existing.style.top = '0px';
-                        existing.style.left = '0px';
-                    } else {
-                        existing.style.top = '60px';
-                        existing.style.right = '156px';
-                        existing.style.left = '';
-                    }
-                }
+                /* 弹窗已存在 → 关闭 */
+                const keepSubs = this._subPanels && this._subPanels.size > 0;
+                if (keepSubs) this._parkStatsIframeBridge(existing);
+                else this._closeAllSubDialogs();
+                existing.remove();
+                if (!keepSubs) this._statsIframe = null;
                 return;
             }
             this._createStatsDialog();
@@ -250,7 +240,7 @@
             dialog.id = 'hot-topics-dialog';
             Object.assign(dialog.style, {
                 position: 'fixed', top: '60px', right: '156px', zIndex: '10000',
-                width: '520px', height: HB_STATS_PANEL_H, maxHeight: HB_STATS_PANEL_H,
+                width: '520px', height: HB_STATS_LOADING_H, maxHeight: HB_STATS_LOADING_H,
                 margin: '0', padding: '0', background: 'transparent',
                 border: 'none', boxShadow: 'none', overflow: 'visible',
             });
@@ -264,7 +254,7 @@
             } else {
                 Object.assign(dialog.style, {
                     position: 'fixed', top: '60px', right: '156px', zIndex: '10000',
-                    width: '520px', height: HB_STATS_PANEL_H, maxHeight: HB_STATS_PANEL_H,
+                    width: '520px', height: HB_STATS_LOADING_H, maxHeight: HB_STATS_LOADING_H,
                     margin: '0', padding: '0', background: 'transparent',
                     border: 'none', boxShadow: 'none', overflow: 'visible',
                 });
@@ -314,13 +304,46 @@
                 !document.getElementById('hot-topics-dialog') &&
                 String(iframe.src || '').indexOf('hotspot_stats') !== -1;
 
+            const loadingLayer = document.createElement('div');
+            loadingLayer.className = 'hb-stats-loading-layer';
+            if (isMobile()) {
+                Object.assign(loadingLayer.style, {
+                    position: 'absolute', inset: '0', zIndex: '3',
+                    background: '#fff', borderRadius: '0',
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    boxSizing: 'border-box',
+                });
+            } else {
+                Object.assign(loadingLayer.style, {
+                    position: 'absolute', inset: '0', zIndex: '3',
+                    background: '#fff', borderRadius: '12px',
+                    boxShadow: '0 16px 48px rgba(0,0,0,.2)',
+                    border: '1px solid #e0e0e0',
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    boxSizing: 'border-box',
+                });
+            }
+            const spinner = document.createElement('div');
+            spinner.style.cssText = 'width:32px;height:32px;border:3px solid #e8e8e8;border-top-color:#17a2b8;border-radius:50%;animation:hb-spin 0.8s linear infinite;margin-bottom:12px;';
+            const loadingText = document.createElement('div');
+            loadingText.textContent = '加载中…';
+            loadingText.style.cssText = 'font-size:14px;color:#666;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;';
+            loadingLayer.appendChild(spinner);
+            loadingLayer.appendChild(loadingText);
+
+            const spinStyle = document.createElement('style');
+            spinStyle.textContent = '@keyframes hb-spin { to { transform: rotate(360deg); } }';
+            document.head.appendChild(spinStyle);
+
             if (canReuseBridge) {
                 iframe.removeAttribute('style');
                 Object.assign(iframe.style, {
                     width: '100%', height: '100%', minHeight: '0',
                     border: '0', borderRadius: '12px', display: 'block', background: 'transparent',
+                    position: 'relative', zIndex: '1',
                 });
-                /* 复用路径也要确保关闭按钮可见 */
                 closeBtn.style.visibility = 'visible';
                 closeBtn.style.pointerEvents = '';
                 dialog.appendChild(iframe);
@@ -340,18 +363,19 @@
                     width: '100%', height: '100%', minHeight: '0',
                     border: '0', borderRadius: '0', display: 'block', background: '#fff',
                     overflow: 'auto', WebkitOverflowScrolling: 'touch',
+                    position: 'relative', zIndex: '1', visibility: 'hidden',
                 });
             } else {
                 Object.assign(iframe.style, {
                     width: '100%', height: '100%', minHeight: '0',
                     border: '0', borderRadius: '12px', display: 'block', background: 'transparent',
+                    position: 'relative', zIndex: '1', visibility: 'hidden',
                 });
             }
 
-            // 关闭按钮初始隐藏，iframe加载完再显示，避免闪烁
-            closeBtn.style.visibility = 'hidden';
+            closeBtn.style.visibility = 'visible';
 
-            // 弹窗立即显示，iframe在后台加载
+            dialog.appendChild(loadingLayer);
             dialog.appendChild(iframe);
             dialog.appendChild(dragArea);
             dialog.appendChild(closeBtn);
@@ -360,11 +384,17 @@
             self._initDraggable(dialog, dragArea, closeBtn);
             self._bindStatsMessageOnce();
 
-            // iframe加载完成后显示关闭按钮
             iframe.onload = function () {
-                closeBtn.style.visibility = 'visible';
+                loadingLayer.style.display = 'none';
+                iframe.style.visibility = 'visible';
+                if (!isMobile()) {
+                    dialog.style.height = HB_STATS_PANEL_H;
+                    dialog.style.maxHeight = HB_STATS_PANEL_H;
+                }
+                // iframe 加载完成后派发合成 mouseup，避免拖拽中 iframe 覆盖鼠标导致拖拽状态残留
+                document.body.style.userSelect = '';
+                document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
             };
-            // 设置iframe的src，让内容在后台加载
             iframe.src = self.hbServiceBase + '/hotspot_stats.html?embed=1';
         },
 
