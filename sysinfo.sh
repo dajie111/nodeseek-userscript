@@ -49,9 +49,9 @@ echo -e "\n${YELLOW}${BOLD}【 内存状态 】${NC}"
 printf "  %-12s : %s MB / %s MB (%s%%)\n" "内存占用" "$mem_used" "$mem_total" "$mem_usage_pct"
 printf "  %-12s : %s MB\n" "可用内存" "$mem_avail"
 
-# 4. 磁盘使用情况（根目录及总体）
+# 4. 磁盘使用情况（过滤虚拟文件系统与重复统计）
 echo -e "\n${YELLOW}${BOLD}【 磁盘占用 (主要挂载点) 】${NC}"
-df -h --total -x tmpfs -x devtmpfs | awk 'NR==1 || /total/ || $NF=="/" {printf "  %-20s 核心大小: %-8s 已用: %-8s 剩余: %-8s 占用率: %s\n", $6, $2, $3, $4, $5}'
+df -h -x tmpfs -x devtmpfs -x squashfs -x overlay | awk 'NR>1 {printf "  %-20s 总容量: %-8s 已用: %-8s 剩余: %-8s 占用率: %s\n", $NF, $2, $3, $4, $5}'
 
 echo -e "\n${CYAN}================================================================${NC}"
 
