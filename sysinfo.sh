@@ -13,12 +13,18 @@ NC='\033[0m' # 清除颜色
 INTERVAL=2
 
 # ==========================================
-# 优雅退出机制（保留画面，不清除终端内容）
+# 优雅退出机制（保留画面，光标精确定位到底部）
 # ==========================================
 cleanup() {
     # 1. 恢复终端光标显示
     tput cnorm 2>/dev/null || printf '\033[?25h'
-    # 2. 移动光标到末尾并换行，防止下一条命令重叠
+
+    # 2. 将光标精确移动到屏幕最下方（最后一行）
+    local lines
+    lines=$(tput lines 2>/dev/null || echo 50)
+    tput cup "$lines" 0 2>/dev/null || printf "\033[%d;1H" "$lines"
+
+    # 3. 换行输出退出提示，确保 Shell 提示符排在最下方
     echo -e "\n${GREEN}实时监控已退出。${NC}"
     exit 0
 }
@@ -88,14 +94,14 @@ while true; do
 
     echo -e "\n${CYAN}================================================================${NC}\033[K"
 
-    # 5. Top 5 CPU 占用进程（干净格式串，保证 100% 对齐）
+    # 5. Top 5 CPU 占用进程（精准对齐版）
     echo -e "\n${GREEN}${BOLD}【 CPU 占用最高的前 5 个进程 】${NC}\033[K"
     echo -e "${BOLD}$(printf "  %-10s %-10s %-10s %-30s" "PID" "用户" "CPU(%)" "进程指令")${NC}\033[K"
     ps -eo pid,user,%cpu,comm --sort=-%cpu | head -n 6 | tail -n 5 | while read pid user cpu comm; do
         printf "  %-10s %-10s %-10s %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
     done
 
-    # 6. Top 5 内存占用进程
+    # 6. Top 5 内存占用进程（精准对齐版）
     echo -e "\n${GREEN}${BOLD}【 内存占用最高的前 5 个进程 】${NC}\033[K"
     echo -e "${BOLD}$(printf "  %-10s %-10s %-10s %-30s" "PID" "用户" "内存(%)" "进程指令")${NC}\033[K"
     ps -eo pid,user,%mem,comm --sort=-%mem | head -n 6 | tail -n 5 | while read pid user mem comm; do
