@@ -15,7 +15,7 @@ cleanup() {
 # 捕获 Ctrl+C (SIGINT) 和 SIGTERM 信号
 trap cleanup SIGINT SIGTERM
 
-# 隐藏终端光标，提供更好的刷新视觉体验
+# 隐藏终端光标
 tput civis 2>/dev/null || printf '\033[?25l'
 
 # 设置输出颜色
@@ -37,7 +37,7 @@ clear
 # 实时监控主循环
 # ==========================================
 while true; do
-    # 将光标定位到左上角 (0,0)，实现原位置刷新，避免全屏闪烁
+    # 光标定位到左上角 (0,0) 实现原位刷新
     tput cup 0 0 2>/dev/null || printf '\033[H'
 
     # 1. 基本系统信息
@@ -91,21 +91,22 @@ while true; do
 
     # 5. Top 5 CPU 占用进程
     echo -e "\n${GREEN}${BOLD}【 CPU 占用最高的前 5 个进程 】${NC}\033[K"
-    printf "${BOLD}  %-8s %-8s %-8s %-30s${NC}\033[K\n" "PID" "用户" "CPU(%)" "进程指令"
+    # 彻底解决表头错位问题：整行包裹 BOLD 样式，保证格式化模板干净
+    echo -e "${BOLD}$(printf "  %-10s %-10s %-10s %-30s" "PID" "用户" "CPU(%)" "进程指令")${NC}\033[K"
     ps -eo pid,user,%cpu,comm --sort=-%cpu | head -n 6 | tail -n 5 | while read pid user cpu comm; do
-        printf "  %-8s %-8s %-8s %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
+        printf "  %-10s %-10s %-10s %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
     done
 
     # 6. Top 5 内存占用进程
     echo -e "\n${GREEN}${BOLD}【 内存占用最高的前 5 个进程 】${NC}\033[K"
-    printf "${BOLD}  %-8s %-8s %-8s %-30s${NC}\033[K\n" "PID" "用户" "内存(%)" "进程指令"
+    echo -e "${BOLD}$(printf "  %-10s %-10s %-10s %-30s" "PID" "用户" "内存(%)" "进程指令")${NC}\033[K"
     ps -eo pid,user,%mem,comm --sort=-%mem | head -n 6 | tail -n 5 | while read pid user mem comm; do
-        printf "  %-8s %-8s %-8s %-30s\033[K\n" "$pid" "$user" "$mem" "$comm"
+        printf "  %-10s %-10s %-10s %-30s\033[K\n" "$pid" "$user" "$mem" "$comm"
     done
 
     # 7. Top 5 磁盘 Reads/Writes I/O 读写最高进程
     echo -e "\n${GREEN}${BOLD}【 磁盘累积 I/O (读写总和) 最高的前 5 个进程 】${NC}\033[K"
-    printf "${BOLD}  %-8s %-12s %-30s${NC}\033[K\n" "PID" "总读写量" "进程指令"
+    echo -e "${BOLD}$(printf "  %-10s %-15s %-30s" "PID" "总读写量" "进程指令")${NC}\033[K"
 
     if [ -r "/proc/1/io" ]; then
         for pid in /proc/[0-9]*; do
@@ -126,7 +127,7 @@ while true; do
                 else if (b >= 1024) printf "%.2f KB", b/1024;
                 else printf "%d B", b;
             }')
-            printf "  %-8s %-12s %-30s\033[K\n" "$pid" "$hr_size" "$comm"
+            printf "  %-10s %-15s %-30s\033[K\n" "$pid" "$hr_size" "$comm"
         done
     else
         echo -e "  ${RED}(需要 root 权限才能查看各进程的磁盘 I/O 读写状态)${NC}\033[K"
@@ -135,9 +136,8 @@ while true; do
     echo -e "\n${CYAN}${BOLD}================================================================${NC}\033[K"
     echo -e "${YELLOW}按 Ctrl+C 即可退出监控${NC}\033[K"
 
-    # 清除下方可能残存的多余行
+    # 清除末尾残存区域
     printf "\033[J"
 
-    # 刷新间隔等待
     sleep "$INTERVAL"
 done
