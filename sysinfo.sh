@@ -55,9 +55,9 @@ else
     printf "  %-12s : 未开启 / 0 MB\n" "虚拟内存"
 fi
 
-# 4. 磁盘使用情况（过滤虚拟文件系统与重复统计）
+# 4. 磁盘使用情况（优化排版）
 echo -e "\n${YELLOW}${BOLD}【 磁盘占用 (主要挂载点) 】${NC}"
-df -h -x tmpfs -x devtmpfs -x squashfs -x overlay | awk 'NR>1 {printf "  %-20s 总容量: %-8s 已用: %-8s 剩余: %-8s 占用率: %s\n", $NF, $2, $3, $4, $5}'
+df -h -x tmpfs -x devtmpfs -x squashfs -x overlay | awk 'NR>1 {printf "  挂载点: %-12s 总容量: %-8s 已用: %-8s 剩余: %-8s 占用率: %s\n", $NF, $2, $3, $4, $5}'
 
 echo -e "\n${CYAN}================================================================${NC}"
 
