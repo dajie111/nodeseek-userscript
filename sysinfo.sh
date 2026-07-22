@@ -9,8 +9,6 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # 清除颜色
 
-clear
-
 # 1. 基本系统信息
 hostname=$(hostname)
 kernel=$(uname -r)
