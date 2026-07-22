@@ -88,14 +88,14 @@ while true; do
 
     echo -e "\n${CYAN}================================================================${NC}\033[K"
 
-    # 5. Top 5 CPU 占用进程（精准对齐版）
+    # 5. Top 5 CPU 占用进程（干净格式串，保证 100% 对齐）
     echo -e "\n${GREEN}${BOLD}【 CPU 占用最高的前 5 个进程 】${NC}\033[K"
     echo -e "${BOLD}$(printf "  %-10s %-10s %-10s %-30s" "PID" "用户" "CPU(%)" "进程指令")${NC}\033[K"
     ps -eo pid,user,%cpu,comm --sort=-%cpu | head -n 6 | tail -n 5 | while read pid user cpu comm; do
         printf "  %-10s %-10s %-10s %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
     done
 
-    # 6. Top 5 内存占用进程（精准对齐版）
+    # 6. Top 5 内存占用进程
     echo -e "\n${GREEN}${BOLD}【 内存占用最高的前 5 个进程 】${NC}\033[K"
     echo -e "${BOLD}$(printf "  %-10s %-10s %-10s %-30s" "PID" "用户" "内存(%)" "进程指令")${NC}\033[K"
     ps -eo pid,user,%mem,comm --sort=-%mem | head -n 6 | tail -n 5 | while read pid user mem comm; do
