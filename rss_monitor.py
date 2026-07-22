@@ -978,9 +978,16 @@ def start_background_monitor():
         print("警告: 没有设置关键词，监控将不会有任何通知")
     
     try:
-        # 使用nohup启动后台进程
-        cmd = f"nohup {sys.executable} {__file__} --daemon > /dev/null 2>&1 & echo $! > {PID_FILE}"
-        subprocess.run(cmd, shell=True)
+        # 使用Popen直接启动后台进程，避免shell注入
+        proc = subprocess.Popen(
+            [sys.executable, __file__, '--daemon'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True
+        )
+        with open(PID_FILE, 'w') as f:
+            f.write(str(proc.pid))
         print("监控已在后台启动")
         logger.info("监控在后台启动")
         return True
@@ -998,8 +1005,8 @@ def stop_background_monitor():
     is_systemd_service = False
     try:
         # 检查服务是否正在运行
-        systemd_check_cmd = "systemctl is-active rss_monitor.service"
-        result = subprocess.run(systemd_check_cmd, shell=True, capture_output=True, text=True)
+        systemd_check_cmd = ["systemctl", "is-active", "rss_monitor.service"]
+        result = subprocess.run(systemd_check_cmd, shell=False, capture_output=True, text=True)
         if result.stdout.strip() == "active":
             is_systemd_service = True
             logger.info("检测到通过systemd服务启动的监控进程")
@@ -1008,13 +1015,13 @@ def stop_background_monitor():
             # 尝试停止systemd服务
             try:
                 print("正在停止systemd服务...")
-                stop_cmd = "systemctl stop rss_monitor.service"
-                subprocess.run(stop_cmd, shell=True)
+                stop_cmd = ["systemctl", "stop", "rss_monitor.service"]
+                subprocess.run(stop_cmd, shell=False)
                 
                 # 验证服务是否已停止
                 time.sleep(2)  # 给一些时间让服务停止
-                verify_cmd = "systemctl is-active rss_monitor.service"
-                verify_result = subprocess.run(verify_cmd, shell=True, capture_output=True, text=True)
+                verify_cmd = ["systemctl", "is-active", "rss_monitor.service"]
+                verify_result = subprocess.run(verify_cmd, shell=False, capture_output=True, text=True)
                 
                 if verify_result.stdout.strip() != "active":
                     logger.info("systemd服务已成功停止")
@@ -1052,17 +1059,17 @@ def stop_background_monitor():
         
         # 方法2：尝试使用ps命令查找进程
         try:
-            cmd = f"ps aux | grep '{sys.executable}.*{os.path.basename(__file__)}.*--daemon' | grep -v grep"
+            cmd = ["pgrep", "-f", f"{sys.executable}.*{os.path.basename(__file__)}.*--daemon"]
             logger.info(f"执行命令: {cmd}")
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            result = subprocess.run(cmd, shell=False, capture_output=True, text=True)
             if result.stdout.strip():
                 lines = result.stdout.strip().split('\n')
                 for line in lines:
-                    parts = line.split()
-                    if len(parts) > 1:
-                        pid = int(parts[1])
+                    line = line.strip()
+                    if line.isdigit():
+                        pid = int(line)
                         found_process = True
-                        logger.info(f"通过ps命令找到进程ID: {pid}")
+                        logger.info(f"通过pgrep命令找到进程ID: {pid}")
                         break
         except Exception as e:
             logger.error(f"使用ps命令查找进程时出错: {e}")
@@ -1071,17 +1078,17 @@ def stop_background_monitor():
         # 方法3：尝试查找包含rss_monitor的所有Python进程
         try:
             print("尝试查找所有监控相关进程...")
-            cmd = f"ps aux | grep python | grep 'rss_monitor' | grep -v grep"
+            cmd = ["pgrep", "-f", "rss_monitor"]
             logger.info(f"执行命令: {cmd}")
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            result = subprocess.run(cmd, shell=False, capture_output=True, text=True)
             if result.stdout.strip():
                 lines = result.stdout.strip().split('\n')
                 for line in lines:
-                    parts = line.split()
-                    if len(parts) > 1:
-                        pid = int(parts[1])
+                    line = line.strip()
+                    if line.isdigit():
+                        pid = int(line)
                         found_process = True
-                        logger.info(f"通过扩展ps命令找到进程ID: {pid}")
+                        logger.info(f"通过扩展pgrep命令找到进程ID: {pid}")
                         break
         except Exception as e:
             logger.error(f"使用扩展ps命令查找进程时出错: {e}")
