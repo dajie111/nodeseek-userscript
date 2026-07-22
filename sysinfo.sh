@@ -10,9 +10,6 @@ BOLD='\033[1m'
 NC='\033[0m' # 清除颜色
 
 clear
-echo -e "${CYAN}${BOLD}================================================================${NC}"
-echo -e "${CYAN}${BOLD}                    Debian 系统状态综合简报                     ${NC}"
-echo -e "${CYAN}${BOLD}================================================================${NC}"
 
 # 1. 基本系统信息
 hostname=$(hostname)
@@ -20,7 +17,7 @@ kernel=$(uname -r)
 uptime_str=$(uptime -p | sed 's/up //;s/ hours\?/小时/;s/ minutes\?/分钟/;s/ days\?/天/')
 debian_ver=$(cat /etc/debian_version 2>/dev/null || echo "未知")
 
-echo -e "\n${YELLOW}${BOLD}【 基础信息 】${NC}"
+echo -e "${YELLOW}${BOLD}【 基础信息 】${NC}"
 printf "  %-12s : %s\n" "主机名称" "$hostname"
 printf "  %-12s : Debian %s\n" "系统版本" "$debian_ver"
 printf "  %-12s : %s\n" "内核版本" "$kernel"
@@ -41,13 +38,22 @@ echo -e "\n${YELLOW}${BOLD}【 CPU 状态 】${NC}"
 printf "  %-12s : %s (%s 核心)\n" "CPU 型号" "$cpu_model" "$cpu_cores"
 printf "  %-12s : %s%%\n" "当前使用率" "$cpu_usage"
 
-# 3. 内存使用情况
+# 3. 内存与虚拟内存 (Swap) 使用情况
 read mem_total mem_used mem_free mem_buff_cache mem_avail < <(free -m | awk 'NR==2{print $2, $3, $4, $6, $7}')
+read swap_total swap_used swap_free < <(free -m | awk 'NR==3{print $2, $3, $4}')
+
 mem_usage_pct=$(awk "BEGIN {printf \"%.1f\", ($mem_used/$mem_total)*100}")
 
 echo -e "\n${YELLOW}${BOLD}【 内存状态 】${NC}"
-printf "  %-12s : %s MB / %s MB (%s%%)\n" "内存占用" "$mem_used" "$mem_total" "$mem_usage_pct"
+printf "  %-12s : %s MB / %s MB (%s%%)\n" "物理内存" "$mem_used" "$mem_total" "$mem_usage_pct"
 printf "  %-12s : %s MB\n" "可用内存" "$mem_avail"
+
+if [ "$swap_total" -gt 0 ] 2>/dev/null; then
+    swap_usage_pct=$(awk "BEGIN {printf \"%.1f\", ($swap_used/$swap_total)*100}")
+    printf "  %-12s : %s MB / %s MB (%s%%)\n" "虚拟内存" "$swap_used" "$swap_total" "$swap_usage_pct"
+else
+    printf "  %-12s : 未开启 / 0 MB\n" "虚拟内存"
+fi
 
 # 4. 磁盘使用情况（过滤虚拟文件系统与重复统计）
 echo -e "\n${YELLOW}${BOLD}【 磁盘占用 (主要挂载点) 】${NC}"
