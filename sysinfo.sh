@@ -12,6 +12,17 @@ NC='\033[0m' # 清除颜色
 # 刷新间隔时间（秒）
 INTERVAL=2
 
+# 辅助函数：读取 /proc/stat 获取总时间与空闲时间
+get_cpu_stat() {
+    read -r _ user nice sys idle iowait irq softirq steal _ < /proc/stat
+    local total=$((user + nice + sys + idle + iowait + irq + softirq + steal))
+    local idle_total=$((idle + iowait))
+    echo "$total $idle_total"
+}
+
+# 初始化 CPU 状态（用于计算增量）
+read -r prev_total prev_idle < <(get_cpu_stat)
+
 # ==========================================
 # 退出机制（恢复光标并清屏退出）
 # ==========================================
@@ -55,15 +66,24 @@ while true; do
     printf "  %-12s : %s\033[K\n" "内核版本" "$kernel"
     printf "  %-12s : %s\033[K\n" "运行时间" "$uptime_str"
 
-    # 2. CPU 信息及占用率
+    # 2. CPU 信息及精准瞬时占用率计算
     cpu_model=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | sed 's/^[ \t]*//')
     cpu_cores=$(nproc)
-    cpu_idle=$(top -bn1 | grep "%Cpu(s)" | sed -n 's/.*,\s*\([0-9.]*\)\s*id.*/\1/p')
-    if [ -n "$cpu_idle" ]; then
-        cpu_usage=$(awk "BEGIN {printf \"%.1f\", 100 - $cpu_idle}")
+
+    # 读取当前 CPU 状态并与上个周期比较
+    read -r curr_total curr_idle < <(get_cpu_stat)
+    diff_total=$((curr_total - prev_total))
+    diff_idle=$((curr_idle - prev_idle))
+
+    if [ "$diff_total" -gt 0 ]; then
+        cpu_usage=$(awk -v dt="$diff_total" -v di="$diff_idle" 'BEGIN { printf "%.1f", (1 - di/dt)*100 }')
     else
-        cpu_usage="未知"
+        cpu_usage="0.0"
     fi
+
+    # 保存本次状态作为下次计算基准
+    prev_total=$curr_total
+    prev_idle=$curr_idle
 
     echo -e "\n${YELLOW}${BOLD}【 CPU 状态 】${NC}\033[K"
     printf "  %-12s : %s (%s 核心)\033[K\n" "CPU 型号" "$cpu_model" "$cpu_cores"
@@ -94,7 +114,6 @@ while true; do
 
     # 5. Top 5 CPU 占用进程
     echo -e "\n${GREEN}${BOLD}【 CPU 占用最高的前 5 个进程 】${NC}\033[K"
-    # 手动计算中文显示宽度，严格固定每一列的起始位置
     echo -e "  ${BOLD}PID        用户        CPU(%)    进程指令${NC}\033[K"
     ps -eo pid,user,%cpu,comm --sort=-%cpu | head -n 6 | tail -n 5 | while read pid user cpu comm; do
         printf "  %-10s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
