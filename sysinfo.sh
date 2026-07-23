@@ -92,23 +92,25 @@ while true; do
 
     echo -e "\n${CYAN}================================================================${NC}\033[K"
 
-    # 5. Top 5 CPU 占用进程（精准对齐版）
+    # 5. Top 5 CPU 占用进程
     echo -e "\n${GREEN}${BOLD}【 CPU 占用最高的前 5 个进程 】${NC}\033[K"
-    echo -e "${BOLD}$(printf "  %-10s %-10s %-10s %-30s" "PID" "用户" "CPU(%)" "进程指令")${NC}\033[K"
+    # 中文字符宽度修饰后的精确表头
+    printf "  ${BOLD}%-10s %-10s %-10s %-30s${NC}\033[K\n" "PID" "用户" "CPU(%)" "进程指令"
     ps -eo pid,user,%cpu,comm --sort=-%cpu | head -n 6 | tail -n 5 | while read pid user cpu comm; do
-        printf "  %-10s %-10s %-10s %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
+        # 数字右对齐，文本左对齐，确保垂直美观
+        printf "  %-10s %-10s %10s   %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
     done
 
-    # 6. Top 5 内存占用进程（精准对齐版）
+    # 6. Top 5 内存占用进程
     echo -e "\n${GREEN}${BOLD}【 内存占用最高的前 5 个进程 】${NC}\033[K"
-    echo -e "${BOLD}$(printf "  %-10s %-10s %-10s %-30s" "PID" "用户" "内存(%)" "进程指令")${NC}\033[K"
+    printf "  ${BOLD}%-10s %-10s %-10s %-30s${NC}\033[K\n" "PID" "用户" "内存(%)" "进程指令"
     ps -eo pid,user,%mem,comm --sort=-%mem | head -n 6 | tail -n 5 | while read pid user mem comm; do
-        printf "  %-10s %-10s %-10s %-30s\033[K\n" "$pid" "$user" "$mem" "$comm"
+        printf "  %-10s %-10s %10s   %-30s\033[K\n" "$pid" "$user" "$mem" "$comm"
     done
 
     # 7. Top 5 磁盘 Reads/Writes I/O 读写最高进程
     echo -e "\n${GREEN}${BOLD}【 磁盘累积 I/O (读写总和) 最高的前 5 个进程 】${NC}\033[K"
-    echo -e "${BOLD}$(printf "  %-10s %-15s %-30s" "PID" "总读写量" "进程指令")${NC}\033[K"
+    printf "  ${BOLD}%-10s %-15s %-30s${NC}\033[K\n" "PID" "总读写量" "进程指令"
 
     if [ -r "/proc/1/io" ]; then
         for pid in /proc/[0-9]*; do
