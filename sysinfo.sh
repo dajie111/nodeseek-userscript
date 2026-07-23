@@ -94,50 +94,43 @@ while true; do
 
     # 5. Top 5 CPU 占用进程
     echo -e "\n${GREEN}${BOLD}【 CPU 占用最高的前 5 个进程 】${NC}\033[K"
-    {
-        printf "PID 用户 CPU(%%) 进程指令\n"
-        ps -eo pid,user,%cpu,comm --sort=-%cpu | head -n 6 | tail -n 5
-    } | column -t | sed 's/^/  /' | sed '1s/.*/\x1b[1m&\x1b[0m/' | while read -r line; do
-        echo -e "${line}\033[K"
+    # 手动计算中文显示宽度，严格固定每一列的起始位置
+    echo -e "  ${BOLD}PID        用户        CPU(%)    进程指令${NC}\033[K"
+    ps -eo pid,user,%cpu,comm --sort=-%cpu | head -n 6 | tail -n 5 | while read pid user cpu comm; do
+        printf "  %-10s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
     done
 
     # 6. Top 5 内存占用进程
     echo -e "\n${GREEN}${BOLD}【 内存占用最高的前 5 个进程 】${NC}\033[K"
-    {
-        printf "PID 用户 内存(%%) 进程指令\n"
-        ps -eo pid,user,%mem,comm --sort=-%mem | head -n 6 | tail -n 5
-    } | column -t | sed 's/^/  /' | sed '1s/.*/\x1b[1m&\x1b[0m/' | while read -r line; do
-        echo -e "${line}\033[K"
+    echo -e "  ${BOLD}PID        用户        内存(%)   进程指令${NC}\033[K"
+    ps -eo pid,user,%mem,comm --sort=-%mem | head -n 6 | tail -n 5 | while read pid user mem comm; do
+        printf "  %-10s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$mem" "$comm"
     done
 
     # 7. Top 5 磁盘 Reads/Writes I/O 读写最高进程
     echo -e "\n${GREEN}${BOLD}【 磁盘累积 I/O (读写总和) 最高的前 5 个进程 】${NC}\033[K"
+    echo -e "  ${BOLD}PID        总读写量       进程指令${NC}\033[K"
 
     if [ -r "/proc/1/io" ]; then
-        {
-            printf "PID 总读写量 进程指令\n"
-            for pid in /proc/[0-9]*; do
-                pid_num=${pid##*/}
-                if [ -r "$pid/io" ] && [ -r "$pid/comm" ]; then
-                    rbytes=$(sed -n 's/^read_bytes: //p' "$pid/io" 2>/dev/null)
-                    wbytes=$(sed -n 's/^write_bytes: //p' "$pid/io" 2>/dev/null)
-                    comm=$(cat "$pid/comm" 2>/dev/null)
-                    if [[ -n "$rbytes" && -n "$wbytes" ]]; then
-                        total_bytes=$((rbytes + wbytes))
-                        echo "$pid_num $total_bytes $comm"
-                    fi
+        for pid in /proc/[0-9]*; do
+            pid_num=${pid##*/}
+            if [ -r "$pid/io" ] && [ -r "$pid/comm" ]; then
+                rbytes=$(sed -n 's/^read_bytes: //p' "$pid/io" 2>/dev/null)
+                wbytes=$(sed -n 's/^write_bytes: //p' "$pid/io" 2>/dev/null)
+                comm=$(cat "$pid/comm" 2>/dev/null)
+                if [[ -n "$rbytes" && -n "$wbytes" ]]; then
+                    total_bytes=$((rbytes + wbytes))
+                    echo "$pid_num $total_bytes $comm"
                 fi
-            done | sort -k2 -nr | head -n 5 | while read pid bytes comm; do
-                hr_size=$(awk -v b="$bytes" 'BEGIN {
-                    if (b >= 1073741824) printf "%.2fGB", b/1073741824;
-                    else if (b >= 1048576) printf "%.2fMB", b/1048576;
-                    else if (b >= 1024) printf "%.2fKB", b/1024;
-                    else printf "%dB", b;
-                }')
-                echo "$pid $hr_size $comm"
-            done
-        } | column -t | sed 's/^/  /' | sed '1s/.*/\x1b[1m&\x1b[0m/' | while read -r line; do
-            echo -e "${line}\033[K"
+            fi
+        done | sort -k2 -nr | head -n 5 | while read pid bytes comm; do
+            hr_size=$(awk -v b="$bytes" 'BEGIN {
+                if (b >= 1073741824) printf "%.2f GB", b/1073741824;
+                else if (b >= 1048576) printf "%.2f MB", b/1048576;
+                else if (b >= 1024) printf "%.2f KB", b/1024;
+                else printf "%d B", b;
+            }')
+            printf "  %-10s %-14s %-30s\033[K\n" "$pid" "$hr_size" "$comm"
         done
     else
         echo -e "  ${RED}(需要 root 权限才能查看各进程的磁盘 I/O 读写状态)${NC}\033[K"
