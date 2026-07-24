@@ -78,8 +78,23 @@ while true; do
     # 1. 基本系统信息
     hostname=$(hostname)
     kernel=$(uname -r)
-    uptime_str=$(uptime -p | sed 's/up //;s/ hours\?/小时/;s/ minutes\?/分钟/;s/ days\?/天/')
     debian_ver=$(cat /etc/debian_version 2>/dev/null || echo "未知")
+    
+    # 从内核直接读取运行总秒数精准计算（支持语言无关、跨天/跨周计算）
+    uptime_str=$(awk '{
+        total_sec = int($1);
+        days = int(total_sec / 86400);
+        hours = int((total_sec % 86400) / 3600);
+        mins = int((total_sec % 3600) / 60);
+        
+        if (days > 0) {
+            printf "%d天%d小时%d分钟", days, hours, mins;
+        } else if (hours > 0) {
+            printf "%d小时%d分钟", hours, mins;
+        } else {
+            printf "%d分钟", mins;
+        }
+    }' /proc/uptime)
     
     echo -e "${YELLOW}${BOLD}【 基础信息 】${NC}\033[K"
     printf "  %-12s : %s\033[K\n" "主机名称" "$hostname"
