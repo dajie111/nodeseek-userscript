@@ -21,17 +21,25 @@ get_cpu_stat() {
     echo "$total $idle_total"
 }
 
-# 辅助函数：获取本机所有的 IPv4 地址（换行分隔）
+# 辅助函数：获取本机所有的公网 IPv4 地址（排除 Docker 及私有内网 IP）
 get_ipv4() {
     local ip
-    ip=$(ip -4 addr show scope global 2>/dev/null | grep -oP '(?<=inet\s)[0-9\.\/]+')
+    # 过滤 docker/br-/veth 接口，并排除 10.x, 192.168.x, 172.16-31.x 等私有网段
+    ip=$(ip -4 addr show scope global 2>/dev/null | \
+        grep -vE 'docker|br-|veth' | \
+        grep -oP '(?<=inet\s)[0-9\.\/]+' | \
+        grep -vE '^(10\.|192\.168\.|127\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)')
     echo "${ip:-无}"
 }
 
-# 辅助函数：获取本机所有的 IPv6 地址（换行分隔）
+# 辅助函数：获取本机所有的公网 IPv6 地址（排除临时/链路/内网地址/Docker）
 get_ipv6() {
     local ip
-    ip=$(ip -6 addr show scope global 2>/dev/null | grep -oP '(?<=inet6\s)[a-f0-9:\/]+' | grep -v '^fe80')
+    # 过滤 docker 接口，并排除 fe80:: (Link-local) 与 fc00::/fd00:: (ULA 内网) 地址
+    ip=$(ip -6 addr show scope global 2>/dev/null | \
+        grep -vE 'docker|br-|veth' | \
+        grep -oP '(?<=inet6\s)[a-f0-9:\/]+' | \
+        grep -vE '^(fe80|fc00|fd00)')
     echo "${ip:-无}"
 }
 
