@@ -6,14 +6,14 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-WHITE='\033[1;37m' # 强白色加粗
+WHITE='\033[1;37m'
 BOLD='\033[1m'
-NC='\033[0m' # 清除颜色
+NC='\033[0m'
 
 # 刷新间隔时间（秒）
 INTERVAL=2
 
-# 辅助函数：读取 /proc/stat 获取总时间与空闲时间
+# 辅助函数：读取 /proc/stat 获取 CPU 状态
 get_cpu_stat() {
     read -r _ user nice sys idle iowait irq softirq steal _ < /proc/stat
     local total=$((user + nice + sys + idle + iowait + irq + softirq + steal))
@@ -21,7 +21,7 @@ get_cpu_stat() {
     echo "$total $idle_total"
 }
 
-# 辅助函数：获取本机所有的公网 IPv4 地址（排除 Docker 及私有内网 IP）
+# 辅助函数：获取公网 IPv4
 get_ipv4() {
     local ip
     ip=$(ip -4 addr show scope global 2>/dev/null | \
@@ -31,7 +31,7 @@ get_ipv4() {
     echo "${ip:-无}"
 }
 
-# 辅助函数：获取本机所有的公网 IPv6 地址（排除临时/链路/内网地址/Docker）
+# 辅助函数：获取公网 IPv6
 get_ipv6() {
     local ip
     ip=$(ip -6 addr show scope global 2>/dev/null | \
@@ -41,46 +41,30 @@ get_ipv6() {
     echo "${ip:-无}"
 }
 
-# 初始化 CPU 状态（用于计算增量）
+# 初始化 CPU 状态
 read -r prev_total prev_idle < <(get_cpu_stat)
 
-# ==========================================
-# 退出机制（恢复光标并清屏退出）
-# ==========================================
+# 退出机制
 cleanup() {
-    # 1. 恢复终端光标显示
     tput cnorm 2>/dev/null || printf '\033[?25h'
-
-    # 2. 退出时清屏
     clear
-
-    # 3. 输出简洁的退出提示
     echo -e "${GREEN}实时监控已退出。${NC}"
     exit 0
 }
 
-# 捕获 Ctrl+C (SIGINT) 和 SIGTERM 信号
 trap cleanup SIGINT SIGTERM
 
-# 1. 启动时执行清屏
 clear
-
-# 2. 隐藏终端光标，提供流畅的刷新视觉体验
 tput civis 2>/dev/null || printf '\033[?25l'
 
-# ==========================================
-# 实时监控主循环
-# ==========================================
 while true; do
-    # 将光标定位到左上角 (0,0) 实现原位覆盖刷新
     tput cup 0 0 2>/dev/null || printf '\033[H'
 
-    # 1. 基本系统信息
+    # 1. 基础信息
     hostname=$(hostname)
     kernel=$(uname -r)
     debian_ver=$(cat /etc/debian_version 2>/dev/null || echo "未知")
     
-    # 从内核直接读取运行总秒数精准计算（支持语言无关、跨天/跨周计算）
     uptime_str=$(awk '{
         total_sec = int($1);
         days = int(total_sec / 86400);
@@ -102,7 +86,6 @@ while true; do
     echo -e "  内核版本   : $kernel\033[K"
     echo -e "  运行时间   : $uptime_str\033[K"
     
-    # 逐行打印 IPv4 地址
     first=1
     while read -r ip; do
         if [[ -n "$ip" ]]; then
@@ -115,7 +98,6 @@ while true; do
         fi
     done <<< "$(get_ipv4)"
 
-    # 逐行打印 IPv6 地址
     first=1
     while read -r ip; do
         if [[ -n "$ip" ]]; then
@@ -128,11 +110,10 @@ while true; do
         fi
     done <<< "$(get_ipv6)"
 
-    # 2. CPU 信息及精准瞬时占用率计算
+    # 2. CPU 状态
     cpu_model=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | sed 's/^[ \t]*//')
     cpu_cores=$(nproc)
 
-    # 读取当前 CPU 状态并与上个周期比较
     read -r curr_total curr_idle < <(get_cpu_stat)
     diff_total=$((curr_total - prev_total))
     diff_idle=$((curr_idle - prev_idle))
@@ -143,7 +124,6 @@ while true; do
         cpu_usage="0.0"
     fi
 
-    # 保存本次状态作为下次计算基准
     prev_total=$curr_total
     prev_idle=$curr_idle
 
@@ -151,7 +131,7 @@ while true; do
     echo -e "  CPU 型号   : $cpu_model ($cpu_cores 核心)\033[K"
     echo -e "  当前使用率 : ${cpu_usage}%\033[K"
 
-    # 3. 内存与虚拟内存 (Swap) 使用情况
+    # 3. 内存状态
     read mem_total mem_used mem_free mem_buff_cache mem_avail < <(free -m | awk 'NR==2{print $2, $3, $4, $6, $7}')
     read swap_total swap_used swap_free < <(free -m | awk 'NR==3{print $2, $3, $4}')
 
@@ -168,27 +148,27 @@ while true; do
         echo -e "  虚拟内存   : 未开启 / 0 MB\033[K"
     fi
 
-    # 4. 磁盘使用情况
+    # 4. 磁盘状态
     echo -e "\n${YELLOW}${BOLD}【 磁盘占用 (主要挂载点) 】${NC}\033[K"
     df -h -x tmpfs -x devtmpfs -x squashfs -x overlay | awk 'NR>1 {printf "  挂载点: %-12s 总容量: %-8s 已用: %-8s 剩余: %-8s 占用率: %s\033[K\n", $NF, $2, $3, $4, $5}'
 
     echo -e "\n${CYAN}================================================================${NC}\033[K"
 
-    # 5. Top 5 CPU 占用进程
+    # 5. Top 5 CPU 进程
     echo -e "\n${GREEN}${BOLD}【 CPU 占用最高的前 5 个进程 】${NC}\033[K"
-    printf "  ${BOLD}%-10s %-11s %-9s %-30s${NC}\033[K\n" "PID" "用户" "CPU(%)" "进程指令"
+    echo -e "  ${BOLD}PID       用户        CPU(%)    进程指令${NC}\033[K"
     ps -eo pid,user,%cpu,comm --sort=-%cpu | head -n 6 | tail -n 5 | while read pid user cpu comm; do
-        printf "  %-10s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
+        printf "  %-9s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
     done
 
-    # 6. Top 5 内存占用进程
+    # 6. Top 5 内存进程
     echo -e "\n${GREEN}${BOLD}【 内存占用最高的前 5 个进程 】${NC}\033[K"
-    printf "  ${BOLD}%-10s %-11s %-9s %-30s${NC}\033[K\n" "PID" "用户" "内存(%)" "进程指令"
+    echo -e "  ${BOLD}PID       用户        内存(%)   进程指令${NC}\033[K"
     ps -eo pid,user,%mem,comm --sort=-%mem | head -n 6 | tail -n 5 | while read pid user mem comm; do
-        printf "  %-10s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$mem" "$comm"
+        printf "  %-9s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$mem" "$comm"
     done
 
-    # 7. Top 5 磁盘 Reads/Writes I/O 读写最高进程
+    # 7. Top 5 磁盘 I/O 进程
     echo -e "\n${GREEN}${BOLD}【 磁盘累积 I/O (读写总和) 最高的前 5 个进程 】${NC}\033[K"
     echo -e "  ${BOLD}PID       总读写量        进程指令${NC}\033[K"
 
@@ -220,8 +200,6 @@ while true; do
     echo -e "\n${CYAN}${BOLD}================================================================${NC}\033[K"
     echo -e "${YELLOW}按 Ctrl+C 即可退出监控${NC}\033[K"
 
-    # 清除下方残存行
     printf "\033[J"
-
     sleep "$INTERVAL"
 done
