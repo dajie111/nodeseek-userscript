@@ -97,33 +97,33 @@ while true; do
     }' /proc/uptime)
     
     echo -e "${YELLOW}${BOLD}【 基础信息 】${NC}\033[K"
-    echo -e "  主机名称    : $hostname\033[K"
-    echo -e "  系统版本    : Debian $debian_ver\033[K"
-    echo -e "  内核版本    : $kernel\033[K"
-    echo -e "  运行时间    : $uptime_str\033[K"
+    echo -e "  主机名称  : $hostname\033[K"
+    echo -e "  系统版本  : Debian $debian_ver\033[K"
+    echo -e "  内核版本  : $kernel\033[K"
+    echo -e "  运行时间  : $uptime_str\033[K"
     
-    # 逐行打印 IPv4 地址（硬编码精确空格对齐冒号）
+    # 逐行打印 IPv4 地址（缩短间距对齐）
     first=1
     while read -r ip; do
         if [[ -n "$ip" ]]; then
             if [[ $first -eq 1 ]]; then
-                echo -e "  IPv4 地址   : ${WHITE}${ip}${NC}\033[K"
+                echo -e "  IPv4 地址 : ${WHITE}${ip}${NC}\033[K"
                 first=0
             else
-                echo -e "                ${WHITE}${ip}${NC}\033[K"
+                echo -e "              ${WHITE}${ip}${NC}\033[K"
             fi
         fi
     done <<< "$(get_ipv4)"
 
-    # 逐行打印 IPv6 地址（硬编码精确空格对齐冒号）
+    # 逐行打印 IPv6 地址（缩短间距对齐）
     first=1
     while read -r ip; do
         if [[ -n "$ip" ]]; then
             if [[ $first -eq 1 ]]; then
-                echo -e "  IPv6 地址   : ${WHITE}${ip}${NC}\033[K"
+                echo -e "  IPv6 地址 : ${WHITE}${ip}${NC}\033[K"
                 first=0
             else
-                echo -e "                ${WHITE}${ip}${NC}\033[K"
+                echo -e "              ${WHITE}${ip}${NC}\033[K"
             fi
         fi
     done <<< "$(get_ipv6)"
@@ -148,8 +148,8 @@ while true; do
     prev_idle=$curr_idle
 
     echo -e "\n${YELLOW}${BOLD}【 CPU 状态 】${NC}\033[K"
-    echo -e "  CPU 型号    : $cpu_model ($cpu_cores 核心)\033[K"
-    echo -e "  当前使用率  : ${cpu_usage}%\033[K"
+    echo -e "  CPU 型号  : $cpu_model ($cpu_cores 核心)\033[K"
+    echo -e "  当前使用率: ${cpu_usage}%\033[K"
 
     # 3. 内存与虚拟内存 (Swap) 使用情况
     read mem_total mem_used mem_free mem_buff_cache mem_avail < <(free -m | awk 'NR==2{print $2, $3, $4, $6, $7}')
@@ -158,14 +158,14 @@ while true; do
     mem_usage_pct=$(awk "BEGIN {printf \"%.1f\", ($mem_used/$mem_total)*100}")
 
     echo -e "\n${YELLOW}${BOLD}【 内存状态 】${NC}\033[K"
-    echo -e "  物理内存    : $mem_used MB / $mem_total MB ($mem_usage_pct%)\033[K"
-    echo -e "  可用内存    : $mem_avail MB\033[K"
+    echo -e "  物理内存  : $mem_used MB / $mem_total MB ($mem_usage_pct%)\033[K"
+    echo -e "  可用内存  : $mem_avail MB\033[K"
 
     if [ "$swap_total" -gt 0 ] 2>/dev/null; then
         swap_usage_pct=$(awk "BEGIN {printf \"%.1f\", ($swap_used/$swap_total)*100}")
-        echo -e "  虚拟内存    : $swap_used MB / $swap_total MB ($swap_usage_pct%)\033[K"
+        echo -e "  虚拟内存  : $swap_used MB / $swap_total MB ($swap_usage_pct%)\033[K"
     else
-        echo -e "  虚拟内存    : 未开启 / 0 MB\033[K"
+        echo -e "  虚拟内存  : 未开启 / 0 MB\033[K"
     fi
 
     # 4. 磁盘使用情况
@@ -176,21 +176,21 @@ while true; do
 
     # 5. Top 5 CPU 占用进程
     echo -e "\n${GREEN}${BOLD}【 CPU 占用最高的前 5 个进程 】${NC}\033[K"
-    echo -e "  ${BOLD}PID        用户        CPU(%)    进程指令${NC}\033[K"
+    printf "  ${BOLD}%-10s %-11s %-9s %-30s${NC}\033[K\n" "PID" "用户" "CPU(%)" "进程指令"
     ps -eo pid,user,%cpu,comm --sort=-%cpu | head -n 6 | tail -n 5 | while read pid user cpu comm; do
         printf "  %-10s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
     done
 
     # 6. Top 5 内存占用进程
     echo -e "\n${GREEN}${BOLD}【 内存占用最高的前 5 个进程 】${NC}\033[K"
-    echo -e "  ${BOLD}PID        用户        内存(%)   进程指令${NC}\033[K"
+    printf "  ${BOLD}%-10s %-11s %-9s %-30s${NC}\033[K\n" "PID" "用户" "内存(%)" "进程指令"
     ps -eo pid,user,%mem,comm --sort=-%mem | head -n 6 | tail -n 5 | while read pid user mem comm; do
         printf "  %-10s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$mem" "$comm"
     done
 
     # 7. Top 5 磁盘 Reads/Writes I/O 读写最高进程
     echo -e "\n${GREEN}${BOLD}【 磁盘累积 I/O (读写总和) 最高的前 5 个进程 】${NC}\033[K"
-    echo -e "  ${BOLD}PID        总读写量        进程指令${NC}\033[K"
+    echo -e "  ${BOLD}PID       总读写量        进程指令${NC}\033[K"
 
     if [ -r "/proc/1/io" ]; then
         for pid in /proc/[0-9]*; do
@@ -211,7 +211,7 @@ while true; do
                 else if (b >= 1024) printf "%.2f KB", b/1024;
                 else printf "%d B", b;
             }')
-            printf "  %-10s %-14s %-30s\033[K\n" "$pid" "$hr_size" "$comm"
+            printf "  %-9s %-15s %-30s\033[K\n" "$pid" "$hr_size" "$comm"
         done
     else
         echo -e "  ${RED}(需要 root 权限才能查看各进程的磁盘 I/O 读写状态)${NC}\033[K"
