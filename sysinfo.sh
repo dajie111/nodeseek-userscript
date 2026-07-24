@@ -18,7 +18,7 @@ get_cpu_stat() {
     read -r _ user nice sys idle iowait irq softirq steal _ < /proc/stat
     local total=$((user + nice + sys + idle + iowait + irq + softirq + steal))
     local idle_total=$((idle + iowait))
-    echo "$total $idle_total"
+    echo "$total$idle_total"
 }
 
 # 辅助函数：获取公网 IPv4
@@ -148,22 +148,22 @@ while true; do
         echo -e "  虚拟内存   : 未开启 / 0 MB\033[K"
     fi
 
-    # 4. 磁盘状态 (挂载点扩展至 20 字符对齐)
+    # 4. 磁盘状态 (挂载点扩展至 30 字符对齐)
     echo -e "\n${YELLOW}${BOLD}【 磁盘占用 (主要挂载点) 】${NC}\033[K"
-    df -h -x tmpfs -x devtmpfs -x squashfs -x overlay | awk 'NR>1 {printf "  挂载点: %-20s 总容量: %-8s 已用: %-8s 剩余: %-8s 占用率: %s\033[K\n", $NF, $2, $3, $4, $5}'
+    df -h -x tmpfs -x devtmpfs -x squashfs -x overlay | awk 'NR>1 {printf "  挂载点: %-30s 总容量: %-8s 已用: %-8s 剩余: %-8s 占用率: %s\033[K\n", $NF, $2, $3, $4, $5}'
 
     echo -e "\n${CYAN}================================================================${NC}\033[K"
 
     # 5. Top 5 CPU 进程
     echo -e "\n${GREEN}${BOLD}【 CPU 占用最高的前 5 个进程 】${NC}\033[K"
-    echo -e "  ${BOLD}PID       用户        CPU(%)    进程指令${NC}\033[K"
+    echo -e "  ${BOLD}PID       用户        CPU(\%)    进程指令${NC}\033[K"
     ps -eo pid,user,%cpu,comm --sort=-%cpu | head -n 6 | tail -n 5 | while read pid user cpu comm; do
         printf "  %-9s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
     done
 
     # 6. Top 5 内存进程
     echo -e "\n${GREEN}${BOLD}【 内存占用最高的前 5 个进程 】${NC}\033[K"
-    echo -e "  ${BOLD}PID       用户        内存(%)   进程指令${NC}\033[K"
+    echo -e "  ${BOLD}PID       用户        内存(\%)   进程指令${NC}\033[K"
     ps -eo pid,user,%mem,comm --sort=-%mem | head -n 6 | tail -n 5 | while read pid user mem comm; do
         printf "  %-9s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$mem" "$comm"
     done
@@ -181,7 +181,7 @@ while true; do
                 comm=$(cat "$pid/comm" 2>/dev/null)
                 if [[ -n "$rbytes" && -n "$wbytes" ]]; then
                     total_bytes=$((rbytes + wbytes))
-                    echo "$pid_num $total_bytes $comm"
+                    echo "$pid_num $total_bytes$comm"
                 fi
             fi
         done | sort -k2 -nr | head -n 5 | while read pid bytes comm; do
