@@ -18,7 +18,7 @@ get_cpu_stat() {
     read -r _ user nice sys idle iowait irq softirq steal _ < /proc/stat
     local total=$((user + nice + sys + idle + iowait + irq + softirq + steal))
     local idle_total=$((idle + iowait))
-    echo "$total$idle_total"
+    echo "$total $idle_total"
 }
 
 # 辅助函数：获取公网 IPv4
@@ -148,7 +148,7 @@ while true; do
         echo -e "  虚拟内存   : 未开启 / 0 MB\033[K"
     fi
 
-    # 4. 磁盘状态 (挂载点扩展至 30 字符对齐)
+    # 4. 磁盘状态 (挂载点扩展至 30 字符)
     echo -e "\n${YELLOW}${BOLD}【 磁盘占用 (主要挂载点) 】${NC}\033[K"
     df -h -x tmpfs -x devtmpfs -x squashfs -x overlay | awk 'NR>1 {printf "  挂载点: %-30s 总容量: %-8s 已用: %-8s 剩余: %-8s 占用率: %s\033[K\n", $NF, $2, $3, $4, $5}'
 
@@ -156,14 +156,14 @@ while true; do
 
     # 5. Top 5 CPU 进程
     echo -e "\n${GREEN}${BOLD}【 CPU 占用最高的前 5 个进程 】${NC}\033[K"
-    echo -e "  ${BOLD}PID       用户        CPU(\%)    进程指令${NC}\033[K"
+    echo -e "  ${BOLD}PID       用户        CPU(%)    进程指令${NC}\033[K"
     ps -eo pid,user,%cpu,comm --sort=-%cpu | head -n 6 | tail -n 5 | while read pid user cpu comm; do
         printf "  %-9s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
     done
 
     # 6. Top 5 内存进程
     echo -e "\n${GREEN}${BOLD}【 内存占用最高的前 5 个进程 】${NC}\033[K"
-    echo -e "  ${BOLD}PID       用户        内存(\%)   进程指令${NC}\033[K"
+    echo -e "  ${BOLD}PID       用户        内存(%)   进程指令${NC}\033[K"
     ps -eo pid,user,%mem,comm --sort=-%mem | head -n 6 | tail -n 5 | while read pid user mem comm; do
         printf "  %-9s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$mem" "$comm"
     done
@@ -181,7 +181,7 @@ while true; do
                 comm=$(cat "$pid/comm" 2>/dev/null)
                 if [[ -n "$rbytes" && -n "$wbytes" ]]; then
                     total_bytes=$((rbytes + wbytes))
-                    echo "$pid_num $total_bytes$comm"
+                    echo "$pid_num $total_bytes $comm"
                 fi
             fi
         done | sort -k2 -nr | head -n 5 | while read pid bytes comm; do
@@ -195,6 +195,35 @@ while true; do
         done
     else
         echo -e "  ${RED}(需要 root 权限才能查看各进程的磁盘 I/O 读写状态)${NC}\033[K"
+    fi
+
+    # 8. Top 5 网络流量进程
+    echo -e "\n${GREEN}${BOLD}【 实时网络带宽占用最高的前 5 个进程 】${NC}\033[K"
+    if command -v nethogs >/dev/null 2>&1; then
+        echo -e "  ${BOLD}进程指令/路径                      发送 (KB/s)     接收 (KB/s)${NC}\033[K"
+        timeout 1.5 nethogs -t -c 2 2>/dev/null | grep -E '/[0-9]+/[0-9]+' | tail -n 10 | sort -k2 -nr | head -n 5 | while read line; do
+            prog=$(echo "$line" | awk '{print $1}')
+            sent=$(echo "$line" | awk '{print $2}')
+            recv=$(echo "$line" | awk '{print $3}')
+            printf "  %-32s %-15s %-15s\033[K\n" "${prog:0:30}" "$sent" "$recv"
+        done
+    else
+        # 智能检测系统并提示安装命令
+        if command -v apt >/dev/null 2>&1; then
+            pkg_cmd="apt update && apt install -y nethogs"
+        elif command -v yum >/dev/null 2>&1; then
+            pkg_cmd="yum install -y epel-release && yum install -y nethogs"
+        elif command -v dnf >/dev/null 2>&1; then
+            pkg_cmd="dnf install -y nethogs"
+        elif command -v apk >/dev/null 2>&1; then
+            pkg_cmd="apk add nethogs"
+        else
+            pkg_cmd="请使用包管理器安装 nethogs"
+        fi
+        
+        echo -e "  ${RED}未检测到 nethogs 工具，无法按进程统计网速。${NC}\033[K"
+        echo -e "  ${YELLOW}请按 Ctrl+C 退出后运行以下命令安装：${NC}\033[K"
+        echo -e "  ${WHITE}${BOLD}sudo $pkg_cmd${NC}\033[K"
     fi
 
     echo -e "\n${CYAN}${BOLD}================================================================${NC}\033[K"
