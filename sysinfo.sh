@@ -6,6 +6,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
+WHITE='\033[1;37m' # 高亮白色
 BOLD='\033[1m'
 NC='\033[0m' # 清除颜色
 
@@ -23,8 +24,8 @@ get_cpu_stat() {
 # 辅助函数：获取本机主要的 IPv4 地址
 get_ipv4() {
     local ip
-    # 优先获取访问主干路由的 IP
-    ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}')
+    # 优先提取路由匹配的源 IP
+    ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
     # 如果失败，退而求其次获取第一个非环回 (lo) IPv4
     if [[ -z "$ip" ]]; then
         ip=$(ip -4 addr show scope global 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
@@ -35,11 +36,11 @@ get_ipv4() {
 # 辅助函数：获取本机主要的 IPv6 地址
 get_ipv6() {
     local ip
-    # 优先获取访问主干路由的公网 IPv6
-    ip=$(ip -6 route get 2606:4700:4700::1111 2>/dev/null | awk '{print $7; exit}')
-    # 如果失败，寻找第一个全局单播 IPv6 地址（排除 fe80:: 链路本地地址）
+    # 优先从 ip addr 中获取 scope global 的 IPv6 地址（去掉 /mask 掩码）
+    ip=$(ip -6 addr show scope global 2>/dev/null | grep -oP '(?<=inet6\s)[a-f0-9:]+' | grep -v '^fe80' | head -n 1)
+    # 如果上面没拿到，尝试通过路由查询具体使用的源 IP (src)
     if [[ -z "$ip" ]]; then
-        ip=$(ip -6 addr show scope global 2>/dev/null | grep -oP '(?<=inet6\s)[a-f0-9:]+' | grep -v '^fe80' | head -n 1)
+        ip=$(ip -6 route get 2606:4700:4700::1111 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
     fi
     echo "${ip:-无}"
 }
@@ -91,8 +92,8 @@ while true; do
     printf "  %-12s : Debian %s\033[K\n" "系统版本" "$debian_ver"
     printf "  %-12s : %s\033[K\n" "内核版本" "$kernel"
     printf "  %-12s : %s\033[K\n" "运行时间" "$uptime_str"
-    printf "  %-12s : %s\033[K\n" "IPv4 地址" "$ipv4_addr"
-    printf "  %-12s : %s\033[K\n" "IPv6 地址" "$ipv6_addr"
+    printf "  %-12s : ${WHITE}%s${NC}\033[K\n" "IPv4 地址" "$ipv4_addr"
+    printf "  %-12s : ${WHITE}%s${NC}\033[K\n" "IPv6 地址" "$ipv6_addr"
 
     # 2. CPU 信息及精准瞬时占用率计算
     cpu_model=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | sed 's/^[ \t]*//')
