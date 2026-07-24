@@ -148,9 +148,9 @@ while true; do
         echo -e "  虚拟内存   : 未开启 / 0 MB\033[K"
     fi
 
-    # 4. 磁盘状态
+    # 4. 磁盘状态 (挂载点扩展至 20 字符对齐)
     echo -e "\n${YELLOW}${BOLD}【 磁盘占用 (主要挂载点) 】${NC}\033[K"
-    df -h -x tmpfs -x devtmpfs -x squashfs -x overlay | awk 'NR>1 {printf "  挂载点: %-12s 总容量: %-8s 已用: %-8s 剩余: %-8s 占用率: %s\033[K\n", $NF, $2, $3, $4, $5}'
+    df -h -x tmpfs -x devtmpfs -x squashfs -x overlay | awk 'NR>1 {printf "  挂载点: %-20s 总容量: %-8s 已用: %-8s 剩余: %-8s 占用率: %s\033[K\n", $NF, $2, $3, $4, $5}'
 
     echo -e "\n${CYAN}================================================================${NC}\033[K"
 
