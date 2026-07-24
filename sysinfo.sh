@@ -20,6 +20,30 @@ get_cpu_stat() {
     echo "$total $idle_total"
 }
 
+# 辅助函数：获取本机主要的 IPv4 地址
+get_ipv4() {
+    local ip
+    # 优先获取访问主干路由的 IP
+    ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}')
+    # 如果失败，退而求其次获取第一个非环回 (lo) IPv4
+    if [[ -z "$ip" ]]; then
+        ip=$(ip -4 addr show scope global 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+    fi
+    echo "${ip:-无}"
+}
+
+# 辅助函数：获取本机主要的 IPv6 地址
+get_ipv6() {
+    local ip
+    # 优先获取访问主干路由的公网 IPv6
+    ip=$(ip -6 route get 2606:4700:4700::1111 2>/dev/null | awk '{print $7; exit}')
+    # 如果失败，寻找第一个全局单播 IPv6 地址（排除 fe80:: 链路本地地址）
+    if [[ -z "$ip" ]]; then
+        ip=$(ip -6 addr show scope global 2>/dev/null | grep -oP '(?<=inet6\s)[a-f0-9:]+' | grep -v '^fe80' | head -n 1)
+    fi
+    echo "${ip:-无}"
+}
+
 # 初始化 CPU 状态（用于计算增量）
 read -r prev_total prev_idle < <(get_cpu_stat)
 
@@ -59,12 +83,16 @@ while true; do
     kernel=$(uname -r)
     uptime_str=$(uptime -p | sed 's/up //;s/ hours\?/小时/;s/ minutes\?/分钟/;s/ days\?/天/')
     debian_ver=$(cat /etc/debian_version 2>/dev/null || echo "未知")
+    ipv4_addr=$(get_ipv4)
+    ipv6_addr=$(get_ipv6)
 
     echo -e "${YELLOW}${BOLD}【 基础信息 】${NC}\033[K"
     printf "  %-12s : %s\033[K\n" "主机名称" "$hostname"
     printf "  %-12s : Debian %s\033[K\n" "系统版本" "$debian_ver"
     printf "  %-12s : %s\033[K\n" "内核版本" "$kernel"
     printf "  %-12s : %s\033[K\n" "运行时间" "$uptime_str"
+    printf "  %-12s : %s\033[K\n" "IPv4 地址" "$ipv4_addr"
+    printf "  %-12s : %s\033[K\n" "IPv6 地址" "$ipv6_addr"
 
     # 2. CPU 信息及精准瞬时占用率计算
     cpu_model=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | sed 's/^[ \t]*//')
@@ -128,7 +156,7 @@ while true; do
 
     # 7. Top 5 磁盘 Reads/Writes I/O 读写最高进程
     echo -e "\n${GREEN}${BOLD}【 磁盘累积 I/O (读写总和) 最高的前 5 个进程 】${NC}\033[K"
-    echo -e "  ${BOLD}PID        总读写量       进程指令${NC}\033[K"
+    echo -e "  ${BOLD}PID        总读写量        进程指令${NC}\033[K"
 
     if [ -r "/proc/1/io" ]; then
         for pid in /proc/[0-9]*; do
