@@ -88,42 +88,42 @@ while true; do
         mins = int((total_sec % 3600) / 60);
         
         if (days > 0) {
-            printf "%d天%d小时%d分钟", days, hours, mins;
+            printf "%d天, %d小时, %d分钟", days, hours, mins;
         } else if (hours > 0) {
-            printf "%d小时%d分钟", hours, mins;
+            printf "%d小时, %d分钟", hours, mins;
         } else {
             printf "%d分钟", mins;
         }
     }' /proc/uptime)
     
     echo -e "${YELLOW}${BOLD}【 基础信息 】${NC}\033[K"
-    printf "  %-12s : %s\033[K\n" "主机名称" "$hostname"
-    printf "  %-12s : Debian %s\033[K\n" "系统版本" "$debian_ver"
-    printf "  %-12s : %s\033[K\n" "内核版本" "$kernel"
-    printf "  %-12s : %s\033[K\n" "运行时间" "$uptime_str"
+    echo -e "  主机名称    : $hostname\033[K"
+    echo -e "  系统版本    : Debian $debian_ver\033[K"
+    echo -e "  内核版本    : $kernel\033[K"
+    echo -e "  运行时间    : $uptime_str\033[K"
     
-    # 逐行循环打印 IPv4 地址（使用 printf 统一宽度对齐）
+    # 逐行打印 IPv4 地址（硬编码精确空格对齐冒号）
     first=1
     while read -r ip; do
         if [[ -n "$ip" ]]; then
             if [[ $first -eq 1 ]]; then
-                printf "  %-12s : ${WHITE}%s${NC}\033[K\n" "IPv4 地址" "$ip"
+                echo -e "  IPv4 地址   : ${WHITE}${ip}${NC}\033[K"
                 first=0
             else
-                printf "  %-12s   ${WHITE}%s${NC}\033[K\n" "" "$ip"
+                echo -e "                ${WHITE}${ip}${NC}\033[K"
             fi
         fi
     done <<< "$(get_ipv4)"
 
-    # 逐行循环打印 IPv6 地址（使用 printf 统一宽度对齐）
+    # 逐行打印 IPv6 地址（硬编码精确空格对齐冒号）
     first=1
     while read -r ip; do
         if [[ -n "$ip" ]]; then
             if [[ $first -eq 1 ]]; then
-                printf "  %-12s : ${WHITE}%s${NC}\033[K\n" "IPv6 地址" "$ip"
+                echo -e "  IPv6 地址   : ${WHITE}${ip}${NC}\033[K"
                 first=0
             else
-                printf "  %-12s   ${WHITE}%s${NC}\033[K\n" "" "$ip"
+                echo -e "                ${WHITE}${ip}${NC}\033[K"
             fi
         fi
     done <<< "$(get_ipv6)"
@@ -148,8 +148,8 @@ while true; do
     prev_idle=$curr_idle
 
     echo -e "\n${YELLOW}${BOLD}【 CPU 状态 】${NC}\033[K"
-    printf "  %-12s : %s (%s 核心)\033[K\n" "CPU 型号" "$cpu_model" "$cpu_cores"
-    printf "  %-12s : %s%%\033[K\n" "当前使用率" "$cpu_usage"
+    echo -e "  CPU 型号    : $cpu_model ($cpu_cores 核心)\033[K"
+    echo -e "  当前使用率  : ${cpu_usage}%\033[K"
 
     # 3. 内存与虚拟内存 (Swap) 使用情况
     read mem_total mem_used mem_free mem_buff_cache mem_avail < <(free -m | awk 'NR==2{print $2, $3, $4, $6, $7}')
@@ -158,14 +158,14 @@ while true; do
     mem_usage_pct=$(awk "BEGIN {printf \"%.1f\", ($mem_used/$mem_total)*100}")
 
     echo -e "\n${YELLOW}${BOLD}【 内存状态 】${NC}\033[K"
-    printf "  %-12s : %s MB / %s MB (%s%%)\033[K\n" "物理内存" "$mem_used" "$mem_total" "$mem_usage_pct"
-    printf "  %-12s : %s MB\033[K\n" "可用内存" "$mem_avail"
+    echo -e "  物理内存    : $mem_used MB / $mem_total MB ($mem_usage_pct%)\033[K"
+    echo -e "  可用内存    : $mem_avail MB\033[K"
 
     if [ "$swap_total" -gt 0 ] 2>/dev/null; then
         swap_usage_pct=$(awk "BEGIN {printf \"%.1f\", ($swap_used/$swap_total)*100}")
-        printf "  %-12s : %s MB / %s MB (%s%%)\033[K\n" "虚拟内存" "$swap_used" "$swap_total" "$swap_usage_pct"
+        echo -e "  虚拟内存    : $swap_used MB / $swap_total MB ($swap_usage_pct%)\033[K"
     else
-        printf "  %-12s : 未开启 / 0 MB\033[K\n" "虚拟内存"
+        echo -e "  虚拟内存    : 未开启 / 0 MB\033[K"
     fi
 
     # 4. 磁盘使用情况
