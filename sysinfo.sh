@@ -24,7 +24,6 @@ get_cpu_stat() {
 # 辅助函数：获取本机所有的公网 IPv4 地址（排除 Docker 及私有内网 IP）
 get_ipv4() {
     local ip
-    # 过滤 docker/br-/veth 接口，并排除 10.x, 192.168.x, 172.16-31.x 等私有网段
     ip=$(ip -4 addr show scope global 2>/dev/null | \
         grep -vE 'docker|br-|veth' | \
         grep -oP '(?<=inet\s)[0-9\.\/]+' | \
@@ -35,7 +34,6 @@ get_ipv4() {
 # 辅助函数：获取本机所有的公网 IPv6 地址（排除临时/链路/内网地址/Docker）
 get_ipv6() {
     local ip
-    # 过滤 docker 接口，并排除 fe80:: (Link-local) 与 fc00::/fd00:: (ULA 内网) 地址
     ip=$(ip -6 addr show scope global 2>/dev/null | \
         grep -vE 'docker|br-|veth' | \
         grep -oP '(?<=inet6\s)[a-f0-9:\/]+' | \
@@ -89,28 +87,28 @@ while true; do
     printf "  %-12s : %s\033[K\n" "内核版本" "$kernel"
     printf "  %-12s : %s\033[K\n" "运行时间" "$uptime_str"
     
-    # 逐行循环打印 IPv4 地址
+    # 逐行循环打印 IPv4 地址（使用 printf 统一宽度对齐）
     first=1
     while read -r ip; do
         if [[ -n "$ip" ]]; then
             if [[ $first -eq 1 ]]; then
-                echo -e "  IPv4 地址    : ${WHITE}${ip}${NC}\033[K"
+                printf "  %-12s : ${WHITE}%s${NC}\033[K\n" "IPv4 地址" "$ip"
                 first=0
             else
-                echo -e "                 ${WHITE}${ip}${NC}\033[K"
+                printf "  %-12s   ${WHITE}%s${NC}\033[K\n" "" "$ip"
             fi
         fi
     done <<< "$(get_ipv4)"
 
-    # 逐行循环打印 IPv6 地址
+    # 逐行循环打印 IPv6 地址（使用 printf 统一宽度对齐）
     first=1
     while read -r ip; do
         if [[ -n "$ip" ]]; then
             if [[ $first -eq 1 ]]; then
-                echo -e "  IPv6 地址    : ${WHITE}${ip}${NC}\033[K"
+                printf "  %-12s : ${WHITE}%s${NC}\033[K\n" "IPv6 地址" "$ip"
                 first=0
             else
-                echo -e "                 ${WHITE}${ip}${NC}\033[K"
+                printf "  %-12s   ${WHITE}%s${NC}\033[K\n" "" "$ip"
             fi
         fi
     done <<< "$(get_ipv6)"
