@@ -21,19 +21,17 @@ get_cpu_stat() {
     echo "$total $idle_total"
 }
 
-# 辅助函数：获取本机主要的 IPv4 地址（带掩码，如 /24）
+# 辅助函数：获取本机所有的 IPv4 地址（换行分隔）
 get_ipv4() {
     local ip
-    # 优先获取全局单播 IPv4 地址带 CIDR
-    ip=$(ip -4 addr show scope global 2>/dev/null | grep -oP '(?<=inet\s)[0-9\.\/]+' | head -n 1)
+    ip=$(ip -4 addr show scope global 2>/dev/null | grep -oP '(?<=inet\s)[0-9\.\/]+')
     echo "${ip:-无}"
 }
 
-# 辅助函数：获取本机主要的 IPv6 地址（带掩码，如 /64）
+# 辅助函数：获取本机所有的 IPv6 地址（换行分隔）
 get_ipv6() {
     local ip
-    # 优先获取全局单播 IPv6 地址带 CIDR（排除 fe80:: 链路本地地址）
-    ip=$(ip -6 addr show scope global 2>/dev/null | grep -oP '(?<=inet6\s)[a-f0-9:\/]+' | grep -v '^fe80' | head -n 1)
+    ip=$(ip -6 addr show scope global 2>/dev/null | grep -oP '(?<=inet6\s)[a-f0-9:\/]+' | grep -v '^fe80')
     echo "${ip:-无}"
 }
 
@@ -76,16 +74,38 @@ while true; do
     kernel=$(uname -r)
     uptime_str=$(uptime -p | sed 's/up //;s/ hours\?/小时/;s/ minutes\?/分钟/;s/ days\?/天/')
     debian_ver=$(cat /etc/debian_version 2>/dev/null || echo "未知")
-    ipv4_addr=$(get_ipv4)
-    ipv6_addr=$(get_ipv6)
-
+    
     echo -e "${YELLOW}${BOLD}【 基础信息 】${NC}\033[K"
     printf "  %-12s : %s\033[K\n" "主机名称" "$hostname"
     printf "  %-12s : Debian %s\033[K\n" "系统版本" "$debian_ver"
     printf "  %-12s : %s\033[K\n" "内核版本" "$kernel"
     printf "  %-12s : %s\033[K\n" "运行时间" "$uptime_str"
-    echo -e "  IPv4 地址    : ${WHITE}${ipv4_addr}${NC}\033[K"
-    echo -e "  IPv6 地址    : ${WHITE}${ipv6_addr}${NC}\033[K"
+    
+    # 逐行循环打印 IPv4 地址
+    first=1
+    while read -r ip; do
+        if [[ -n "$ip" ]]; then
+            if [[ $first -eq 1 ]]; then
+                echo -e "  IPv4 地址    : ${WHITE}${ip}${NC}\033[K"
+                first=0
+            else
+                echo -e "                 ${WHITE}${ip}${NC}\033[K"
+            fi
+        fi
+    done <<< "$(get_ipv4)"
+
+    # 逐行循环打印 IPv6 地址
+    first=1
+    while read -r ip; do
+        if [[ -n "$ip" ]]; then
+            if [[ $first -eq 1 ]]; then
+                echo -e "  IPv6 地址    : ${WHITE}${ip}${NC}\033[K"
+                first=0
+            else
+                echo -e "                 ${WHITE}${ip}${NC}\033[K"
+            fi
+        fi
+    done <<< "$(get_ipv6)"
 
     # 2. CPU 信息及精准瞬时占用率计算
     cpu_model=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | sed 's/^[ \t]*//')
