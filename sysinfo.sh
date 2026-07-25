@@ -77,36 +77,6 @@ get_pkg_management_info() {
     fi
 }
 
-# 辅助函数：批量抓取 PID 当前上传/下载速率 (依赖 nethogs)
-# 将速率存在全局关联数组 net_sent 与 net_recv 中 (单位: KB/s)
-declare -A net_sent
-declare -A net_recv
-
-update_net_rates() {
-    net_sent=()
-    net_recv=()
-    if command -v nethogs >/dev/null 2>&1 && [ "$EUID" -eq 0 ]; then
-        local line pid sent recv
-        while read -r line; do
-            pid=$(echo "$line" | grep -oP '(?<=/)[0-9]+(?=\s|\b)')
-            if [ -n "$pid" ]; then
-                sent=$(echo "$line" | awk '{print $2}')
-                recv=$(echo "$line" | awk '{print $3}')
-                net_sent["$pid"]="${sent:-0.00}"
-                net_recv["$pid"]="${recv:-0.00}"
-            fi
-        done < <(nethogs -t -c 2 2>/dev/null | grep -E '/[0-9]+')
-    fi
-}
-
-# 格式化速率工具函数
-get_net_str() {
-    local pid=$1
-    local s="${net_sent[$pid]:-0.00}"
-    local r="${net_recv[$pid]:-0.00}"
-    printf "%-10s %-10s" "${s} KB/s" "${r} KB/s"
-}
-
 # 初始化 CPU 状态
 read -r prev_total prev_idle < <(get_cpu_stat)
 
@@ -218,30 +188,25 @@ while true; do
     echo -e "\n${YELLOW}${BOLD}【 磁盘占用 (主要挂载点) 】${NC}\033[K"
     df -h -x tmpfs -x devtmpfs -x squashfs -x overlay | awk 'NR>1 {printf "  挂载点: %-30s 总容量: %-8s 已用: %-8s 剩余: %-8s 占用率: %s\033[K\n", $NF, $2, $3, $4, $5}'
 
-    # 更新实时网络速率表
-    update_net_rates
-
     echo -e "\n${CYAN}================================================================${NC}\033[K"
 
     # 5. Top 5 CPU 进程
     echo -e "\n${GREEN}${BOLD}【 CPU 占用最高的前 5 个进程 】${NC}\033[K"
-    echo -e "  ${BOLD}PID       用户        CPU(%)    进程指令                       上传速率   下载速率${NC}\033[K"
+    echo -e "  ${BOLD}PID       用户        CPU(%)    进程指令${NC}\033[K"
     ps -eo pid,user,%cpu,comm --sort=-%cpu | head -n 6 | tail -n 5 | while read pid user cpu comm; do
-        net_info=$(get_net_str "$pid")
-        printf "  %-9s %-11s %-9s %-30s %s\033[K\n" "$pid" "$user" "$cpu" "$comm" "$net_info"
+        printf "  %-9s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$cpu" "$comm"
     done
 
     # 6. Top 5 内存进程
     echo -e "\n${GREEN}${BOLD}【 内存占用最高的前 5 个进程 】${NC}\033[K"
-    echo -e "  ${BOLD}PID       用户        内存(%)   进程指令                       上传速率   下载速率${NC}\033[K"
+    echo -e "  ${BOLD}PID       用户        内存(%)   进程指令${NC}\033[K"
     ps -eo pid,user,%mem,comm --sort=-%mem | head -n 6 | tail -n 5 | while read pid user mem comm; do
-        net_info=$(get_net_str "$pid")
-        printf "  %-9s %-11s %-9s %-30s %s\033[K\n" "$pid" "$user" "$mem" "$comm" "$net_info"
+        printf "  %-9s %-11s %-9s %-30s\033[K\n" "$pid" "$user" "$mem" "$comm"
     done
 
     # 7. Top 5 磁盘 I/O 进程
     echo -e "\n${GREEN}${BOLD}【 磁盘累积 I/O (读写总和) 最高的前 5 个进程 】${NC}\033[K"
-    echo -e "  ${BOLD}PID       总读写量        进程指令                       上传速率   下载速率${NC}\033[K"
+    echo -e "  ${BOLD}PID       总读写量        进程指令${NC}\033[K"
 
     if [ -r "/proc/1/io" ]; then
         for pid in /proc/[0-9]*; do
@@ -262,17 +227,55 @@ while true; do
                 else if (b >= 1024) printf "%.2f KB", b/1024;
                 else printf "%d B", b;
             }')
-            net_info=$(get_net_str "$pid")
-            printf "  %-9s %-15s %-30s %s\033[K\n" "$pid" "$hr_size" "$comm" "$net_info"
+            printf "  %-9s %-15s %-30s\033[K\n" "$pid" "$hr_size" "$comm"
         done
     else
         echo -e "  ${RED}(需要 root 权限才能查看各进程的磁盘 I/O 读写状态)${NC}\033[K"
     fi
 
-    # 未安装 nethogs 时的安装/卸载命令提示
-    if ! command -v nethogs >/dev/null 2>&1; then
-        echo -e "\n  ${RED}未检测到 nethogs 工具，网速显示受限。${NC}\033[K"
+    # 8. Top 5 网络网速进程
+    echo -e "\n${GREEN}${BOLD}【 实时网速最高的前 5 个进程 】${NC}\033[K"
+    echo -e "  ${BOLD}PID       进程指令                                上传(KB/s)  下载(KB/s)${NC}\033[K"
+
+    if command -v nethogs >/dev/null 2>&1; then
+        if [ "$EUID" -ne 0 ]; then
+            echo -e "  ${RED}(需要 root 权限运行 nethogs 才能捕获网络流量)${NC}\033[K"
+        else
+            # 捕获 nethogs 输出并提取 PID、优化提取纯进程名
+            nethogs_output=$(nethogs -t -c 2 2>/dev/null | grep -E '/[0-9]+' | tail -n +2)
+
+            if [ -n "$nethogs_output" ]; then
+                echo "$nethogs_output" | awk '
+                {
+                    prog_raw=$1;
+                    sent=$2;
+                    recv=$3;
+                    
+                    # 从 /path/to/cmd/PID 格式提取 PID 与进程名称
+                    n = split(prog_raw, a, "/");
+                    pid = a[n];
+                    if (pid !~ /^[0-9]+$/) pid = "-";
+                    
+                    # 获取可执行文件名
+                    comm = a[n-1];
+                    if (comm == "") comm = prog_raw;
+                    
+                    total = sent + recv;
+                    print total, pid, comm, sent, recv;
+                }' | sort -nr | head -n 5 | while read total pid comm sent recv; do
+                    # 格式化输出：PID(9字符) + 进程指令(40字符) + 上传(12字符) + 下载
+                    printf "  %-9s %-40s %-12.2f %.2f\033[K\n" "$pid" "$comm" "$sent" "$recv"
+                done
+            else
+                echo -e "  ${YELLOW}暂无网络传输进程...${NC}\033[K"
+            fi
+        fi
+    else
+        echo -e "  ${RED}未检测到 nethogs 工具，无法按进程统计网速。${NC}\033[K"
         echo -e "  请在退出脚本后，运行以下对应命令进行安装/管理：\033[K"
+        
+        # 动态输出当前系统的安装和卸载指令
+        read pkg_install pkg_remove < <(get_pkg_management_info | tr '\n' '|')
         echo -e "    ${CYAN}$(get_pkg_management_info | sed -n '1p')${NC}\033[K"
         echo -e "    ${YELLOW}$(get_pkg_management_info | sed -n '2p')${NC}\033[K"
     fi
