@@ -41,42 +41,6 @@ get_ipv6() {
     echo "${ip:-无}"
 }
 
-# 辅助函数：检测发行版并生成安装/卸载提示
-get_pkg_management_info() {
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        case "$ID" in
-            ubuntu|debian|raspbian)
-                echo "安装命令: apt update && apt install -y nethogs"
-                echo "卸载命令: apt remove -y nethogs"
-                ;;
-            centos|rhel|almalinux|rocky)
-                echo "安装命令: yum install -y epel-release && yum install -y nethogs"
-                echo "卸载命令: yum remove -y nethogs"
-                ;;
-            fedora)
-                echo "安装命令: dnf install -y nethogs"
-                echo "卸载命令: dnf remove -y nethogs"
-                ;;
-            alpine)
-                echo "安装命令: apk add nethogs"
-                echo "卸载命令: apk del nethogs"
-                ;;
-            arch|manjaro)
-                echo "安装命令: pacman -S --noconfirm nethogs"
-                echo "卸载命令: pacman -R --noconfirm nethogs"
-                ;;
-            *)
-                echo "安装命令: 请根据系统包管理器手动安装 nethogs (如 apt/yum/dnf/apk)"
-                echo "卸载命令: 请根据系统包管理器手动卸载 nethogs"
-                ;;
-        esac
-    else
-        echo "安装命令: 请根据系统包管理器手动安装 nethogs"
-        echo "卸载命令: 请根据系统包管理器手动卸载 nethogs"
-    fi
-}
-
 # 初始化 CPU 状态
 read -r prev_total prev_idle < <(get_cpu_stat)
 
@@ -184,7 +148,7 @@ while true; do
         echo -e "  虚拟内存   : 未开启 / 0 MB\033[K"
     fi
 
-    # 4. 磁盘状态
+    # 4. 磁盘状态 (挂载点扩展至 30 字符对齐)
     echo -e "\n${YELLOW}${BOLD}【 磁盘占用 (主要挂载点) 】${NC}\033[K"
     df -h -x tmpfs -x devtmpfs -x squashfs -x overlay | awk 'NR>1 {printf "  挂载点: %-30s 总容量: %-8s 已用: %-8s 剩余: %-8s 占用率: %s\033[K\n", $NF, $2, $3, $4, $5}'
 
@@ -231,53 +195,6 @@ while true; do
         done
     else
         echo -e "  ${RED}(需要 root 权限才能查看各进程的磁盘 I/O 读写状态)${NC}\033[K"
-    fi
-
-    # 8. Top 5 网络网速进程
-    echo -e "\n${GREEN}${BOLD}【 实时网速最高的前 5 个进程 】${NC}\033[K"
-    echo -e "  ${BOLD}PID       进程指令                                上传(KB/s)  下载(KB/s)${NC}\033[K"
-
-    if command -v nethogs >/dev/null 2>&1; then
-        if [ "$EUID" -ne 0 ]; then
-            echo -e "  ${RED}(需要 root 权限运行 nethogs 才能捕获网络流量)${NC}\033[K"
-        else
-            # 捕获 nethogs 输出并提取 PID、优化提取纯进程名
-            nethogs_output=$(nethogs -t -c 2 2>/dev/null | grep -E '/[0-9]+' | tail -n +2)
-
-            if [ -n "$nethogs_output" ]; then
-                echo "$nethogs_output" | awk '
-                {
-                    prog_raw=$1;
-                    sent=$2;
-                    recv=$3;
-                    
-                    # 从 /path/to/cmd/PID 格式提取 PID 与进程名称
-                    n = split(prog_raw, a, "/");
-                    pid = a[n];
-                    if (pid !~ /^[0-9]+$/) pid = "-";
-                    
-                    # 获取可执行文件名
-                    comm = a[n-1];
-                    if (comm == "") comm = prog_raw;
-                    
-                    total = sent + recv;
-                    print total, pid, comm, sent, recv;
-                }' | sort -nr | head -n 5 | while read total pid comm sent recv; do
-                    # 格式化输出：PID(9字符) + 进程指令(40字符) + 上传(12字符) + 下载
-                    printf "  %-9s %-40s %-12.2f %.2f\033[K\n" "$pid" "$comm" "$sent" "$recv"
-                done
-            else
-                echo -e "  ${YELLOW}暂无网络传输进程...${NC}\033[K"
-            fi
-        fi
-    else
-        echo -e "  ${RED}未检测到 nethogs 工具，无法按进程统计网速。${NC}\033[K"
-        echo -e "  请在退出脚本后，运行以下对应命令进行安装/管理：\033[K"
-        
-        # 动态输出当前系统的安装和卸载指令
-        read pkg_install pkg_remove < <(get_pkg_management_info | tr '\n' '|')
-        echo -e "    ${CYAN}$(get_pkg_management_info | sed -n '1p')${NC}\033[K"
-        echo -e "    ${YELLOW}$(get_pkg_management_info | sed -n '2p')${NC}\033[K"
     fi
 
     echo -e "\n${CYAN}${BOLD}================================================================${NC}\033[K"
