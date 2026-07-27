@@ -5,7 +5,7 @@
     const STORAGE_KEY = 'nodeseek_top_reply_data';
     const SETTINGS_KEY = 'nodeseek_top_reply_settings';
     const BASE_URL = 'https://www.nodeseek.com/page-';
-    const MAX_PAGE = 10;
+    const MAX_PAGE = 15;
     const TOP_COUNT = 25;
     /** 刷新冷却时间（毫秒），避免频繁请求 */
     const REFRESH_COOLDOWN_MS = 30000;
@@ -30,6 +30,8 @@
     }
     /** 全局冷却计时器 */
     let _globalCooldownTimer = null;
+    /** CF 拦截日志标志（每次拉取周期重置，避免重复输出） */
+    let _cfBlockedLogged = false;
 
     // ---- 全局冷却管理 ----
     function clearGlobalCooldown() {
@@ -157,6 +159,13 @@
         return fetch(url, { credentials: 'include' })
             .then(resp => {
                 if (!resp.ok) {
+                    // CF 拦截通常返回 403 或 503
+                    if ((resp.status === 403 || resp.status === 503) && !_cfBlockedLogged) {
+                        _cfBlockedLogged = true;
+                        if (window.addLog) {
+                            window.addLog('[热帖排行] CF 拦截 (HTTP ' + resp.status + ')，热帖拉取被阻断');
+                        }
+                    }
                     const err = new Error('HTTP ' + resp.status);
                     err.status = resp.status;
                     throw err;
@@ -164,6 +173,16 @@
                 return resp.text();
             })
             .then(html => {
+                // 检测 CF challenge 验证页面（HTTP 200 但内容是 CF 验证页）
+                if (!_cfBlockedLogged && (html.indexOf('cf-challenge') !== -1 || html.indexOf('Just a moment') !== -1 || html.indexOf('_cf_chl_opt') !== -1)) {
+                    _cfBlockedLogged = true;
+                    if (window.addLog) {
+                        window.addLog('[热帖排行] CF 验证页面拦截，热帖拉取被阻断');
+                    }
+                    const err = new Error('CF challenge');
+                    err.status = 403;
+                    throw err;
+                }
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 const items = doc.querySelectorAll('ul.post-list > li.post-list-item');
@@ -172,7 +191,6 @@
                     const post = parsePostFromItem(item);
                     if (post) posts.push(post);
                 });
-                // console.log('[热帖排行] 第' + pageNum + '页: 解析到 ' + posts.length + ' 条帖子');
                 return posts;
             });
     }
@@ -240,6 +258,7 @@
     // ---- 核心拉取逻辑 ----
 
     function fetchTopPosts(forceRefresh) {
+        _cfBlockedLogged = false;
         // 缓存新鲜且非强制刷新 → 跳过
         if (!forceRefresh) {
             var cacheTime = 0;
@@ -271,12 +290,12 @@
         const allPosts = [];
         let rateLimitHit = false;
         let fetchedPageCount = 0;
-        /* 串行模式下每页间隔（毫秒）：300~600ms，单请求不会触发并发限流 */
-        const PAGE_INTERVAL_MIN = 300;
-        const PAGE_INTERVAL_MAX = 600;
+        /* 串行模式下每页间隔（毫秒）：450~900ms，放慢拉取防止 CF 拦截 */
+        const PAGE_INTERVAL_MIN = 450;
+        const PAGE_INTERVAL_MAX = 900;
         /* 非限流错误的重试间隔（毫秒） */
-        const RETRY_BACKOFF_MIN = 2000;
-        const RETRY_BACKOFF_MAX = 4000;
+        const RETRY_BACKOFF_MIN = 3000;
+        const RETRY_BACKOFF_MAX = 6000;
         const MAX_RETRIES = 1;
 
         function randomBetween(min, max) {
@@ -632,7 +651,7 @@
 
         const hintLabel = document.createElement('span');
         hintLabel.style.cssText = 'font-size:11px;color:#aaa;margin-right:4px;white-space:nowrap;';
-        hintLabel.textContent = '点击刷新约10秒加载完整数据';
+        hintLabel.textContent = '点击刷新约20秒加载完整数据';
 
         const rightBtns = document.createElement('div');
         rightBtns.style.cssText = 'display:flex;align-items:center;gap:4px;';
