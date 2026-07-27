@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NS综合插件
 // @namespace    http://tampermonkey.net/
-// @version      2026.07.21.1
+// @version      2026.07.28
 // @description  NodeSeek 论坛综合插件：黑名单红色高亮与备注、域名检测控制按钮显隐、折叠功能、用户详细信息、快捷回复、私信 Markdown 图片点击放大等
 // @author       YourName
 // @match        https://www.nodeseek.com/*
