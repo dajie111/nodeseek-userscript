@@ -97,6 +97,9 @@
 
     // 新增：拉黑/好友按钮显示开关
     const INTERACTION_BUTTONS_DISPLAY_KEY = 'nodeseek_interaction_buttons_display';
+
+    // 新增：热帖排行侧边栏开关
+    const HOT_POSTS_SIDEBAR_ENABLED_KEY = 'nodeseek_hot_posts_sidebar_enabled';
     const VIEWED_HISTORY_ENABLED_KEY = 'nodeseek_viewed_history_enabled';
     const VIEWED_COLOR_KEY = 'nodeseek_viewed_color';
     // 新增：跳过跳转页面开关
@@ -137,6 +140,16 @@
     // 新增：保存 拉黑/添加好友 按钮显示状态
     function setInteractionButtonsDisplayState(isEnabled) {
         localStorage.setItem(INTERACTION_BUTTONS_DISPLAY_KEY, isEnabled.toString());
+    }
+
+    // 新增：获取 热帖排行侧边栏 显示状态（默认开启）
+    function getHotPostsSidebarEnabled() {
+        return localStorage.getItem(HOT_POSTS_SIDEBAR_ENABLED_KEY) !== 'false';
+    }
+
+    // 新增：保存 热帖排行侧边栏 显示状态
+    function setHotPostsSidebarEnabled(isEnabled) {
+        localStorage.setItem(HOT_POSTS_SIDEBAR_ENABLED_KEY, isEnabled.toString());
     }
 
     // 新增：获取是否开启跳过跳转页面
@@ -2790,6 +2803,28 @@
             console.error('导出用户信息显示设置失败:', error);
         }
 
+        // 新增：拉黑/好友按钮显示设置
+        let interactionButtonsSettings = {};
+        try {
+            const interactionButtonsDisplay = localStorage.getItem('nodeseek_interaction_buttons_display');
+            if (interactionButtonsDisplay !== null) {
+                interactionButtonsSettings.display = interactionButtonsDisplay !== 'false';
+            }
+        } catch (error) {
+            console.error('导出拉黑/好友按钮显示设置失败:', error);
+        }
+
+        // 新增：热帖排行侧边栏设置
+        let hotPostsSidebarSettings = {};
+        try {
+            const hotPostsSidebarEnabled = localStorage.getItem('nodeseek_hot_posts_sidebar_enabled');
+            if (hotPostsSidebarEnabled !== null) {
+                hotPostsSidebarSettings.enabled = hotPostsSidebarEnabled !== 'false';
+            }
+        } catch (error) {
+            console.error('导出热帖排行侧边栏设置失败:', error);
+        }
+
         // 新增：屏蔽URL跳转提醒设置
         let skipJumpSettings = {};
         try {
@@ -2820,6 +2855,8 @@
             quickReplySettings: quickReplySettings, // 新增：快捷回复设置
             signSettings: signSettings, // 新增：签到设置
             userInfoSettings: userInfoSettings, // 新增：用户信息显示设置
+            interactionButtonsSettings: interactionButtonsSettings, // 新增：拉黑/好友按钮显示设置
+            hotPostsSidebarSettings: hotPostsSidebarSettings, // 新增：热帖排行侧边栏设置
             skipJumpSettings: skipJumpSettings, // 新增：屏蔽URL跳转提醒设置
             openPostNewTabSettings: openPostNewTabSettings, // 新增：新标签页打开帖子设置
             chickenLegStats: chickenLegStats, // 添加鸡腿统计数据
@@ -3042,6 +3079,32 @@
                         } catch (error) {
                             console.error('导入用户信息显示设置失败:', error);
                             importInfo.push('用户信息显示设置(失败)');
+                        }
+                    }
+
+                    // 新增：处理拉黑/好友按钮显示设置
+                    if (json.interactionButtonsSettings && typeof json.interactionButtonsSettings === 'object') {
+                        try {
+                            if (typeof json.interactionButtonsSettings.display !== 'undefined') {
+                                setInteractionButtonsDisplayState(json.interactionButtonsSettings.display);
+                                importInfo.push(`拉黑/好友按钮显示设置(${json.interactionButtonsSettings.display ? '开启' : '关闭'})`);
+                            }
+                        } catch (error) {
+                            console.error('导入拉黑/好友按钮显示设置失败:', error);
+                            importInfo.push('拉黑/好友按钮显示设置(失败)');
+                        }
+                    }
+
+                    // 新增：处理热帖排行侧边栏设置
+                    if (json.hotPostsSidebarSettings && typeof json.hotPostsSidebarSettings === 'object') {
+                        try {
+                            if (typeof json.hotPostsSidebarSettings.enabled !== 'undefined') {
+                                setHotPostsSidebarEnabled(json.hotPostsSidebarSettings.enabled);
+                                importInfo.push(`热帖排行侧边栏设置(${json.hotPostsSidebarSettings.enabled ? '开启' : '关闭'})`);
+                            }
+                        } catch (error) {
+                            console.error('导入热帖排行侧边栏设置失败:', error);
+                            importInfo.push('热帖排行侧边栏设置(失败)');
                         }
                     }
 
@@ -4962,7 +5025,36 @@
         interactionBtnRow.appendChild(interactionBtnSwitch);
         content.appendChild(interactionBtnRow);
 
-        // 3. 阅读记忆开关（含颜色选择）
+        // 3. 热帖排行侧边栏开关
+        const hotPostsRow = document.createElement('div');
+        hotPostsRow.style.display = 'flex';
+        hotPostsRow.style.justifyContent = 'space-between';
+        hotPostsRow.style.alignItems = 'center';
+        if (isMobile) hotPostsRow.style.flexWrap = 'wrap';
+
+        const hotPostsLabel = document.createElement('label');
+        hotPostsLabel.textContent = '热帖排行侧边栏';
+        hotPostsLabel.style.fontWeight = '500';
+        hotPostsLabel.style.color = '#555';
+
+        const hotPostsSwitch = document.createElement('input');
+        hotPostsSwitch.type = 'checkbox';
+        hotPostsSwitch.checked = getHotPostsSidebarEnabled();
+        hotPostsSwitch.style.transform = 'scale(1.2)';
+        hotPostsSwitch.onchange = function() {
+            const newState = this.checked;
+            setHotPostsSidebarEnabled(newState);
+            if (window.NodeSeekTopReply && typeof window.NodeSeekTopReply.setEnabled === 'function') {
+                window.NodeSeekTopReply.setEnabled(newState);
+            }
+            addLog('热帖排行侧边栏：' + (newState ? '开启' : '关闭'));
+        };
+
+        hotPostsRow.appendChild(hotPostsLabel);
+        hotPostsRow.appendChild(hotPostsSwitch);
+        content.appendChild(hotPostsRow);
+
+        // 4. 阅读记忆开关（含颜色选择）
         const historyRow = document.createElement('div');
         historyRow.style.display = 'flex';
         historyRow.style.justifyContent = 'space-between';
