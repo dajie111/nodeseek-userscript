@@ -61,8 +61,28 @@
                             if (list.length === 0) {
                                 shouldSkip = false;
                             } else {
-                                // 仅匹配域名本身或其子域名
-                                shouldSkip = list.some(domain => targetDomain === domain || targetDomain.endsWith('.' + domain));
+                                // 兼容纯域名、域名+路径、完整 URL 三种写法
+                                shouldSkip = list.some(entry => {
+                                    const trimmed = (entry || '').trim();
+                                    if (!trimmed) return false;
+                                    if (!trimmed.includes('/')) {
+                                        return targetDomain === trimmed || targetDomain.endsWith('.' + trimmed);
+                                    }
+                                    try {
+                                        const full = /^https?:\/\//.test(trimmed) ? trimmed : 'https://' + trimmed;
+                                        const eUrl = new URL(full);
+                                        const eHost = eUrl.hostname;
+                                        const ePath = eUrl.pathname;
+                                        const hostOk = targetDomain === eHost || targetDomain.endsWith('.' + eHost);
+                                        if (!hostOk) return false;
+                                        if (ePath === '/' || ePath === '') return true;
+                                        let tPath = '';
+                                        try { tPath = new URL(targetUrlStr).pathname; } catch (_) { return false; }
+                                        return tPath === ePath || tPath.startsWith(ePath + '/') || tPath.startsWith(ePath);
+                                    } catch (e) {
+                                        return false;
+                                    }
+                                });
                             }
                         }
 
@@ -5754,8 +5774,28 @@
                             if (list.length === 0) {
                                 shouldSkip = false;
                             } else {
-                                // 仅匹配域名本身或其子域名
-                                shouldSkip = list.some(domain => targetDomain === domain || targetDomain.endsWith('.' + domain));
+                                // 兼容纯域名、域名+路径、完整 URL 三种写法
+                                shouldSkip = list.some(entry => {
+                                    const trimmed = (entry || '').trim();
+                                    if (!trimmed) return false;
+                                    if (!trimmed.includes('/')) {
+                                        return targetDomain === trimmed || targetDomain.endsWith('.' + trimmed);
+                                    }
+                                    try {
+                                        const full = /^https?:\/\//.test(trimmed) ? trimmed : 'https://' + trimmed;
+                                        const eUrl = new URL(full);
+                                        const eHost = eUrl.hostname;
+                                        const ePath = eUrl.pathname;
+                                        const hostOk = targetDomain === eHost || targetDomain.endsWith('.' + eHost);
+                                        if (!hostOk) return false;
+                                        if (ePath === '/' || ePath === '') return true;
+                                        let tPath = '';
+                                        try { tPath = new URL(targetUrlStr).pathname; } catch (_) { return false; }
+                                        return tPath === ePath || tPath.startsWith(ePath + '/') || tPath.startsWith(ePath);
+                                    } catch (e) {
+                                        return false;
+                                    }
+                                });
                             }
                         }
 
