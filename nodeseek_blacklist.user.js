@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NS综合插件
 // @namespace    http://tampermonkey.net/
-// @version      2026.07.28
+// @version      2026.07.30
 // @description  NodeSeek 论坛综合插件：黑名单红色高亮与备注、域名检测控制按钮显隐、折叠功能、用户详细信息、快捷回复、私信 Markdown 图片点击放大等
 // @author       YourName
 // @match        https://www.nodeseek.com/*
@@ -4295,8 +4295,8 @@
         statsContainer.style.padding = '4px';
         statsContainer.style.boxSizing = 'border-box';
 
-        // 初始提示（如果 filter.js 还没准备好）
-        statsContainer.innerHTML = '<div style="text-align:center;padding:5px;font-size:12px;color:#999;">无高亮记录</div>';
+        // 初始状态隐藏，等待 filter.js 渲染匹配结果后显示
+        statsContainer.style.display = 'none';
 
 
         // 折叠按钮点击事件
