@@ -2919,7 +2919,7 @@ function highlightPostContent() {
 
     const keywords = getHighlightPostKeywords();
     if (keywords.length === 0) {
-        renderHighlightStatsToContainer(); // 即使没有关键词也要刷新统计显示（清空）
+        renderHighlightStatsToContainer(); // 刷新统计显示
         return;
     }
 
@@ -3270,9 +3270,10 @@ function renderHighlightStatsToContainer() {
     container.innerHTML = ''; // 清空容器
 
     if (stats.length === 0) {
-        container.innerHTML = '<div style="text-align:center;padding:5px;font-size:12px;color:#999;">无高亮记录</div>';
+        container.style.display = 'none';
         return;
     }
+    container.style.display = '';
 
     const list = document.createElement('ul');
     list.style.cssText = 'list-style:none;padding:0;margin:0;max-height:200px;overflow-y:auto;';
