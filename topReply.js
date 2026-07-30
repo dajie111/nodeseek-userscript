@@ -967,6 +967,13 @@
         }, AUTO_REFRESH_INTERVAL);
     }
 
+    function stopAutoRefresh() {
+        if (_autoRefreshTimer) {
+            clearInterval(_autoRefreshTimer);
+            _autoRefreshTimer = null;
+        }
+    }
+
     function resumeCooldownIfNeeded() {
         if (_lastRefreshTime <= 0) return;
         var elapsed = Date.now() - _lastRefreshTime;
@@ -979,8 +986,33 @@
         resumeGlobalCooldown();
     }
 
+    // ---- 热帖排行侧边栏开关 ----
+    const SIDEBAR_ENABLED_KEY = 'nodeseek_hot_posts_sidebar_enabled';
+
+    function isSidebarEnabled() {
+        return localStorage.getItem(SIDEBAR_ENABLED_KEY) !== 'false';
+    }
+
+    /** 动态开关：关闭时移除侧边栏面板并停止自动拉取；开启时注入面板并启动自动拉取 */
+    function setEnabled(enabled) {
+        if (enabled) {
+            // 开启：注入面板并启动自动刷新
+            injectSidebarPanel();
+            resumeCooldownIfNeeded();
+            startAutoRefresh();
+        } else {
+            // 关闭：移除面板并停止自动刷新
+            stopAutoRefresh();
+            const panel = document.getElementById('hot-posts-sidebar-panel');
+            if (panel) panel.remove();
+        }
+    }
+
     // ---- 初始化 ----
     function init() {
+        // 未开启侧边栏时，不注入面板也不自动拉取，仅保留手动弹窗能力
+        if (!isSidebarEnabled()) return;
+
         injectSidebarPanel();
         resumeCooldownIfNeeded();
         startAutoRefresh();
@@ -1016,7 +1048,8 @@
         fetchTopPosts,
         getTopPosts: loadPosts,
         injectSidebarPanel,
-        refreshSidebarContent
+        refreshSidebarContent,
+        setEnabled
     };
 
 })();
