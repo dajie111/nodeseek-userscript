@@ -615,6 +615,14 @@
                     // 用户信息显示
                     const userInfoDisplay = localStorage.getItem('nodeseek_user_info_display');
                     if (userInfoDisplay !== null) viewedTitles.userInfoDisplay = userInfoDisplay;
+
+                    // 拉黑/好友按钮显示
+                    const interactionButtonsDisplay = localStorage.getItem('nodeseek_interaction_buttons_display');
+                    if (interactionButtonsDisplay !== null) viewedTitles.interactionButtonsDisplay = interactionButtonsDisplay;
+
+                    // 热帖排行侧边栏
+                    const hotPostsSidebarEnabled = localStorage.getItem('nodeseek_hot_posts_sidebar_enabled');
+                    if (hotPostsSidebarEnabled !== null) viewedTitles.hotPostsSidebarEnabled = hotPostsSidebarEnabled;
                     
                     // 自动签到设置
                     const signEnabled = localStorage.getItem('nodeseek_sign_enabled');
@@ -936,6 +944,12 @@
                         // 应用其他设置
                         if (config.viewedTitles.userInfoDisplay) {
                             localStorage.setItem('nodeseek_user_info_display', config.viewedTitles.userInfoDisplay);
+                        }
+                        if (config.viewedTitles.interactionButtonsDisplay) {
+                            localStorage.setItem('nodeseek_interaction_buttons_display', config.viewedTitles.interactionButtonsDisplay);
+                        }
+                        if (config.viewedTitles.hotPostsSidebarEnabled) {
+                            localStorage.setItem('nodeseek_hot_posts_sidebar_enabled', config.viewedTitles.hotPostsSidebarEnabled);
                         }
                         if (config.viewedTitles.signEnabled) {
                             localStorage.setItem('nodeseek_sign_enabled', config.viewedTitles.signEnabled);
