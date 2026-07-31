@@ -701,8 +701,8 @@
         if (cachedPosts.length > 0 && Date.now() - cacheTime < FETCH_CACHE_MS) {
             // 缓存新鲜，直接显示
             refreshDialogIfOpen(cachedPosts);
-        } else {
-            // 缓存过期：先显示旧缓存（若有），再拉取新数据
+        } else if (isSidebarEnabled()) {
+            // 缓存过期且侧边栏开启：先显示旧缓存（若有），再拉取新数据
             if (cachedPosts.length > 0) {
                 refreshDialogIfOpen(cachedPosts);
             }
@@ -710,6 +710,11 @@
             startGlobalCooldown();
             applyCooldownToBtn(refreshBtn);
             fetchTopPosts();
+        } else {
+            // 侧边栏关闭：只显示缓存，不自动拉取，需用户手动点刷新
+            if (cachedPosts.length > 0) {
+                refreshDialogIfOpen(cachedPosts);
+            }
         }
 
         // 左上角 20x20 拖拽实现
