@@ -6,7 +6,7 @@
     const SETTINGS_KEY = 'nodeseek_top_reply_settings';
     const BASE_URL = 'https://www.nodeseek.com/page-';
     const MAX_PAGE = 15;
-    const TOP_COUNT = 25;
+    const TOP_COUNT = 30;
     /** 刷新冷却时间（毫秒），避免频繁请求 */
     const REFRESH_COOLDOWN_MS = 300000;
     /** 自动刷新/缓存间隔（毫秒） */
@@ -342,10 +342,13 @@
                 .catch(err => {
                     const status = err && err.status;
                     if (status === 429) {
-                        // CF 限流静默处理：停止后续页面，用已获取数据渲染
+                        // CF 限流：停止后续页面，用已获取数据渲染（智能降级）
                         rateLimitHit = true;
                         // 设置 429 全局冷却，阻止所有 tab 在冷却期内再次拉取，避免连环 429
                         setRateLimitCooldown();
+                        if (window.addLog) {
+                            window.addLog('[热帖排行] HTTP 429 限流，已停止拉取并使用部分数据渲染');
+                        }
                     } else {
                         // 其他异常静默处理
                     }
@@ -384,8 +387,8 @@
 
                     if (topPosts.length > 0) {
                         savePosts(topPosts);
-                        _lastRefreshTime = Date.now();
-                        try { localStorage.setItem(STORAGE_KEY + '_time', _lastRefreshTime.toString()); } catch (e) {}
+                        // 只更新数据时间戳，不能改动 _lastRefreshTime（冷却基准时间）
+                        try { localStorage.setItem(STORAGE_KEY + '_time', String(Date.now())); } catch (e) {}
                     }
 
                     refreshDialogIfOpen(topPosts);
@@ -394,7 +397,9 @@
                 })
                 .catch(err => {
                     /* 刷新失败时恢复显示已有数据，避免卡在加载态 */
-                    console.error('[热帖排行] 拉取失败:', err);
+                    if (window.addLog) {
+                        window.addLog('[热帖排行] 拉取失败：' + (err && err.message ? err.message : '未知错误'));
+                    }
                     const dialog = document.getElementById('top-reply-dialog');
                     if (dialog) {
                         const listDiv = dialog.querySelector('#top-reply-list');
@@ -640,6 +645,10 @@
             startGlobalCooldown();
             applyCooldownToBtn(refreshBtn);
             fetchTopPosts(true);
+            // 手动拉取后重置自动拉取倒计时（仅侧边栏开启时有效）
+            if (isSidebarEnabled()) {
+                startAutoRefresh();
+            }
         };
 
         const closeBtn = document.createElement('span');
