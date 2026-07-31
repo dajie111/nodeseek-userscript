@@ -8,7 +8,7 @@
     const MAX_PAGE = 15;
     const TOP_COUNT = 25;
     /** 刷新冷却时间（毫秒），避免频繁请求 */
-    const REFRESH_COOLDOWN_MS = 30000;
+    const REFRESH_COOLDOWN_MS = 300000;
     /** 自动刷新/缓存间隔（毫秒） */
     const FETCH_CACHE_MS = 240000; // 缓存 4 分钟，短于自动刷新间隔确保每次都能拉取新数据
     const AUTO_REFRESH_INTERVAL = 300000; // 自动刷新 5 分钟
@@ -694,26 +694,16 @@
 
         document.body.appendChild(dialog);
 
-        // 检查缓存是否新鲜（5分钟内），是则直接显示缓存，否则拉取新数据
+        // 打开弹窗一律不自动拉取，只显示已有缓存，需手动点刷新按钮拉取
         var cachedPosts = loadPosts();
-        var cacheTime = 0;
-        try { cacheTime = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
-        if (cachedPosts.length > 0 && Date.now() - cacheTime < FETCH_CACHE_MS) {
-            // 缓存新鲜，直接显示
+        if (cachedPosts.length > 0) {
+            // 有缓存直接显示（无论是否新鲜）
             refreshDialogIfOpen(cachedPosts);
-        } else if (isSidebarEnabled()) {
-            // 缓存过期且侧边栏开启：先显示旧缓存（若有），再拉取新数据
-            if (cachedPosts.length > 0) {
-                refreshDialogIfOpen(cachedPosts);
-            }
-            // 启动冷却倒计时，防止加载期间重复点击
-            startGlobalCooldown();
-            applyCooldownToBtn(refreshBtn);
-            fetchTopPosts();
         } else {
-            // 侧边栏关闭：只显示缓存，不自动拉取，需用户手动点刷新
-            if (cachedPosts.length > 0) {
-                refreshDialogIfOpen(cachedPosts);
+            // 无缓存：提示手动刷新
+            const emptyList = document.getElementById('top-reply-list');
+            if (emptyList) {
+                emptyList.innerHTML = '<div style="text-align:center;padding:50px 0;color:#aaa;font-size:13px;">暂无数据，点击右上角刷新按钮拉取</div>';
             }
         }
 
