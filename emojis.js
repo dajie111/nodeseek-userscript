@@ -6,7 +6,7 @@
     const CONFIG = {
         SERVER_URL_CACHED: null,
         API_LIST: '/api/emojis',
-        STATIC_PREFIX: '/emojis/',
+        STATIC_PREFIX: '/api/emoji_file/',
         // 分类名称映射：英文路径 -> 中文显示名称
         CATEGORY_NAMES: {
 			'xiaohuangji': '小黄鸡',
@@ -48,17 +48,23 @@
         return CONFIG.SERVER_URL_CACHED;
     }
 
-    // 将任意 URL 归一化为以“/”开头的路径（去掉域名和协议）
+    // 将任意 URL 归一化为以"/"开头的路径（去掉域名和协议）
+    // 同时将旧版 /emojis/ 路径迁移到 /api/emoji_file/，避免 Nginx 静态规则拦截
     function toRelativePath(url){
         if(!url) return '';
         try{
             if(url.startsWith('http://') || url.startsWith('https://')){
                 const u = new URL(url);
-                return u.pathname + (u.search || '');
+                url = u.pathname + (u.search || '');
             }
         }catch(_e){}
         // 已经是相对路径，确保有前导斜杠
-        return url.startsWith('/') ? url : ('/' + url);
+        if(!url.startsWith('/')) url = '/' + url;
+        // 迁移旧路径：/emojis/xxx -> /api/emoji_file/xxx
+        if(url.startsWith('/emojis/')){
+            url = '/api/emoji_file/' + url.slice('/emojis/'.length);
+        }
+        return url;
     }
 
     // 将相对路径转换为完整 URL
@@ -108,8 +114,8 @@
 				.ns-emoji-actions{display:flex;gap:6px}
 				.ns-emoji-mini-btn{appearance:none;border:1px solid #e6e8eb;background:#ffffff;border-radius:8px;padding:4px 8px;font-size:11px;color:#334155;cursor:pointer;transition:all .15s}
 				.ns-emoji-mini-btn:hover{background:#f5f8ff;border-color:#c7d2fe;color:#1d4ed8}
-				.ns-emoji-empty{padding:28px;color:#64748b;text-align:center}
-				.ns-emoji-loading{padding:22px;text-align:center;color:#64748b}
+				.ns-emoji-empty{grid-column:1/-1;padding:48px 28px;color:#94a3b8;font-size:14px;text-align:center;line-height:1.6}
+				.ns-emoji-loading{grid-column:1/-1;padding:40px 28px;color:#94a3b8;font-size:14px;text-align:center;line-height:1.6}
 				.ns-emoji-server{font-size:12px;color:#64748b;white-space:nowrap}
 
 				/* 分类按钮 */
@@ -146,8 +152,9 @@
 			this.loadFavorites();
             const url = item.url.startsWith('http') ? item.url : (getServerUrl() + item.url);
 			const name = item.name || '';
-			// 去重：按完整URL
-			const idx = this.favorites.findIndex(x => x && (x.url === url));
+			// 去重：按归一化路径比较，兼容旧版 /emojis/ 路径
+			const relUrl = toRelativePath(url);
+			const idx = this.favorites.findIndex(x => x && (toRelativePath(x.url) === relUrl));
 			if(idx >= 0){
 				this.favorites.splice(idx, 1);
 			}
@@ -208,6 +215,8 @@
             img.src = fullUrl;
 			img.alt = item.name;
 			img.loading = 'lazy';
+            // 显式发送 origin 作为 Referer，确保服务端防盗链校验通过
+            img.referrerPolicy = 'origin';
 			// 直接点击图片即插入
             img.onclick = ()=> { this.addToFavorites({ ...item, url: fullUrl }); this.insertMarkdown(fullUrl); };
 			// 右键/长按菜单：常用 -> 移除；其他分类 -> 加入常用
@@ -223,8 +232,9 @@
 				btn.onclick = ()=>{
 					if(isFav){
 						this.loadFavorites();
-                        const full = toFullUrl(item.url);
-						this.favorites = this.favorites.filter(x => x && x.url !== full);
+                        // 归一化路径后比较，兼容旧版 /emojis/ 路径存储的收藏
+                        const targetRel = toRelativePath(item.url);
+						this.favorites = this.favorites.filter(x => x && toRelativePath(x.url) !== targetRel);
 						this.saveFavorites();
 						this.loadList();
 					}else{
@@ -630,4 +640,3 @@
 		});
 	}
 })();
-
