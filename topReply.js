@@ -5,7 +5,7 @@
     const STORAGE_KEY = 'nodeseek_top_reply_data';
     const SETTINGS_KEY = 'nodeseek_top_reply_settings';
     const BASE_URL = 'https://www.nodeseek.com/page-';
-    const MAX_PAGE = 15;
+    const MAX_PAGE = 10;
     const TOP_COUNT = 30;
     /** 刷新冷却时间（毫秒），避免频繁请求 */
     const REFRESH_COOLDOWN_MS = 300000;
@@ -14,12 +14,35 @@
     const AUTO_REFRESH_INTERVAL = 300000; // 自动刷新 5 分钟
     const COOLDOWN_KEY = STORAGE_KEY + '_cooldown';
     const FETCH_LOCK_KEY = STORAGE_KEY + '_fetching';
-    const FETCH_LOCK_TIMEOUT_MS = 30000; // 锁超时（防 tab 崩溃遗留锁）
+    const FETCH_LOCK_TIMEOUT_MS = 120000; // 锁超时 2 分钟（拉取15页+退避重试可能耗时较长，防 tab 崩溃遗留锁）
     /** 429 限流全局冷却：有 tab 触发 429 后，所有 tab 等待此时间再尝试，避免连环 429 */
     const RATE_LIMIT_COOLDOWN_KEY = STORAGE_KEY + '_429_cooldown';
-    const RATE_LIMIT_COOLDOWN_MS = 120000; // 2分钟冷却
+    const RATE_LIMIT_COOLDOWN_MS = 180000; // 3分钟冷却（从2分钟延长，给 CF 更充分的恢复时间）
+    /** 启动抖动最大延迟（毫秒）：多 tab 同时打开时错开触发时间，避免瞬间并发抢锁 */
+    const START_JITTER_MAX_MS = 3000;
+    /** 429 退避重试：第一次等待时间和最大重试次数 */
+    const RATE_LIMIT_RETRY_BASE_MS = 30000; // 首次429等待30秒
+    const RATE_LIMIT_MAX_RETRIES = 2; // 最多重试2次（30s → 60s）
+    /** 降级锁获取失败后的重试等待（毫秒）和最大重试次数 */
+    const LOCK_RETRY_INTERVAL_MS = 2000;
+    const LOCK_MAX_RETRIES = 30; // 最多等60秒（30*2s），覆盖一次完整拉取周期
+    /** BroadcastChannel 名称，用于跨 tab 主动通知数据更新 */
+    const BC_CHANNEL_NAME = 'nodeseek_topreply_channel';
+    const BC_MSG_FETCH_DONE = 'fetch_done';
+    const BC_MSG_FETCH_START = 'fetch_start';
     /** 当前 tab 唯一标识，用于跨 tab 锁的持有者校验，避免多 tab 竞态写覆盖导致并发拉取 */
     const _tabId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    /** BroadcastChannel 实例（浏览器支持时启用，用于跨 tab 主动通知） */
+    let _bc = null;
+    try {
+        if (typeof BroadcastChannel !== 'undefined') {
+            _bc = new BroadcastChannel(BC_CHANNEL_NAME);
+        }
+    } catch (e) { _bc = null; }
+    /** 标记：其他 tab 通知已完成拉取，本 tab 无需再拉 */
+    let _peerFetchNotified = false;
+    /** 当前等待锁重试的计时器 ID（用于收到 BC 通知时取消等待） */
+    let _lockRetryTimer = null;
     /** 上次刷新时间戳，从 localStorage 初始化，跨页面保持冷却状态 */
     let _lastRefreshTime = 0;
     try { _lastRefreshTime = parseInt(localStorage.getItem(COOLDOWN_KEY), 10) || 0; } catch (e) {}
@@ -86,6 +109,28 @@
     function resumeGlobalCooldown() {
         clearGlobalCooldown();
         _globalCooldownTimer = setInterval(_cooldownTick, 1000);
+    }
+
+    // ---- BroadcastChannel 跨 tab 主动通知 ----
+    function bcSend(type, data) {
+        if (!_bc) return;
+        try { _bc.postMessage({ type: type, tabId: _tabId, data: data || {} }); } catch (e) {}
+    }
+    if (_bc) {
+        _bc.onmessage = function (e) {
+            var msg = e && e.data;
+            if (!msg || msg.tabId === _tabId) return; // 忽略自己发的消息
+            if (msg.type === BC_MSG_FETCH_START) {
+                // 其他 tab 开始拉取了：重置完成通知标记
+                _peerFetchNotified = false;
+            } else if (msg.type === BC_MSG_FETCH_DONE) {
+                // 其他 tab 拉取完成：标记无需拉取，取消等待重试，刷新 UI 显示新数据
+                _peerFetchNotified = true;
+                if (_lockRetryTimer) { clearTimeout(_lockRetryTimer); _lockRetryTimer = null; }
+                refreshDialogIfOpen();
+                refreshSidebarContent();
+            }
+        };
     }
 
     // ---- 存储 ----
@@ -274,25 +319,31 @@
             return;
         }
 
-        /* 强制刷新：先清空当前数据并显示加载态 */
-        if (forceRefresh) {
+        /* 非强制刷新时增加启动抖动：0~3秒随机延迟，避免多 tab 同时自动刷新瞬间并发 */
+        var startDelay = forceRefresh ? 0 : Math.floor(Math.random() * START_JITTER_MAX_MS);
+
+        function startFetch() {
+        // 清理可能存在的旧重试定时器
+        if (_lockRetryTimer) { clearTimeout(_lockRetryTimer); _lockRetryTimer = null; }
+        /* 显示等待/加载状态 */
+        function showWaitingMsg(msg) {
+            if (!forceRefresh) return; // 非手动刷新不更新 UI
             const dialog = document.getElementById('top-reply-dialog');
-            if (dialog) {
-                const listDiv = dialog.querySelector('#top-reply-list');
-                if (listDiv) {
-                    listDiv.innerHTML = '<div style="text-align:center;padding:50px 0;"><div style="display:inline-block;width:28px;height:28px;border:3px solid #e8e8e8;border-top-color:#3498db;border-radius:50%;animation:topReplySpin 0.8s linear infinite;"></div><div style="margin-top:12px;color:#aaa;font-size:13px;">刷新中…</div></div>';
-                }
+            if (!dialog) return;
+            const listDiv = dialog.querySelector('#top-reply-list');
+            if (listDiv) {
+                listDiv.innerHTML = '<div style="text-align:center;padding:50px 0;"><div style="display:inline-block;width:28px;height:28px;border:3px solid #e8e8e8;border-top-color:#3498db;border-radius:50%;animation:topReplySpin 0.8s linear infinite;"></div><div style="margin-top:12px;color:#aaa;font-size:13px;">' + msg + '</div></div>';
             }
         }
 
-        /* 串行拉取 10 页：任何时刻只有 1 个请求在飞，避免并发触发 CF；
-           遇 429 立即停止后续页面，用已获取数据渲染（智能降级） */
+        /* 串行拉取所有页：任何时刻只有 1 个请求在飞，避免并发触发 CF；
+           遇 429 采用指数退避重试当前页，重试耗尽才停止后续页面，用已获取数据渲染（智能降级） */
         const allPosts = [];
         let rateLimitHit = false;
         let fetchedPageCount = 0;
-        /* 串行模式下每页间隔（毫秒）：450~900ms，放慢拉取防止 CF 拦截 */
-        const PAGE_INTERVAL_MIN = 450;
-        const PAGE_INTERVAL_MAX = 900;
+        /* 串行模式下每页间隔（毫秒）：2000~3500ms，保守慢速拉取防止 CF 拦截 */
+        const PAGE_INTERVAL_MIN = 2000;
+        const PAGE_INTERVAL_MAX = 3500;
         /* 非限流错误的重试间隔（毫秒） */
         const RETRY_BACKOFF_MIN = 3000;
         const RETRY_BACKOFF_MAX = 6000;
@@ -306,18 +357,45 @@
             return new Promise(resolve => setTimeout(resolve, ms));
         }
 
-        function fetchPageWithRetry(pageNum, retries) {
+        /** 刷新锁心跳：长时拉取期间定期更新锁时间戳，防止锁超时被其他 tab 抢占 */
+        function refreshLockHeartbeat() {
+            try {
+                var lockData = localStorage.getItem(FETCH_LOCK_KEY);
+                if (lockData) {
+                    var parsed = JSON.parse(lockData);
+                    if (parsed && parsed.tabId === _tabId) {
+                        localStorage.setItem(FETCH_LOCK_KEY, JSON.stringify({ time: Date.now(), tabId: _tabId }));
+                    }
+                }
+            } catch (e) {}
+        }
+
+        function fetchPageWithRetry(pageNum, retries, rlRetries) {
             return fetchPage(pageNum)
                 .catch(err => {
                     const status = err && err.status;
                     if (status === 429) {
-                        // 429：不重试，向上抛出由串行循环决定是否停止
+                        // 429 限流：指数退避重试当前页
+                        var remaining = (rlRetries !== undefined ? rlRetries : RATE_LIMIT_MAX_RETRIES);
+                        if (remaining > 0) {
+                            var waitMs = RATE_LIMIT_RETRY_BASE_MS * Math.pow(2, RATE_LIMIT_MAX_RETRIES - remaining);
+                            if (window.addLog) {
+                                window.addLog('[热帖排行] HTTP 429 限流，等待 ' + Math.round(waitMs/1000) + ' 秒后重试第 ' + pageNum + ' 页（剩余重试次数 ' + (remaining-1) + '）');
+                            }
+                            // 刷新锁心跳，防止等待期间锁超时
+                            refreshLockHeartbeat();
+                            return sleep(waitMs).then(() => {
+                                refreshLockHeartbeat();
+                                return fetchPageWithRetry(pageNum, 0, remaining - 1);
+                            });
+                        }
+                        // 重试耗尽，向上抛出由串行循环决定是否停止
                         throw err;
                     }
                     // 拉取失败静默处理（重试或跳过），不污染控制台
                     if (retries > 0) {
                         return sleep(randomBetween(RETRY_BACKOFF_MIN, RETRY_BACKOFF_MAX))
-                            .then(() => fetchPageWithRetry(pageNum, retries - 1));
+                            .then(() => fetchPageWithRetry(pageNum, retries - 1, rlRetries));
                     }
                     return []; // 重试耗尽，返回空跳过该页继续下一页
                 });
@@ -327,13 +405,15 @@
             if (currentPage > MAX_PAGE || rateLimitHit) {
                 return Promise.resolve();
             }
+            // 每页开始前刷新锁心跳
+            refreshLockHeartbeat();
             return fetchPageWithRetry(currentPage, MAX_RETRIES)
                 .then(posts => {
                     if (posts && posts.length > 0) {
                         allPosts.push(...posts);
                         fetchedPageCount++;
                     }
-                    // 下一页前等待短间隔
+                    // 下一页前等待随机间隔
                     if (currentPage < MAX_PAGE && !rateLimitHit) {
                         return sleep(randomBetween(PAGE_INTERVAL_MIN, PAGE_INTERVAL_MAX))
                             .then(() => fetchSequential(currentPage + 1));
@@ -342,20 +422,19 @@
                 .catch(err => {
                     const status = err && err.status;
                     if (status === 429) {
-                        // CF 限流：停止后续页面，用已获取数据渲染（智能降级）
+                        // CF 限流重试耗尽：停止后续页面，设置全局冷却，用已获取数据渲染
                         rateLimitHit = true;
-                        // 设置 429 全局冷却，阻止所有 tab 在冷却期内再次拉取，避免连环 429
                         setRateLimitCooldown();
                         if (window.addLog) {
-                            window.addLog('[热帖排行] HTTP 429 限流，已停止拉取并使用部分数据渲染');
+                            window.addLog('[热帖排行] HTTP 429 限流重试耗尽，已停止拉取并使用已获取的 ' + fetchedPageCount + ' 页数据渲染');
                         }
                     } else {
-                        // 其他异常静默处理
+                        // 其他异常静默处理，继续下一页
                     }
                 });
         }
 
-        /* 核心拉取+渲染逻辑（不含锁管理，由外层 navigator.locks 或降级方案管理锁生命周期） */
+        /* 核心拉取+渲染逻辑 */
         function doFetch() {
             return fetchSequential(1)
                 .then(() => {
@@ -364,9 +443,9 @@
                     }
 
                     if (rateLimitHit) {
-                        // CF 限流时用部分数据渲染，不输出日志
+                        // CF 限流时用部分数据渲染
                     } else {
-                        // 全部 10 页拉取成功无 429，清除 429 冷却标记
+                        // 全部页面拉取成功无 429，清除 429 冷却标记
                         clearRateLimitCooldown();
                     }
 
@@ -418,25 +497,93 @@
                 });
         }
 
-        /* 跨 tab 原子锁：优先使用 navigator.locks API（浏览器原生原子锁，彻底消除 TOCTOU 竞态）；
-           降级方案：localStorage 锁（有竞态风险但比无锁好） */
-        var LOCK_NAME = 'nodeseek_topreply_fetch';
-        if (typeof navigator !== 'undefined' && navigator.locks && navigator.locks.request) {
-            navigator.locks.request(LOCK_NAME, { mode: 'exclusive', ifAvailable: true }, async function (lock) {
-                if (!lock) return;
-                /* 锁内二次检查：等待锁期间可能有其他 tab 触发了429或更新了缓存 */
-                if (isRateLimitCooldownActive()) return;
-                if (!forceRefresh) {
-                    var ct = 0;
-                    try { ct = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
-                    if (loadPosts().length > 0 && Date.now() - ct < FETCH_CACHE_MS) return;
-                }
-                await doFetch();
+        /* 锁内统一二次检查 */
+        function preCheck() {
+            if (isRateLimitCooldownActive()) return 'cooldown';
+            if (_peerFetchNotified) { _peerFetchNotified = false; return 'peer_done'; }
+            if (!forceRefresh) {
+                var ct = 0;
+                try { ct = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
+                if (loadPosts().length > 0 && Date.now() - ct < FETCH_CACHE_MS) return 'fresh';
+            }
+            return null; // 可以拉取
+        }
+
+        /* 拿到锁后执行拉取（返回 Promise 以便 navigator.locks 等待完成） */
+        function executeWithLock() {
+            var skip = preCheck();
+            if (skip) return Promise.resolve();
+            showWaitingMsg('刷新中…');
+            bcSend(BC_MSG_FETCH_START, {});
+            var hbTimer = setInterval(refreshLockHeartbeat, 15000);
+            return doFetch().then(function () {
+                clearInterval(hbTimer);
+                bcSend(BC_MSG_FETCH_DONE, {});
+            }).catch(function () {
+                clearInterval(hbTimer);
+                bcSend(BC_MSG_FETCH_DONE, {});
             });
+        }
+
+        /* 跨 tab 原子锁：优先使用 navigator.locks API（浏览器原生原子锁）；
+           降级方案：localStorage 锁（带重试和二次检查） */
+        var LOCK_NAME = 'nodeseek_topreply_fetch';
+        var lockRetryCount = 0;
+
+        function tryLockOnce() {
+            if (_peerFetchNotified) {
+                _peerFetchNotified = false;
+                return;
+            }
+            if (typeof navigator !== 'undefined' && navigator.locks && navigator.locks.request) {
+                // 使用 async callback 让锁在 doFetch 完成前一直持有
+                navigator.locks.request(LOCK_NAME, { mode: 'exclusive', ifAvailable: true }, async function (lock) {
+                    if (lock) {
+                        try { await executeWithLock(); } finally {}
+                        return;
+                    }
+                    // 没拿到锁
+                    handleLockBusy();
+                });
+            } else {
+                // localStorage 降级
+                if (tryAcquireFetchLock()) {
+                    var skip = preCheck();
+                    if (skip) { releaseFetchLock(); return; }
+                    showWaitingMsg('刷新中…');
+                    bcSend(BC_MSG_FETCH_START, {});
+                    var hbTimer = setInterval(refreshLockHeartbeat, 15000);
+                    doFetch().finally(function () {
+                        clearInterval(hbTimer);
+                        releaseFetchLock();
+                        bcSend(BC_MSG_FETCH_DONE, {});
+                    });
+                } else {
+                    handleLockBusy();
+                }
+            }
+        }
+
+        function handleLockBusy() {
+            // 手动刷新：等待并重试
+            if (forceRefresh && lockRetryCount < LOCK_MAX_RETRIES && !_peerFetchNotified) {
+                lockRetryCount++;
+                if (lockRetryCount === 1) {
+                    showWaitingMsg('其他标签页正在刷新，等待中…');
+                }
+                _lockRetryTimer = setTimeout(tryLockOnce, LOCK_RETRY_INTERVAL_MS);
+                return;
+            }
+            // 自动刷新或等待超时：跳过，由 BC/storage 事件更新数据
+        }
+
+        tryLockOnce();
+        } // end startFetch
+
+        if (startDelay > 0) {
+            setTimeout(startFetch, startDelay);
         } else {
-            /* 降级：localStorage 锁（旧浏览器不支持 navigator.locks 时使用） */
-            if (!tryAcquireFetchLock()) return;
-            doFetch().finally(function () { releaseFetchLock(); });
+            startFetch();
         }
     }
 
@@ -660,7 +807,7 @@
 
         const hintLabel = document.createElement('span');
         hintLabel.style.cssText = 'font-size:11px;color:#aaa;margin-right:4px;white-space:nowrap;';
-        hintLabel.textContent = '点击刷新约20秒加载完整数据';
+        hintLabel.textContent = '点击刷新约35秒加载，多开自动排队';
 
         const rightBtns = document.createElement('div');
         rightBtns.style.cssText = 'display:flex;align-items:center;gap:4px;';
