@@ -1,1764 +1,1206 @@
-// ========== 快捷回复功能 ==========
-(function() {
+// ========== 热帖统计（按回复数排序） ==========
+(function () {
     'use strict';
 
-    // 存储键
-    const QUICK_REPLY_KEY = 'nodeseek_quick_reply';
-    const QUICK_REPLY_CATEGORIES_KEY = 'nodeseek_quick_reply_categories';
+    const STORAGE_KEY = 'nodeseek_top_reply_data';
+    const SETTINGS_KEY = 'nodeseek_top_reply_settings';
+    const BASE_URL = 'https://www.nodeseek.com/page-';
+    const MAX_PAGE = 10;
+    const TOP_COUNT = 30;
+    /** 刷新冷却时间（毫秒），避免频繁请求 */
+    const REFRESH_COOLDOWN_MS = 300000;
+    /** 自动刷新/缓存间隔（毫秒） */
+    const FETCH_CACHE_MS = 240000; // 缓存 4 分钟，短于自动刷新间隔确保每次都能拉取新数据
+    const AUTO_REFRESH_INTERVAL = 300000; // 自动刷新 5 分钟
+    const COOLDOWN_KEY = STORAGE_KEY + '_cooldown';
+    const FETCH_LOCK_KEY = STORAGE_KEY + '_fetching';
+    const FETCH_LOCK_TIMEOUT_MS = 120000; // 锁超时 2 分钟（拉取15页+退避重试可能耗时较长，防 tab 崩溃遗留锁）
+    /** 429 限流全局冷却：有 tab 触发 429 后，所有 tab 等待此时间再尝试，避免连环 429 */
+    const RATE_LIMIT_COOLDOWN_KEY = STORAGE_KEY + '_429_cooldown';
+    const RATE_LIMIT_COOLDOWN_MS = 180000; // 3分钟冷却（从2分钟延长，给 CF 更充分的恢复时间）
+    /** 启动抖动最大延迟（毫秒）：多 tab 同时打开时错开触发时间，避免瞬间并发抢锁 */
+    const START_JITTER_MAX_MS = 3000;
+    /** 429 退避重试：第一次等待时间和最大重试次数 */
+    const RATE_LIMIT_RETRY_BASE_MS = 30000; // 首次429等待30秒
+    const RATE_LIMIT_MAX_RETRIES = 2; // 最多重试2次（30s → 60s）
+    /** 降级锁获取失败后的重试等待（毫秒）和最大重试次数 */
+    const LOCK_RETRY_INTERVAL_MS = 2000;
+    const LOCK_MAX_RETRIES = 30; // 最多等60秒（30*2s），覆盖一次完整拉取周期
+    /** BroadcastChannel 名称，用于跨 tab 主动通知数据更新 */
+    const BC_CHANNEL_NAME = 'nodeseek_topreply_channel';
+    const BC_MSG_FETCH_DONE = 'fetch_done';
+    const BC_MSG_FETCH_START = 'fetch_start';
+    /** 当前 tab 唯一标识，用于跨 tab 锁的持有者校验，避免多 tab 竞态写覆盖导致并发拉取 */
+    const _tabId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    /** BroadcastChannel 实例（浏览器支持时启用，用于跨 tab 主动通知） */
+    let _bc = null;
+    try {
+        if (typeof BroadcastChannel !== 'undefined') {
+            _bc = new BroadcastChannel(BC_CHANNEL_NAME);
+        }
+    } catch (e) { _bc = null; }
+    /** 标记：其他 tab 通知已完成拉取，本 tab 无需再拉 */
+    let _peerFetchNotified = false;
+    /** 当前等待锁重试的计时器 ID（用于收到 BC 通知时取消等待） */
+    let _lockRetryTimer = null;
+    /** 上次刷新时间戳，从 localStorage 初始化，跨页面保持冷却状态 */
+    let _lastRefreshTime = 0;
+    try { _lastRefreshTime = parseInt(localStorage.getItem(COOLDOWN_KEY), 10) || 0; } catch (e) {}
+    // 若已过冷却期，重置为 0
+    if (_lastRefreshTime > 0 && Date.now() - _lastRefreshTime >= REFRESH_COOLDOWN_MS) {
+        _lastRefreshTime = 0;
+        try { localStorage.removeItem(COOLDOWN_KEY); } catch (e) {}
+    }
+    /** 全局冷却计时器 */
+    let _globalCooldownTimer = null;
+    /** CF 拦截日志标志（每次拉取周期重置，避免重复输出） */
+    let _cfBlockedLogged = false;
 
-    // 默认预设回复文本和分类
-    const DEFAULT_REPLIES = {
-        '抽奖板块': [
-            '感谢分享，参与抽奖！',
-            '楼主好人！支持抽奖活动！',
-            '参与抽奖，感谢楼主！',
-            '好活动，支持一下！',
-            '感谢楼主的慷慨分享！'
-        ],
-        '感谢板块': [
-            '感谢楼主的无私分享！',
-            '非常感谢，收藏了！',
-            '楼主好人，感谢分享！',
-            '谢谢分享，很有用！',
-            '感谢提供，学习了！'
-        ],
-        '学习板块': [
-            '学习了，感谢分享经验！',
-            '很有用的内容，收藏学习！',
-            '感谢楼主的详细教程！',
-            '学到了新知识，谢谢！',
-            '非常实用，马克学习！'
-        ],
-        '发问板块': [
-            '遇到同样问题，关注答案',
-            '同求解答，感谢！',
-            '我也想知道，坐等大神！',
-            '期待有经验的朋友分享！',
-            '关注问题，学习一下！'
-        ],
-        '通用回复': [
-            '感谢分享！',
-            '支持楼主！',
-            '很不错的内容！',
-            '学习了！',
-            '收藏了，谢谢！'
-        ]
-    };
+    // ---- 全局冷却管理 ----
+    function clearGlobalCooldown() {
+        if (_globalCooldownTimer) { clearInterval(_globalCooldownTimer); _globalCooldownTimer = null; }
+    }
 
-    // 获取快捷回复数据
-    function getQuickReplies() {
-        const stored = localStorage.getItem(QUICK_REPLY_KEY);
-        if (stored) {
-            try {
-                const data = JSON.parse(stored);
-                // 如果数据中没有categoryOrder，则从现有分类生成
-                if (!data.categoryOrder) {
-                    data.categoryOrder = Object.keys(data).filter(key => key !== 'categoryOrder');
-                }
-                return data;
-            } catch (e) {
-                console.error('解析快捷回复数据失败:', e);
+    /** 将冷却状态同步到指定的刷新按钮 UI */
+    function applyCooldownToBtn(btn) {
+        if (!btn) return;
+        var elapsed = Date.now() - _lastRefreshTime;
+        var remaining = Math.ceil((REFRESH_COOLDOWN_MS - elapsed) / 1000);
+        if (remaining <= 0 || _lastRefreshTime === 0) {
+            btn.removeAttribute('data-cooldown');
+            btn.style.cursor = 'pointer';
+            btn.style.opacity = '';
+            btn.title = '立即刷新';
+            btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
+            return;
+        }
+        btn.dataset.cooldown = '1';
+        btn.style.cursor = 'not-allowed';
+        btn.style.opacity = '0.5';
+        btn.title = '冷却中…';
+        btn.innerHTML = '<span style="font-size:11px;color:#999;font-weight:600;min-width:15px;text-align:center;">' + remaining + '</span>';
+    }
+
+    function _cooldownTick() {
+        var elapsed = Date.now() - _lastRefreshTime;
+        if (elapsed >= REFRESH_COOLDOWN_MS) {
+            _lastRefreshTime = 0;
+            try { localStorage.removeItem(COOLDOWN_KEY); } catch (e) {}
+            clearGlobalCooldown();
+            var dialogBtn = document.getElementById('top-reply-dialog') && document.getElementById('top-reply-dialog').querySelector('.top-reply-refresh-btn');
+            applyCooldownToBtn(dialogBtn);
+            return;
+        }
+        var remaining = Math.ceil((REFRESH_COOLDOWN_MS - elapsed) / 1000);
+        var dialogBtn = document.getElementById('top-reply-dialog') && document.getElementById('top-reply-dialog').querySelector('.top-reply-refresh-btn');
+        if (dialogBtn && dialogBtn.dataset.cooldown) {
+            dialogBtn.innerHTML = '<span style="font-size:11px;color:#999;font-weight:600;min-width:15px;text-align:center;">' + remaining + '</span>';
+        }
+    }
+
+    function startGlobalCooldown() {
+        _lastRefreshTime = Date.now();
+        try { localStorage.setItem(COOLDOWN_KEY, String(_lastRefreshTime)); } catch (e) {}
+        clearGlobalCooldown();
+        _globalCooldownTimer = setInterval(_cooldownTick, 1000);
+    }
+
+    /** 恢复跨页面后的冷却计时器（不重置时间戳） */
+    function resumeGlobalCooldown() {
+        clearGlobalCooldown();
+        _globalCooldownTimer = setInterval(_cooldownTick, 1000);
+    }
+
+    // ---- BroadcastChannel 跨 tab 主动通知 ----
+    function bcSend(type, data) {
+        if (!_bc) return;
+        try { _bc.postMessage({ type: type, tabId: _tabId, data: data || {} }); } catch (e) {}
+    }
+    if (_bc) {
+        _bc.onmessage = function (e) {
+            var msg = e && e.data;
+            if (!msg || msg.tabId === _tabId) return; // 忽略自己发的消息
+            if (msg.type === BC_MSG_FETCH_START) {
+                // 其他 tab 开始拉取了：重置完成通知标记
+                _peerFetchNotified = false;
+            } else if (msg.type === BC_MSG_FETCH_DONE) {
+                // 其他 tab 拉取完成：标记无需拉取，取消等待重试，刷新 UI 显示新数据
+                _peerFetchNotified = true;
+                if (_lockRetryTimer) { clearTimeout(_lockRetryTimer); _lockRetryTimer = null; }
+                refreshDialogIfOpen();
+                refreshSidebarContent();
             }
-        }
-        // 返回默认数据，包含分类顺序
-        const defaultData = JSON.parse(JSON.stringify(DEFAULT_REPLIES));
-        defaultData.categoryOrder = Object.keys(DEFAULT_REPLIES);
-        return defaultData;
+        };
     }
 
-    // 保存快捷回复数据
-    function setQuickReplies(data) {
-        // 确保数据包含categoryOrder
-        if (data && typeof data === 'object' && !data.categoryOrder) {
-            data.categoryOrder = Object.keys(data).filter(key => key !== 'categoryOrder');
-        }
-        localStorage.setItem(QUICK_REPLY_KEY, JSON.stringify(data));
+    // ---- 存储 ----
+    function loadSettings() {
+        try {
+            return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+        } catch { return {}; }
+    }
+    function saveSettings(s) {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    }
+    function loadPosts() {
+        try {
+            return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        } catch { return []; }
+    }
+    function savePosts(posts) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
     }
 
-    // 获取分类列表
-    function getCategories() {
-        const replies = getQuickReplies();
-        return replies.categoryOrder;
+    // 从帖子 URL 中提取数字 ID，如 /post-512810-1 返回 512810
+    function extractPostId(url) {
+        const m = url.match(/post-(\d+)/);
+        return m ? parseInt(m[1], 10) : 0;
     }
 
-    // 计算混合长度：中文2，英文/数字1
-    function getMixedLength(str) {
-        let len = 0;
-        for (let ch of str) {
-            if (/^[\u4e00-\u9fa5]$/.test(ch)) {
-                len += 2;
-            } else if (/^[A-Za-z0-9]$/.test(ch)) {
-                len += 1;
-            } else {
-                len += 1; // 其它符号算1
-            }
-        }
-        return len;
-    }
+    // ---- 拉取 & 解析 ----
+    function parsePostFromItem(item) {
+        const titleEl = item.querySelector('.post-title a');
+        if (!titleEl) return null;
+        const title = titleEl.textContent.trim();
+        const url = titleEl.getAttribute('href') || '';
 
-    // 添加新分类
-    function addCategory(categoryName) {
-        const replies = getQuickReplies();
-        const actualCategories = replies.categoryOrder ? replies.categoryOrder.length : Object.keys(replies).filter(key => key !== 'categoryOrder').length;
-        if (actualCategories >= 5) {
-            alert('最多只能添加5个分类');
-            return false;
-        }
-        if (!categoryName || categoryName.trim() === '') return false;
-        const trimmedName = categoryName.trim();
-        if (getMixedLength(trimmedName) > 8) {
-            alert('分类名限中英文混合8字符以内（中文算2，英文/数字算1）');
-            return false;
-        }
-        if (replies[trimmedName]) {
-            return false; // 分类已存在
-        }
-        replies[trimmedName] = [];
-        // 将新分类添加到顺序数组的末尾
-        if (!replies.categoryOrder) {
-            replies.categoryOrder = [];
-        }
-        replies.categoryOrder.push(trimmedName);
-        setQuickReplies(replies);
-        return true;
-    }
+        const authorEl = item.querySelector('.info-author a');
+        const author = authorEl ? authorEl.textContent.trim() : '';
 
-    // 删除分类
-    function deleteCategory(categoryName) {
-        const replies = getQuickReplies();
-        if (replies[categoryName]) {
-            delete replies[categoryName];
-            // 从顺序数组中移除
-            if (replies.categoryOrder) {
-                const index = replies.categoryOrder.indexOf(categoryName);
-                if (index > -1) {
-                    replies.categoryOrder.splice(index, 1);
-                }
-            }
-            setQuickReplies(replies);
-            return true;
-        }
-        return false;
-    }
-
-    // 重命名分类
-    function renameCategory(oldName, newName) {
-        if (!newName || newName.trim() === '' || oldName === newName) return false;
-
-        const replies = getQuickReplies();
-        const trimmedNewName = newName.trim();
-
-        if (!replies[oldName] || replies[trimmedNewName]) {
-            return false; // 原分类不存在或新分类名已存在
-        }
-
-        // 保持分类顺序：重建整个对象，保持原始位置
-        const newReplies = {};
-        newReplies.categoryOrder = [];
-        
-        for (const categoryName of replies.categoryOrder) {
-            if (categoryName === oldName) {
-                newReplies[trimmedNewName] = replies[oldName]; // 在原位置插入新名称
-                newReplies.categoryOrder.push(trimmedNewName);
-            } else {
-                newReplies[categoryName] = replies[categoryName];
-                newReplies.categoryOrder.push(categoryName);
-            }
-        }
-
-        setQuickReplies(newReplies);
-        return true;
-    }
-
-    // 重新排序分类
-    function reorderCategories(newOrder) {
-        const replies = getQuickReplies();
-        const newReplies = {};
-
-        // 按新顺序重建对象
-        newOrder.forEach(categoryName => {
-            if (replies[categoryName]) {
-                newReplies[categoryName] = replies[categoryName];
-            }
-        });
-
-        // 更新分类顺序
-        newReplies.categoryOrder = newOrder;
-
-        setQuickReplies(newReplies);
-        return true;
-    }
-
-    // 获取分类下的回复列表
-    function getCategoryReplies(categoryName) {
-        const replies = getQuickReplies();
-        return replies[categoryName] || [];
-    }
-
-    // 添加回复到分类
-    function addReplyToCategory(categoryName, replyText) {
-        if (!replyText || replyText.trim() === '') return false;
-
-        const replies = getQuickReplies();
-        if (!replies[categoryName]) {
-            replies[categoryName] = [];
-        }
-
-        const trimmedText = replyText.trim();
-
-        // 检查是否已存在相同回复
-        if (replies[categoryName].includes(trimmedText)) {
-            return false;
-        }
-
-        // 使用 unshift 将新回复添加到数组开头，显示在最上面
-        replies[categoryName].unshift(trimmedText);
-        setQuickReplies(replies);
-        return true;
-    }
-
-    // 删除分类中的回复
-    function deleteReplyFromCategory(categoryName, replyText) {
-        const replies = getQuickReplies();
-        if (!replies[categoryName]) return false;
-
-        const index = replies[categoryName].indexOf(replyText);
-        if (index > -1) {
-            replies[categoryName].splice(index, 1);
-            setQuickReplies(replies);
-            return true;
-        }
-        return false;
-    }
-
-    // 编辑回复文本
-    function editReplyText(categoryName, oldText, newText) {
-        if (!newText || newText.trim() === '' || oldText === newText) return false;
-
-        const replies = getQuickReplies();
-        if (!replies[categoryName]) return false;
-
-        const trimmedNewText = newText.trim();
-        const index = replies[categoryName].indexOf(oldText);
-
-        if (index > -1 && !replies[categoryName].includes(trimmedNewText)) {
-            replies[categoryName][index] = trimmedNewText;
-            setQuickReplies(replies);
-            return true;
-        }
-        return false;
-    }
-
-    // 重新排序分类中的回复
-    function reorderRepliesInCategory(categoryName, newOrder) {
-        const replies = getQuickReplies();
-        if (!replies[categoryName]) return false;
-
-        // 验证新顺序数组的有效性
-        if (newOrder.length !== replies[categoryName].length) return false;
-
-        // 更新回复顺序
-        replies[categoryName] = newOrder;
-        setQuickReplies(replies);
-        return true;
-    }
-
-    // 查找编辑器元素
-    function findEditor() {
-        // 查找CodeMirror编辑器
-        const codeMirror = document.querySelector('.CodeMirror');
-        if (codeMirror && codeMirror.CodeMirror) {
-            return {
-                type: 'codemirror',
-                element: codeMirror,
-                setValue: (text) => codeMirror.CodeMirror.setValue(text),
-                getValue: () => codeMirror.CodeMirror.getValue(),
-                focus: () => codeMirror.CodeMirror.focus()
-            };
-        }
-
-        // 查找普通文本框
-        const textarea = document.querySelector('textarea[placeholder*="鼓励友善发言"]') ||
-                        document.querySelector('#code-mirror-editor textarea') ||
-                        document.querySelector('.content-area textarea');
-
-        if (textarea) {
-            return {
-                type: 'textarea',
-                element: textarea,
-                setValue: (text) => {
-                    textarea.value = text;
-                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                },
-                getValue: () => textarea.value,
-                focus: () => textarea.focus()
-            };
-        }
-
-        return null;
-    }
-
-    // 插入回复文本到编辑器
-    function insertReplyText(text) {
-        const editor = findEditor();
-        if (!editor) {
-            console.error('未找到编辑器');
-            return false;
-        }
-
-        const currentText = editor.getValue();
-        let newText;
-
-        if (currentText.trim() === '') {
-            newText = text;
+        let comments = 0;
+        const commentSpan = item.querySelector('.info-comments-count span[title]');
+        if (commentSpan) {
+            const m = commentSpan.getAttribute('title').match(/(\d+)/);
+            if (m) comments = parseInt(m[1], 10) - 1;
         } else {
-            // 如果已有内容，在末尾添加
-            newText = currentText + '\n\n' + text;
+            const commentText = item.querySelector('.info-comments-count');
+            if (commentText) {
+                const m2 = commentText.textContent.match(/(\d+)/);
+                if (m2) comments = Math.max(0, parseInt(m2[1], 10) - 1);
+            }
         }
 
-        editor.setValue(newText);
-        editor.focus();
+        let views = 0;
+        const viewSpan = item.querySelector('.info-views span[title]');
+        if (viewSpan) {
+            const vm = viewSpan.getAttribute('title').match(/(\d+)/);
+            if (vm) views = parseInt(vm[1], 10);
+        }
 
-        return true;
+        const catEl = item.querySelector('.post-category');
+        const category = catEl ? catEl.textContent.trim() : '';
+
+        const timeEl = item.querySelector('.info-last-comment-time time');
+        const lastCommentTime = timeEl ? (timeEl.getAttribute('title') || timeEl.textContent.trim()) : '';
+
+        const lastReplierEl = item.querySelector('.info-last-commenter a');
+        const lastReplier = lastReplierEl ? lastReplierEl.textContent.trim() : '';
+
+        return { title, url, author, comments, views, category, lastCommentTime, lastReplier, postId: extractPostId(url) };
     }
 
-    // 重置为默认回复
-    function resetToDefault() {
-        const defaultData = JSON.parse(JSON.stringify(DEFAULT_REPLIES));
-        defaultData.categoryOrder = Object.keys(DEFAULT_REPLIES);
-        setQuickReplies(defaultData);
+    function fetchPage(pageNum) {
+        const url = BASE_URL + pageNum;
+        return fetch(url, { credentials: 'include' })
+            .then(resp => {
+                if (!resp.ok) {
+                    // CF 拦截通常返回 403 或 503
+                    if ((resp.status === 403 || resp.status === 503) && !_cfBlockedLogged) {
+                        _cfBlockedLogged = true;
+                        if (window.addLog) {
+                            window.addLog('[热帖排行] CF 拦截 (HTTP ' + resp.status + ')，热帖拉取被阻断');
+                        }
+                    }
+                    const err = new Error('HTTP ' + resp.status);
+                    err.status = resp.status;
+                    throw err;
+                }
+                return resp.text();
+            })
+            .then(html => {
+                // 检测 CF challenge 验证页面（HTTP 200 但内容是 CF 验证页）
+                if (!_cfBlockedLogged && (html.indexOf('cf-challenge') !== -1 || html.indexOf('Just a moment') !== -1 || html.indexOf('_cf_chl_opt') !== -1)) {
+                    _cfBlockedLogged = true;
+                    if (window.addLog) {
+                        window.addLog('[热帖排行] CF 验证页面拦截，热帖拉取被阻断');
+                    }
+                    const err = new Error('CF challenge');
+                    err.status = 403;
+                    throw err;
+                }
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const items = doc.querySelectorAll('ul.post-list > li.post-list-item');
+                const posts = [];
+                items.forEach(item => {
+                    const post = parsePostFromItem(item);
+                    if (post) posts.push(post);
+                });
+                return posts;
+            });
     }
 
-    // ========== 快捷回复UI功能 ==========
-
-    // 快捷回复弹窗样式
-    function addQuickReplyStyles() {
-        if (document.getElementById('quick-reply-styles')) return;
-
-        const style = document.createElement('style');
-        style.id = 'quick-reply-styles';
-        style.textContent = `
-            .quick-reply-dialog {
-                width: 500px;
-                min-width: unset;
-                max-width: unset;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            }
-
-            .quick-reply-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding-bottom: 15px;
-                border-bottom: 1px solid #e0e0e0;
-                margin-bottom: 15px;
-            }
-
-            .quick-reply-title {
-                font-size: 18px;
-                font-weight: 600;
-                color: #333;
-                margin: 0;
-                flex-shrink: 0;
-            }
-
-            .quick-reply-close {
-                background: none;
-                border: none;
-                font-size: 24px;
-                color: #666;
-                cursor: pointer;
-                padding: 0;
-                width: 30px;
-                height: 30px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                border-radius: 50%;
-                transition: background-color 0.2s;
-            }
-
-            .quick-reply-close:hover {
-                background-color: #f5f5f5;
-                color: #333;
-            }
-
-            .quick-reply-tabs {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 8px;
-                margin-bottom: 20px;
-                border-bottom: 1px solid #e0e0e0;
-                padding-bottom: 10px;
-            }
-
-            .quick-reply-tab {
-                padding: 8px 16px;
-                background: #f8f9fa;
-                border: 1px solid #dee2e6;
-                border-radius: 20px;
-                cursor: pointer;
-                font-size: 14px;
-                transition: all 0.2s;
-                white-space: nowrap;
-            }
-
-            .quick-reply-tab.active {
-                background: #9C27B0;
-                color: white;
-                border-color: #9C27B0;
-            }
-
-            .quick-reply-tab:hover {
-                transform: translateY(-1px);
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            }
-
-            .quick-reply-content {
-                height: 275px;
-                overflow-y: auto;
-                margin-bottom: 20px;
-            }
-
-            .quick-reply-items {
-                display: grid;
-                gap: 8px;
-            }
-
-            .quick-reply-item {
-                display: flex;
-                align-items: center;
-                padding: 12px;
-                background: #f8f9fa;
-                border: 1px solid #e9ecef;
-                border-radius: 8px;
-                cursor: pointer;
-                transition: all 0.2s;
-                position: relative;
-            }
-
-            .quick-reply-item:hover {
-                background: #e3f2fd;
-                border-color: #9C27B0;
-                transform: translateY(-1px);
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            }
-
-            .quick-reply-text {
-                flex: 1;
-                font-size: 14px;
-                color: #333;
-                margin-right: 10px;
-                word-break: break-word;
-            }
-
-            .quick-reply-actions {
-                display: flex;
-                gap: 8px;
-                opacity: 0;
-                transition: opacity 0.2s;
-            }
-
-            .quick-reply-item:hover .quick-reply-actions {
-                opacity: 1;
-            }
-
-            .quick-reply-btn-small {
-                padding: 4px 8px;
-                font-size: 12px;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-                transition: all 0.2s;
-            }
-
-            .quick-reply-btn-edit {
-                background: #4CAF50;
-                color: white;
-            }
-
-            .quick-reply-btn-edit:hover {
-                background: #45a049;
-            }
-
-            .quick-reply-btn-delete {
-                background: #f44336;
-                color: white;
-            }
-
-            .quick-reply-btn-delete:hover {
-                background: #da190b;
-            }
-
-            .quick-reply-footer {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 10px;
-                justify-content: space-between;
-                align-items: center;
-                padding-top: 15px;
-                border-top: 1px solid #e0e0e0;
-            }
-
-            .quick-reply-btn {
-                padding: 8px 16px;
-                border: none;
-                border-radius: 6px;
-                cursor: pointer;
-                font-size: 14px;
-                transition: all 0.2s;
-                min-width: 80px;
-            }
-
-            .quick-reply-btn-primary {
-                background: #9C27B0;
-                color: white;
-            }
-
-            .quick-reply-btn-primary:hover {
-                background: #7B1FA2;
-                transform: translateY(-1px);
-            }
-
-            .quick-reply-btn-secondary {
-                background: #6c757d;
-                color: white;
-            }
-
-            .quick-reply-btn-secondary:hover {
-                background: #5a6268;
-            }
-
-            .quick-reply-btn-success {
-                background: #28a745;
-                color: white;
-            }
-
-            .quick-reply-btn-success:hover {
-                background: #218838;
-            }
-
-            .quick-reply-btn-warning {
-                background: #ffc107;
-                color: #212529;
-            }
-
-            .quick-reply-btn-warning:hover {
-                background: #e0a800;
-            }
-
-            .quick-reply-empty {
-                text-align: center;
-                color: #666;
-                padding: 40px 20px;
-                font-size: 14px;
-            }
-
-            .quick-reply-input-group {
-                display: flex;
-                gap: 10px;
-                margin-bottom: 15px;
-                flex-wrap: wrap;
-            }
-
-            .quick-reply-input {
-                flex: 1;
-                padding: 8px 12px;
-                border: 1px solid #ddd;
-                border-radius: 6px;
-                font-size: 14px;
-                min-width: 200px;
-            }
-
-            .quick-reply-input:focus {
-                outline: none;
-                border-color: #9C27B0;
-                box-shadow: 0 0 0 2px rgba(156, 39, 176, 0.2);
-            }
-
-            /* 自动发布选项样式 */
-            .quick-reply-auto-submit-container {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                margin-bottom: 15px;
-                padding: 10px;
-                background-color: #f8f9fa;
-                border-radius: 6px;
-                border: 1px solid #dee2e6;
-                transition: border-color 0.2s;
-            }
-
-            .quick-reply-auto-submit-container:hover {
-                border-color: #9C27B0;
-            }
-
-            .quick-reply-auto-submit-checkbox {
-                transform: scale(1.2);
-                accent-color: #9C27B0;
-            }
-
-            .quick-reply-auto-submit-label {
-                font-size: 14px;
-                color: #333;
-                cursor: pointer;
-                user-select: none;
-                line-height: 1.4;
-            }
-
-            /* 拖拽排序样式 */
-            .category-item-draggable {
-                cursor: default;
-                transition: all 0.2s;
-                user-select: none;
-            }
-
-            .reply-item-draggable {
-                cursor: default;
-                transition: all 0.2s;
-                user-select: none;
-            }
-
-            .category-item-draggable:hover, .reply-item-draggable:hover {
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            }
-
-            .category-item-dragging, .reply-item-dragging {
-                opacity: 0.5;
-                transform: rotate(2deg);
-                z-index: 1000;
-                box-shadow: 0 8px 25px rgba(0,0,0,0.2);
-            }
-
-            .category-item-drag-over, .reply-item-drag-over {
-                border-top: 3px solid #9C27B0;
-                margin-top: 3px;
-            }
-
-            .category-drag-handle {
-                position: absolute;
-                left: 8px;
-                top: 50%;
-                transform: translateY(-50%);
-                color: #666;
-                font-size: 16px;
-                cursor: move;
-                opacity: 0;
-                transition: all 0.2s;
-                z-index: 10;
-                padding: 2px;
-                border-radius: 4px;
-            }
-
-            .category-drag-handle:hover {
-                background-color: rgba(156, 39, 176, 0.1);
-                color: #9C27B0;
-                opacity: 1 !important;
-            }
-
-            .category-item-draggable:hover .category-drag-handle,
-            .reply-item-draggable:hover .reply-drag-handle {
-                opacity: 1;
-            }
-
-            .category-item-draggable .quick-reply-text {
-                padding-left: 30px;
-            }
-
-            .category-drop-placeholder, .reply-drop-placeholder {
-                height: 3px;
-                background: #9C27B0;
-                border-radius: 2px;
-                margin: 4px 0;
-                opacity: 0;
-                transition: opacity 0.2s;
-            }
-
-            .category-drop-placeholder.active, .reply-drop-placeholder.active {
-                opacity: 1;
-            }
-
-            /* 移动端适配 */
-            @media (max-width: 768px) {
-                .quick-reply-dialog {
-                    left: 10px !important;
-                    right: 10px !important;
-                    top: 20px !important;
-                    width: auto !important;
-                    min-width: auto !important;
-                    max-height: 90vh;
+    // ---- 跨 tab 拉取锁 ----
+    function tryAcquireFetchLock() {
+        try {
+            var now = Date.now();
+            var lockData = localStorage.getItem(FETCH_LOCK_KEY);
+            if (lockData) {
+                var parsed = JSON.parse(lockData);
+                // 锁未超时且非本 tab 持有：其他 tab 正在拉取，跳过
+                if (parsed && parsed.tabId !== _tabId && now - parsed.time < FETCH_LOCK_TIMEOUT_MS) {
+                    return false;
                 }
-
-                .quick-reply-header {
-                    flex-wrap: wrap;
-                    justify-content: flex-start;
-                }
-
-                .quick-reply-title {
-                    width: 100%;
-                    text-align: center;
-                    margin-bottom: 10px;
-                }
-
-                .quick-reply-header .quick-reply-btn-secondary {
-                    margin-left: 0 !important;
-                    width: 48%;
-                    box-sizing: border-box;
-                }
-
-                .quick-reply-close {
-                    position: absolute;
-                    right: 10px;
-                    top: 10px;
-                }
-
-                .quick-reply-tabs {
-                    gap: 5px;
-                }
-
-                .quick-reply-tab {
-                    padding: 6px 12px;
-                    font-size: 13px;
-                }
-
-                .quick-reply-footer {
-                    flex-direction: column;
-                    gap: 8px;
-                }
-
-                .quick-reply-btn {
-                    width: 100%;
-                }
-
-                .quick-reply-input-group {
-                    flex-direction: column;
-                }
-
-                .quick-reply-input {
-                    min-width: auto;
-                }
-
-                .quick-reply-auto-submit-label {
-                    font-size: 13px;
-                }
-
-                .category-drag-handle {
-                    opacity: 1;
-                    font-size: 18px;
+                // 锁已超时或是本 tab 的旧锁：接管
+            }
+            localStorage.setItem(FETCH_LOCK_KEY, JSON.stringify({ time: now, tabId: _tabId }));
+            // 双重检查：防止与另一 tab 竞态写覆盖（TOCTOU），确认锁仍属于自己
+            var recheck = localStorage.getItem(FETCH_LOCK_KEY);
+            if (recheck) {
+                var reparsed = JSON.parse(recheck);
+                if (reparsed && reparsed.tabId !== _tabId) {
+                    return false;
                 }
             }
-        `;
-        document.head.appendChild(style);
+            return true;
+        } catch (e) { return true; } // localStorage 不可用时放行
     }
 
-    // 显示快捷回复弹窗
-function showQuickReplyDialog() {
-        // 检查弹窗是否已存在
-        const existingDialog = document.getElementById('quick-reply-dialog');
-        if (existingDialog) {
-            existingDialog.remove();
-            return;
-        }
-
-        // 添加样式
-        addQuickReplyStyles();
-
-        // 创建弹窗
-        const dialog = document.createElement('div');
-        dialog.id = 'quick-reply-dialog';
-        dialog.className = 'quick-reply-dialog';
-        dialog.style.position = 'fixed';
-        dialog.style.top = '60px';
-        dialog.style.right = '20px';
-        dialog.style.zIndex = 10000;
-        dialog.style.background = '#fff';
-        dialog.style.border = '1px solid #ddd';
-        dialog.style.borderRadius = '12px';
-        dialog.style.boxShadow = '0 8px 32px rgba(0,0,0,0.12)';
-        dialog.style.padding = '20px';
-        dialog.style.minWidth = '400px';
-        dialog.style.maxWidth = '600px';
-
-        // 创建弹窗内容
-        createQuickReplyContent(dialog);
-
-        document.body.appendChild(dialog);
-
-        // 使用全局的 makeDraggable 函数
-        if (window.makeDraggable) {
-            window.makeDraggable(dialog, {width: 60, height: 40});
-        }
-
-        // 记录日志
-    
+    function releaseFetchLock() {
+        try {
+            var lockData = localStorage.getItem(FETCH_LOCK_KEY);
+            if (lockData) {
+                var parsed = JSON.parse(lockData);
+                // 只有锁的持有者才能释放，避免误释放其他 tab 的锁
+                if (!parsed || parsed.tabId === _tabId) {
+                    localStorage.removeItem(FETCH_LOCK_KEY);
+                }
+            }
+        } catch (e) {}
     }
 
-    // 创建快捷回复弹窗内容
-    function createQuickReplyContent(dialog) {
-        let categories = getCategories();
-        let activeCategory = categories[0] || '通用回复';
-
-        // 清空弹窗内容
-        dialog.innerHTML = '';
-
-        // 头部
-        const header = document.createElement('div');
-        header.className = 'quick-reply-header';
-
-        const title = document.createElement('h3');
-        title.className = 'quick-reply-title';
-        title.textContent = '快捷回复';
-
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'quick-reply-close';
-        closeBtn.innerHTML = '×';
-        closeBtn.onclick = () => dialog.remove();
-
-        // 新增：管理分类按钮
-        const manageCategoryBtn = document.createElement('button');
-        manageCategoryBtn.className = 'quick-reply-btn quick-reply-btn-secondary';
-        manageCategoryBtn.textContent = '管理分类';
-        manageCategoryBtn.style.minWidth = 'unset'; // 移除最小宽度限制
-        manageCategoryBtn.style.padding = '5px 10px'; // 调整内边距
-        manageCategoryBtn.style.fontSize = '13px'; // 调整字体大小
-        manageCategoryBtn.onclick = () => showCategoryManageDialog();
-
-        // 新增：重置按钮
-        const resetBtn = document.createElement('button');
-        resetBtn.className = 'quick-reply-btn quick-reply-btn-secondary';
-        resetBtn.textContent = '重置';
-        resetBtn.style.minWidth = 'unset'; // 移除最小宽度限制
-        resetBtn.style.padding = '5px 10px'; // 调整内边距
-        resetBtn.style.fontSize = '13px'; // 调整字体大小
-        resetBtn.onclick = () => {
-            if (confirm('确定要重置为默认快捷回复吗？这将删除所有自定义内容。')) {
-                resetToDefault();
-                updateQuickReplyContent();
-                if (window.addQuickReplyLog) {
-                    window.addQuickReplyLog('重置快捷回复为默认设置');
-                }
+    /** 检查 429 全局冷却是否活跃：有 tab 触发过 429 且在冷却期内 */
+    function isRateLimitCooldownActive() {
+        try {
+            var ts = parseInt(localStorage.getItem(RATE_LIMIT_COOLDOWN_KEY), 10) || 0;
+            if (ts > 0 && Date.now() - ts < RATE_LIMIT_COOLDOWN_MS) {
+                return true;
             }
-        };
-
-        // 创建一个容器来包裹管理分类和重置按钮
-        const actionButtonsWrapper = document.createElement('div');
-        actionButtonsWrapper.style.display = 'flex';
-        actionButtonsWrapper.style.alignItems = 'center';
-        actionButtonsWrapper.style.gap = '8px'; // 按钮之间的间距
-        actionButtonsWrapper.style.marginLeft = 'auto'; // 推到最右侧
-        actionButtonsWrapper.style.marginRight = '110px'; // 整体向左移动 110px
-
-        actionButtonsWrapper.appendChild(manageCategoryBtn);
-        actionButtonsWrapper.appendChild(resetBtn);
-
-        header.appendChild(title);
-        header.appendChild(actionButtonsWrapper); // 添加按钮容器
-        header.appendChild(closeBtn);
-        dialog.appendChild(header);
-
-        // 分类标签容器
-        const tabsContainer = document.createElement('div');
-        tabsContainer.className = 'quick-reply-tabs';
-        dialog.appendChild(tabsContainer);
-
-        // 重建分类标签的函数
-        function rebuildTabs() {
-            categories = getCategories();
-
-            // 检查当前活跃分类是否还存在
-            if (!categories.includes(activeCategory)) {
-                activeCategory = categories[0] || '通用回复';
-            }
-
-            tabsContainer.innerHTML = '';
-            categories.forEach(category => {
-                const tab = document.createElement('div');
-                tab.className = 'quick-reply-tab';
-                if (category === activeCategory) {
-                    tab.classList.add('active');
-                }
-                tab.textContent = category;
-                tab.onclick = () => {
-                    activeCategory = category;
-                    updateQuickReplyContent();
-                };
-                tabsContainer.appendChild(tab);
-            });
-        }
-
-        // 初始化分类标签
-        rebuildTabs();
-
-        // 内容区域
-        const contentContainer = document.createElement('div');
-        contentContainer.className = 'quick-reply-content';
-        dialog.appendChild(contentContainer);
-
-        // 添加新回复输入区
-        const inputGroup = document.createElement('div');
-        inputGroup.className = 'quick-reply-input-group';
-
-        const input = document.createElement('input');
-        input.className = 'quick-reply-input';
-        input.placeholder = '输入新的快捷回复或评论内容...';
-        input.id = 'new-reply-input';
-
-        const addReplyBtn = document.createElement('button');
-        addReplyBtn.className = 'quick-reply-btn quick-reply-btn-success';
-        addReplyBtn.textContent = '添加回复';
-        addReplyBtn.onclick = () => {
-            const text = input.value.trim();
-            if (text) {
-                if (addReplyToCategory(activeCategory, text)) {
-                    input.value = '';
-                    updateQuickReplyContent();
-                    if (window.addQuickReplyLog) {
-                        window.addQuickReplyLog(`添加快捷回复: ${text}`);
-                    }
-                } else {
-                    alert('添加失败，可能已存在相同回复');
-                }
-            } else {
-                alert('请输入要添加的回复内容。');
-                input.focus();
-            }
-        };
-
-        const quickPublishBtn = document.createElement('button');
-        quickPublishBtn.className = 'quick-reply-btn quick-reply-btn-primary';
-        quickPublishBtn.textContent = '快速发表';
-        quickPublishBtn.onclick = () => {
-            const content = input.value.trim();
-
-            if (content) {
-                // 如果有内容，先插入文本
-                if (!insertReplyText(content)) {
-                    alert('未找到编辑器，请确保在帖子评论页面使用');
-                    return;
-                }
-                if (window.addQuickReplyLog) {
-                    window.addQuickReplyLog(`快速发表评论: ${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`);
-                }
-            } else {
-                if (window.addQuickReplyLog) {
-                    window.addQuickReplyLog('尝试快速发表空评论');
-                }
-            }
-
-            // 延迟一点时间确保文本已插入，然后尝试点击发布按钮
-            setTimeout(() => {
-                const selectors = [
-                    'button[data-v-2664b64e].submit.btn.focus-visible',
-                    'button[data-v-2664b64e].submit.btn',
-                    'button.submit.btn.focus-visible',
-                    'button.submit.btn',
-                    'button.submit',
-                    'button[type="submit"]',
-                    'button:contains("发布评论")',
-                    '[class*="submit"][class*="btn"]',
-                    '[class*="comment"][class*="submit"]',
-                    'input[type="submit"][value="发布评论"]', // 针对input[type=submit]的情况
-                    'button[role="button"]:contains("发布评论")' // 针对通用按钮
-                ];
-
-                let submitButton = null;
-
-                for (const selector of selectors) {
-                    try {
-                        // 特殊处理 :contains 伪类，因为它不是标准CSS选择器
-                        if (selector.includes(':contains')) {
-                            const tempButtons = document.querySelectorAll(selector.split(':contains')[0]);
-                            for (const btn of tempButtons) {
-                                if (btn.textContent && btn.textContent.includes('发布评论')) {
-                                    submitButton = btn;
-                                    break;
-                                }
-                            }
-                        } else {
-                            const btn = document.querySelector(selector);
-                            // 再次检查textContent确保是发布按钮
-                            if (btn && btn.textContent && btn.textContent.includes('发布评论')) {
-                                submitButton = btn;
-                                break;
-                            }
-                        }
-                    } catch (e) {
-                        // 忽略选择器错误，继续尝试下一个
-                        // console.warn(`Selector failed: ${selector}, Error: ${e.message}`); // 调试用，最终移除
-                        continue;
-                    }
-                    if (submitButton) break;
-                }
-
-                if (submitButton) {
-                    try {
-                        submitButton.click();
-                        if (window.addQuickReplyLog) {
-                            window.addQuickReplyLog('✅ 评论已自动发布');
-                        }
-                    } catch (e) {
-                        if (window.addQuickReplyLog) {
-                            window.addQuickReplyLog('❌ 自动发布失败: ' + e.message);
-                        }
-                    }
-                } else {
-                    if (window.addQuickReplyLog) {
-                        window.addQuickReplyLog('⚠️ 未找到发布评论按钮，请手动发布');
-                    }
-                }
-            }, 400); // 稍微增加延迟确保文本插入完成，并给页面足够时间渲染
-
-            // 如果输入框有内容，清空输入框并关闭弹窗
-            if (content) {
-                input.value = '';
-                dialog.remove();
-            }
-        };
-
-        // 回车键添加或快速发表
-        input.addEventListener('keydown', (e) => { // 使用 keydown 以便捕获 Ctrl 组合键
-            if (e.key === 'Enter') {
-                e.preventDefault(); // 阻止默认回车行为 (如换行)
-                if (e.ctrlKey) {
-                    quickPublishBtn.click(); // Ctrl + Enter 快速发表
-                } else {
-                    addReplyBtn.click(); // Enter 添加回复
-                }
-            }
-        });
-
-        inputGroup.appendChild(input);
-        inputGroup.appendChild(quickPublishBtn);
-        inputGroup.appendChild(addReplyBtn);
-        dialog.appendChild(inputGroup);
-
-        // 自动发布选项
-        const autoSubmitContainer = document.createElement('div');
-        autoSubmitContainer.className = 'quick-reply-auto-submit-container';
-
-        const autoSubmitCheckbox = document.createElement('input');
-        autoSubmitCheckbox.type = 'checkbox';
-        autoSubmitCheckbox.id = 'auto-submit-checkbox';
-        autoSubmitCheckbox.className = 'quick-reply-auto-submit-checkbox';
-        autoSubmitCheckbox.checked = localStorage.getItem('nodeseek_quick_reply_auto_submit') === 'true';
-
-        const autoSubmitLabel = document.createElement('label');
-        autoSubmitLabel.htmlFor = 'auto-submit-checkbox';
-        autoSubmitLabel.className = 'quick-reply-auto-submit-label';
-
-        // 创建状态提示文本
-        const updateLabelText = () => {
-            const isChecked = autoSubmitCheckbox.checked;
-            autoSubmitLabel.innerHTML = `
-                选择回复后自动点击发布评论按钮
-                <span style="color: ${isChecked ? '#28a745' : '#6c757d'}; font-weight: 500;">
-                    ${isChecked ? '(已开启)' : '(已关闭)'}
-                </span>
-            `;
-        };
-
-        // 初始化文本
-        updateLabelText();
-
-        // 保存自动发布设置
-        autoSubmitCheckbox.addEventListener('change', () => {
-            localStorage.setItem('nodeseek_quick_reply_auto_submit', autoSubmitCheckbox.checked.toString());
-            updateLabelText(); // 更新状态显示
-            if (window.addQuickReplyLog) {
-                window.addQuickReplyLog(`${autoSubmitCheckbox.checked ? '开启' : '关闭'}自动发布评论功能`);
-            }
-        });
-
-        autoSubmitContainer.appendChild(autoSubmitCheckbox);
-        autoSubmitContainer.appendChild(autoSubmitLabel);
-        dialog.appendChild(autoSubmitContainer);
-
-        // 更新内容函数
-        function updateQuickReplyContent() {
-            // 重建分类标签（防止分类发生变化）
-            rebuildTabs();
-
-            // 更新回复列表
-            const replies = getCategoryReplies(activeCategory);
-            contentContainer.innerHTML = '';
-
-            // 拖拽相关变量
-            let replyDraggedElement = null;
-            let replyDraggedIndex = -1;
-            let replyTouchStartY = 0;
-            let replyTouchCurrentY = 0;
-            let isReplyTouchDragging = false;
-
-            // 回复拖拽处理函数
-            function handleReplyDragStart(e) {
-                replyDraggedElement = this;
-                replyDraggedIndex = parseInt(this.dataset.index);
-                this.classList.add('reply-item-dragging');
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/html', this.outerHTML);
-            }
-
-            function handleReplyDragOver(e) {
-                if (e.preventDefault) {
-                    e.preventDefault();
-                }
-                e.dataTransfer.dropEffect = 'move';
-
-                const targetIndex = parseInt(this.dataset.index);
-                if (targetIndex !== replyDraggedIndex) {
-                    this.classList.add('reply-item-drag-over');
-                }
-                return false;
-            }
-
-            function handleReplyDrop(e) {
-                if (e.stopPropagation) {
-                    e.stopPropagation();
-                }
-
-                const targetIndex = parseInt(this.dataset.index);
-                if (replyDraggedIndex !== targetIndex) {
-                    reorderRepliesAfterDrag(replyDraggedIndex, targetIndex);
-                }
-
-                // 清理样式
-                document.querySelectorAll('.reply-item-drag-over').forEach(el => {
-                    el.classList.remove('reply-item-drag-over');
-                });
-
-                return false;
-            }
-
-            function handleReplyDragEnd() {
-                this.classList.remove('reply-item-dragging');
-                document.querySelectorAll('.reply-item-drag-over').forEach(el => {
-                    el.classList.remove('reply-item-drag-over');
-                });
-                replyDraggedElement = null;
-                replyDraggedIndex = -1;
-            }
-
-            // 移动端触摸处理
-            function handleReplyTouchStart(e) {
-                if (e.target.closest('.quick-reply-actions')) {
-                    return; // 如果点击的是按钮，不启动拖拽
-                }
-
-                const touch = e.touches[0];
-                replyTouchStartY = touch.clientY;
-                replyDraggedElement = this;
-                replyDraggedIndex = parseInt(this.dataset.index);
-                isReplyTouchDragging = false;
-
-                // 延迟启动拖拽，避免与点击冲突
-                setTimeout(() => {
-                    if (replyDraggedElement === this) {
-                        isReplyTouchDragging = true;
-                        this.classList.add('reply-item-dragging');
-                    }
-                }, 150);
-            }
-
-            function handleReplyTouchMove(e) {
-                if (!isReplyTouchDragging || !replyDraggedElement) return;
-
-                e.preventDefault();
-                const touch = e.touches[0];
-                replyTouchCurrentY = touch.clientY;
-
-                // 查找触摸点下的元素
-                const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
-                const replyItem = elementBelow?.closest('.reply-item-draggable');
-
-                // 清除之前的高亮
-                document.querySelectorAll('.reply-item-drag-over').forEach(el => {
-                    el.classList.remove('reply-item-drag-over');
-                });
-
-                if (replyItem && replyItem !== replyDraggedElement) {
-                    replyItem.classList.add('reply-item-drag-over');
-                }
-            }
-
-            function handleReplyTouchEnd(e) {
-                if (!isReplyTouchDragging || !replyDraggedElement) {
-                    replyDraggedElement = null;
-                    return;
-                }
-
-                const touch = e.changedTouches[0];
-                const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
-                const targetItem = elementBelow?.closest('.reply-item-draggable');
-
-                if (targetItem && targetItem !== replyDraggedElement) {
-                    const targetIndex = parseInt(targetItem.dataset.index);
-                    if (replyDraggedIndex !== targetIndex) {
-                        reorderRepliesAfterDrag(replyDraggedIndex, targetIndex);
-                    }
-                }
-
-                // 清理状态
-                document.querySelectorAll('.reply-item-dragging, .reply-item-drag-over').forEach(el => {
-                    el.classList.remove('reply-item-dragging', 'reply-item-drag-over');
-                });
-
-                replyDraggedElement = null;
-                replyDraggedIndex = -1;
-                isReplyTouchDragging = false;
-            }
-
-            // 拖拽完成后重新排序回复
-            function reorderRepliesAfterDrag(fromIndex, toIndex) {
-                const currentReplies = getCategoryReplies(activeCategory);
-                const movedReply = currentReplies[fromIndex];
-
-                // 创建新的顺序数组
-                const newOrder = [...currentReplies];
-                newOrder.splice(fromIndex, 1); // 移除原位置的元素
-                newOrder.splice(toIndex, 0, movedReply); // 插入到新位置
-
-                // 保存新顺序
-                reorderRepliesInCategory(activeCategory, newOrder);
-
-                // 更新界面
-                updateQuickReplyContent();
-
-                if (window.addQuickReplyLog) {
-                    window.addQuickReplyLog(`移动回复: ${movedReply.substring(0, 20)}${movedReply.length > 20 ? '...' : ''} (${fromIndex + 1} → ${toIndex + 1})`);
-                }
-            }
-
-            if (replies.length === 0) {
-                const empty = document.createElement('div');
-                empty.className = 'quick-reply-empty';
-                empty.textContent = '暂无快捷回复，点击上方输入框添加';
-                contentContainer.appendChild(empty);
-            } else {
-                const itemsContainer = document.createElement('div');
-                itemsContainer.className = 'quick-reply-items';
-
-                replies.forEach((reply, index) => {
-                    const item = document.createElement('div');
-                    item.className = 'quick-reply-item reply-item-draggable';
-                    item.style.position = 'relative';
-                    item.draggable = true;
-                    item.dataset.reply = reply;
-                    item.dataset.index = index;
-
-                    const text = document.createElement('div');
-                    text.className = 'quick-reply-text';
-                    text.textContent = reply;
-
-                    const actions = document.createElement('div');
-                    actions.className = 'quick-reply-actions';
-
-                    const editBtn = document.createElement('button');
-                    editBtn.className = 'quick-reply-btn-small quick-reply-btn-edit';
-                    editBtn.textContent = '编辑';
-                    editBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        editQuickReply(activeCategory, reply);
-                    };
-
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'quick-reply-btn-small quick-reply-btn-delete';
-                    deleteBtn.textContent = '删除';
-                    deleteBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        if (confirm('确定要删除这条快捷回复吗？')) {
-                            deleteReplyFromCategory(activeCategory, reply);
-                            updateQuickReplyContent();
-                            if (window.addQuickReplyLog) {
-                                window.addQuickReplyLog(`删除快捷回复: ${reply}`);
-                            }
-                        }
-                    };
-
-                    actions.appendChild(editBtn);
-                    actions.appendChild(deleteBtn);
-
-                    item.appendChild(text);
-                    item.appendChild(actions);
-
-                    // 添加拖拽事件监听器
-                    item.addEventListener('dragstart', handleReplyDragStart);
-                    item.addEventListener('dragover', handleReplyDragOver);
-                    item.addEventListener('drop', handleReplyDrop);
-                    item.addEventListener('dragend', handleReplyDragEnd);
-
-                    // 移动端触摸事件
-                    item.addEventListener('touchstart', handleReplyTouchStart, { passive: false });
-                    item.addEventListener('touchmove', handleReplyTouchMove, { passive: false });
-                    item.addEventListener('touchend', handleReplyTouchEnd);
-
-                    // 点击插入回复
-                    item.onclick = () => {
-                        if (insertReplyText(reply)) {
-                            if (window.addQuickReplyLog) {
-                                window.addQuickReplyLog(`使用快捷回复: ${reply}`);
-                            }
-
-                            // 检查是否需要自动发布
-                            const autoSubmit = localStorage.getItem('nodeseek_quick_reply_auto_submit') === 'true';
-                            if (autoSubmit) {
-                                // 延迟一点时间确保文本已插入
-                                setTimeout(() => {
-                                    // 尝试多种选择器查找发布评论按钮
-                                    const selectors = [
-                                        'button[data-v-2664b64e].submit.btn.focus-visible',
-                                        'button[data-v-2664b64e].submit.btn',
-                                        'button.submit.btn.focus-visible',
-                                        'button.submit.btn',
-                                        'button.submit',
-                                        'button[type="submit"]',
-                                        'button:contains("发布评论")',
-                                        '[class*="submit"][class*="btn"]'
-                                    ];
-
-                                    let submitBtn = null;
-
-                                    // 遍历选择器尝试找到按钮
-                                    for (const selector of selectors) {
-                                        try {
-                                            if (selector.includes(':contains')) {
-                                                // 对于包含文本的选择器，手动查找
-                                                const buttons = document.querySelectorAll('button');
-                                                for (const btn of buttons) {
-                                                    if (btn.textContent && btn.textContent.includes('发布评论')) {
-                                                        submitBtn = btn;
-                                                        break;
-                                                    }
-                                                }
-                                            } else {
-                                                const btn = document.querySelector(selector);
-                                                if (btn && btn.textContent && btn.textContent.includes('发布评论')) {
-                                                    submitBtn = btn;
-                                                    break;
-                                                }
-                                            }
-                                        } catch (e) {
-                                            // 忽略选择器错误，继续尝试下一个
-                                            continue;
-                                        }
-
-                                        if (submitBtn) break;
-                                    }
-
-                                    if (submitBtn) {
-                                        try {
-                                            submitBtn.click();
-                                            if (window.addQuickReplyLog) {
-                                                window.addQuickReplyLog('✅ 已自动点击发布评论按钮');
-                                            }
-                                        } catch (e) {
-                                            if (window.addQuickReplyLog) {
-                                                window.addQuickReplyLog('❌ 点击发布按钮时出错: ' + e.message);
-                                            }
-                                        }
-                                    } else {
-                                        if (window.addQuickReplyLog) {
-                                            window.addQuickReplyLog('⚠️ 未找到发布评论按钮，请手动发布');
-                                        }
-                                    }
-                                }, 300); // 稍微增加延迟确保文本插入完成
-                            }
-
-                            dialog.remove();
-                        } else {
-                            alert('未找到编辑器，请确保在帖子评论页面使用');
-                        }
-                    };
-
-                    itemsContainer.appendChild(item);
-                });
-
-                contentContainer.appendChild(itemsContainer);
-            }
-        }
-
-        // 编辑快捷回复
-        function editQuickReply(category, oldText) {
-            const newText = prompt('编辑快捷回复:', oldText);
-            if (newText !== null && newText.trim() !== '' && newText !== oldText) {
-                if (editReplyText(category, oldText, newText.trim())) {
-                    updateQuickReplyContent();
-                    if (window.addQuickReplyLog) {
-                        window.addQuickReplyLog(`编辑快捷回复: ${oldText} -> ${newText.trim()}`);
-                    }
-                } else {
-                    alert('编辑失败，可能已存在相同回复');
-                }
-            }
-        }
-
-        // 初始化内容
-        updateQuickReplyContent();
-
-        // 暴露更新函数给分类管理弹窗使用
-        dialog.updateContent = updateQuickReplyContent;
+        } catch (e) {}
+        return false;
     }
 
-    // 显示分类管理弹窗
-    function showCategoryManageDialog() {
-        const existingDialog = document.getElementById('category-manage-dialog');
-        if (existingDialog) {
-            existingDialog.remove();
-            return;
-        }
+    /** 设置 429 全局冷却时间戳，阻止所有 tab 在冷却期内拉取 */
+    function setRateLimitCooldown() {
+        try { localStorage.setItem(RATE_LIMIT_COOLDOWN_KEY, String(Date.now())); } catch (e) {}
+    }
 
-        const dialog = document.createElement('div');
-        dialog.id = 'category-manage-dialog';
-        dialog.className = 'quick-reply-dialog';
-        dialog.style.position = 'fixed';
-        dialog.style.top = '100px';
-        dialog.style.right = '50px';
-        dialog.style.zIndex = 10001;
-        dialog.style.background = '#fff';
-        dialog.style.border = '1px solid #ddd';
-        dialog.style.borderRadius = '12px';
-        dialog.style.boxShadow = '0 8px 32px rgba(0,0,0,0.12)';
-        dialog.style.padding = '20px';
-        dialog.style.minWidth = '350px';
+    /** 清除 429 全局冷却（全部 10 页拉取成功无 429 时调用） */
+    function clearRateLimitCooldown() {
+        try { localStorage.removeItem(RATE_LIMIT_COOLDOWN_KEY); } catch (e) {}
+    }
 
-        const categories = getCategories();
+    // ---- 核心拉取逻辑 ----
 
-        // 更新主快捷回复弹窗的函数
-        function updateMainDialog() {
-            const mainDialog = document.getElementById('quick-reply-dialog');
-            if (mainDialog && mainDialog.updateContent) {
-                mainDialog.updateContent();
-            }
-        }
-
-        // 头部
-        const header = document.createElement('div');
-        header.className = 'quick-reply-header';
-
-        const title = document.createElement('h3');
-        title.className = 'quick-reply-title';
-        title.textContent = '管理分类';
-
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'quick-reply-close';
-        closeBtn.innerHTML = '×';
-        closeBtn.onclick = () => dialog.remove();
-
-        header.appendChild(title);
-        header.appendChild(closeBtn);
-        dialog.appendChild(header);
-
-        // 添加新分类
-        const inputGroup = document.createElement('div');
-        inputGroup.className = 'quick-reply-input-group';
-
-        const input = document.createElement('input');
-        input.className = 'quick-reply-input';
-        input.placeholder = '输入新分类名称...';
-
-        const addBtn = document.createElement('button');
-        addBtn.className = 'quick-reply-btn quick-reply-btn-success';
-        addBtn.textContent = '添加分类';
-        addBtn.onclick = () => {
-            const name = input.value.trim();
-            if (name) {
-                if (getCategories().length >= 5) {
-                    alert('最多只能添加5个分类');
-                    return;
-                }
-                if (addCategory(name)) {
-                    input.value = '';
-                    updateCategoryList();
-                    updateMainDialog(); // 更新主弹窗
-                    if (window.addQuickReplyLog) {
-                        window.addQuickReplyLog(`添加分类: ${name}`);
-                    }
-                } else {
-                    alert('添加失败，分类名称已存在');
-                }
-            }
-        };
-
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                addBtn.click();
-            }
-        });
-
-        inputGroup.appendChild(input);
-        inputGroup.appendChild(addBtn);
-        dialog.appendChild(inputGroup);
-
-        // 分类列表
-        const listContainer = document.createElement('div');
-        listContainer.style.maxHeight = '300px';
-        listContainer.style.overflowY = 'auto';
-        dialog.appendChild(listContainer);
-
-        function updateCategoryList() {
-            const currentCategories = getCategories();
-            listContainer.innerHTML = '';
-
-            currentCategories.forEach((category, index) => {
-                const item = document.createElement('div');
-                item.className = 'quick-reply-item category-item-draggable';
-                item.style.marginBottom = '8px';
-                item.style.position = 'relative';
-                item.draggable = true;
-                item.dataset.category = category;
-                item.dataset.index = index;
-
-                // 拖拽手柄
-                const dragHandle = document.createElement('div');
-                dragHandle.className = 'category-drag-handle';
-                dragHandle.innerHTML = '⋮⋮';
-
-                const text = document.createElement('div');
-                text.className = 'quick-reply-text';
-                text.textContent = category;
-
-                const actions = document.createElement('div');
-                actions.className = 'quick-reply-actions';
-                actions.style.opacity = '1'; // 始终显示
-
-                const editBtn = document.createElement('button');
-                editBtn.className = 'quick-reply-btn-small quick-reply-btn-edit';
-                editBtn.textContent = '重命名';
-                editBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    const newName = prompt('重命名分类:', category);
-                    if (newName !== null && newName.trim() !== '' && newName !== category) {
-                        if (getMixedLength(newName.trim()) > 8) {
-                            alert('分类名限中英文混合8字符以内（中文算2，英文/数字算1）');
-                            return;
-                        }
-                        if (renameCategory(category, newName.trim())) {
-                            updateCategoryList();
-                            updateMainDialog(); // 更新主弹窗
-                            if (window.addQuickReplyLog) {
-                                window.addQuickReplyLog(`重命名分类: ${category} -> ${newName.trim()}`);
-                            }
-                        } else {
-                            alert('重命名失败，可能名称已存在');
-                        }
-                    }
-                };
-
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'quick-reply-btn-small quick-reply-btn-delete';
-                deleteBtn.textContent = '删除';
-                deleteBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    const replies = getCategoryReplies(category);
-                    const message = replies.length > 0
-                        ? `确定要删除分类"${category}"吗？这将同时删除该分类下的${replies.length}条回复。`
-                        : `确定要删除分类"${category}"吗？`;
-
-                    if (confirm(message)) {
-                        deleteCategory(category);
-                        updateCategoryList();
-                        updateMainDialog(); // 更新主弹窗
-                        if (window.addQuickReplyLog) {
-                            window.addQuickReplyLog(`删除分类: ${category}`);
-                        }
-                    }
-                };
-
-                actions.appendChild(editBtn);
-                actions.appendChild(deleteBtn);
-
-                item.appendChild(dragHandle);
-                item.appendChild(text);
-                item.appendChild(actions);
-
-                // 桌面端拖拽事件
-                item.addEventListener('dragstart', handleDragStart);
-                item.addEventListener('dragover', handleDragOver);
-                item.addEventListener('drop', handleDrop);
-                item.addEventListener('dragend', handleDragEnd);
-
-                // 移动端触摸事件
-                item.addEventListener('touchstart', handleTouchStart, { passive: false });
-                item.addEventListener('touchmove', handleTouchMove, { passive: false });
-                item.addEventListener('touchend', handleTouchEnd);
-
-                listContainer.appendChild(item);
-            });
-        }
-
-        // 拖拽相关变量
-        let draggedElement = null;
-        let draggedIndex = -1;
-        let touchStartY = 0;
-        let touchCurrentY = 0;
-        let isTouchDragging = false;
-
-        // 桌面端拖拽处理
-        function handleDragStart(e) {
-            draggedElement = this;
-            draggedIndex = parseInt(this.dataset.index);
-            this.classList.add('category-item-dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/html', this.outerHTML);
-        }
-
-        function handleDragOver(e) {
-            if (e.preventDefault) {
-                e.preventDefault();
-            }
-            e.dataTransfer.dropEffect = 'move';
-
-            const targetIndex = parseInt(this.dataset.index);
-            if (targetIndex !== draggedIndex) {
-                this.classList.add('category-item-drag-over');
-            }
-            return false;
-        }
-
-        function handleDrop(e) {
-            if (e.stopPropagation) {
-                e.stopPropagation();
-            }
-
-            const targetIndex = parseInt(this.dataset.index);
-            if (draggedIndex !== targetIndex) {
-                reorderCategoriesAfterDrag(draggedIndex, targetIndex);
-            }
-
-            // 清理样式
-            document.querySelectorAll('.category-item-drag-over').forEach(el => {
-                el.classList.remove('category-item-drag-over');
-            });
-
-            return false;
-        }
-
-        function handleDragEnd() {
-            this.classList.remove('category-item-dragging');
-            document.querySelectorAll('.category-item-drag-over').forEach(el => {
-                el.classList.remove('category-item-drag-over');
-            });
-            draggedElement = null;
-            draggedIndex = -1;
-        }
-
-        // 移动端触摸处理
-        function handleTouchStart(e) {
-            if (e.target.closest('.quick-reply-actions')) {
-                return; // 如果点击的是按钮，不启动拖拽
-            }
-
-            const touch = e.touches[0];
-            touchStartY = touch.clientY;
-            draggedElement = this;
-            draggedIndex = parseInt(this.dataset.index);
-            isTouchDragging = false;
-
-            // 延迟启动拖拽，避免与点击冲突
-            setTimeout(() => {
-                if (draggedElement === this) {
-                    isTouchDragging = true;
-                    this.classList.add('category-item-dragging');
-                }
-            }, 150);
-        }
-
-        function handleTouchMove(e) {
-            if (!isTouchDragging || !draggedElement) return;
-
-            e.preventDefault();
-            const touch = e.touches[0];
-            touchCurrentY = touch.clientY;
-
-            // 查找触摸点下的元素
-            const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
-            const categoryItem = elementBelow?.closest('.category-item-draggable');
-
-            // 清除之前的高亮
-            document.querySelectorAll('.category-item-drag-over').forEach(el => {
-                el.classList.remove('category-item-drag-over');
-            });
-
-            if (categoryItem && categoryItem !== draggedElement) {
-                categoryItem.classList.add('category-item-drag-over');
-            }
-        }
-
-        function handleTouchEnd(e) {
-            if (!isTouchDragging || !draggedElement) {
-                draggedElement = null;
+    function fetchTopPosts(forceRefresh) {
+        _cfBlockedLogged = false;
+        // 缓存新鲜且非强制刷新 → 跳过
+        if (!forceRefresh) {
+            var cacheTime = 0;
+            try { cacheTime = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
+            var posts = loadPosts();
+            if (posts.length > 0 && Date.now() - cacheTime < FETCH_CACHE_MS) {
                 return;
             }
+        }
 
-            const touch = e.changedTouches[0];
-            const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
-            const targetItem = elementBelow?.closest('.category-item-draggable');
+        /* 429 全局冷却：有 tab 已触发限流，所有 tab 等待冷却结束再重试，避免连环 429 */
+        if (isRateLimitCooldownActive()) {
+            return;
+        }
 
-            if (targetItem && targetItem !== draggedElement) {
-                const targetIndex = parseInt(targetItem.dataset.index);
-                if (draggedIndex !== targetIndex) {
-                    reorderCategoriesAfterDrag(draggedIndex, targetIndex);
+        /* 非强制刷新时增加启动抖动：0~3秒随机延迟，避免多 tab 同时自动刷新瞬间并发 */
+        var startDelay = forceRefresh ? 0 : Math.floor(Math.random() * START_JITTER_MAX_MS);
+
+        function startFetch() {
+        // 清理可能存在的旧重试定时器
+        if (_lockRetryTimer) { clearTimeout(_lockRetryTimer); _lockRetryTimer = null; }
+        /* 显示等待/加载状态 */
+        function showWaitingMsg(msg) {
+            if (!forceRefresh) return; // 非手动刷新不更新 UI
+            const dialog = document.getElementById('top-reply-dialog');
+            if (!dialog) return;
+            const listDiv = dialog.querySelector('#top-reply-list');
+            if (listDiv) {
+                listDiv.innerHTML = '<div style="text-align:center;padding:50px 0;"><div style="display:inline-block;width:28px;height:28px;border:3px solid #e8e8e8;border-top-color:#3498db;border-radius:50%;animation:topReplySpin 0.8s linear infinite;"></div><div style="margin-top:12px;color:#aaa;font-size:13px;">' + msg + '</div></div>';
+            }
+        }
+
+        /* 串行拉取所有页：任何时刻只有 1 个请求在飞，避免并发触发 CF；
+           遇 429 采用指数退避重试当前页，重试耗尽才停止后续页面，用已获取数据渲染（智能降级） */
+        const allPosts = [];
+        let rateLimitHit = false;
+        let fetchedPageCount = 0;
+        /* 串行模式下每页间隔（毫秒）：2000~3500ms，保守慢速拉取防止 CF 拦截 */
+        const PAGE_INTERVAL_MIN = 2000;
+        const PAGE_INTERVAL_MAX = 3500;
+        /* 非限流错误的重试间隔（毫秒） */
+        const RETRY_BACKOFF_MIN = 3000;
+        const RETRY_BACKOFF_MAX = 6000;
+        const MAX_RETRIES = 1;
+
+        function randomBetween(min, max) {
+            return min + Math.random() * (max - min);
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        /** 刷新锁心跳：长时拉取期间定期更新锁时间戳，防止锁超时被其他 tab 抢占 */
+        function refreshLockHeartbeat() {
+            try {
+                var lockData = localStorage.getItem(FETCH_LOCK_KEY);
+                if (lockData) {
+                    var parsed = JSON.parse(lockData);
+                    if (parsed && parsed.tabId === _tabId) {
+                        localStorage.setItem(FETCH_LOCK_KEY, JSON.stringify({ time: Date.now(), tabId: _tabId }));
+                    }
+                }
+            } catch (e) {}
+        }
+
+        function fetchPageWithRetry(pageNum, retries, rlRetries) {
+            return fetchPage(pageNum)
+                .catch(err => {
+                    const status = err && err.status;
+                    if (status === 429) {
+                        // 429 限流：指数退避重试当前页
+                        var remaining = (rlRetries !== undefined ? rlRetries : RATE_LIMIT_MAX_RETRIES);
+                        if (remaining > 0) {
+                            var waitMs = RATE_LIMIT_RETRY_BASE_MS * Math.pow(2, RATE_LIMIT_MAX_RETRIES - remaining);
+                            if (window.addLog) {
+                                window.addLog('[热帖排行] HTTP 429 限流，等待 ' + Math.round(waitMs/1000) + ' 秒后重试第 ' + pageNum + ' 页（剩余重试次数 ' + (remaining-1) + '）');
+                            }
+                            // 刷新锁心跳，防止等待期间锁超时
+                            refreshLockHeartbeat();
+                            return sleep(waitMs).then(() => {
+                                refreshLockHeartbeat();
+                                return fetchPageWithRetry(pageNum, 0, remaining - 1);
+                            });
+                        }
+                        // 重试耗尽，向上抛出由串行循环决定是否停止
+                        throw err;
+                    }
+                    // 拉取失败静默处理（重试或跳过），不污染控制台
+                    if (retries > 0) {
+                        return sleep(randomBetween(RETRY_BACKOFF_MIN, RETRY_BACKOFF_MAX))
+                            .then(() => fetchPageWithRetry(pageNum, retries - 1, rlRetries));
+                    }
+                    return []; // 重试耗尽，返回空跳过该页继续下一页
+                });
+        }
+
+        function fetchSequential(currentPage) {
+            if (currentPage > MAX_PAGE || rateLimitHit) {
+                return Promise.resolve();
+            }
+            // 每页开始前刷新锁心跳
+            refreshLockHeartbeat();
+            return fetchPageWithRetry(currentPage, MAX_RETRIES)
+                .then(posts => {
+                    if (posts && posts.length > 0) {
+                        allPosts.push(...posts);
+                        fetchedPageCount++;
+                    }
+                    // 下一页前等待随机间隔
+                    if (currentPage < MAX_PAGE && !rateLimitHit) {
+                        return sleep(randomBetween(PAGE_INTERVAL_MIN, PAGE_INTERVAL_MAX))
+                            .then(() => fetchSequential(currentPage + 1));
+                    }
+                })
+                .catch(err => {
+                    const status = err && err.status;
+                    if (status === 429) {
+                        // CF 限流重试耗尽：停止后续页面，设置全局冷却，用已获取数据渲染
+                        rateLimitHit = true;
+                        setRateLimitCooldown();
+                        if (window.addLog) {
+                            window.addLog('[热帖排行] HTTP 429 限流重试耗尽，已停止拉取并使用已获取的 ' + fetchedPageCount + ' 页数据渲染');
+                        }
+                    } else {
+                        // 其他异常静默处理，继续下一页
+                    }
+                });
+        }
+
+        /* 核心拉取+渲染逻辑 */
+        function doFetch() {
+            return fetchSequential(1)
+                .then(() => {
+                    if (allPosts.length === 0) {
+                        throw new Error('所有页面拉取均失败');
+                    }
+
+                    if (rateLimitHit) {
+                        // CF 限流时用部分数据渲染
+                    } else {
+                        // 全部页面拉取成功无 429，清除 429 冷却标记
+                        clearRateLimitCooldown();
+                    }
+
+                    // 按 url 去重
+                    const seen = new Set();
+                    const uniquePosts = allPosts.filter(p => {
+                        if (seen.has(p.url)) return false;
+                        seen.add(p.url);
+                        return true;
+                    });
+
+                    // 找到当前批次中最新的帖子 ID，过滤掉老帖（ID 差距超过 5000）
+                    const maxId = uniquePosts.reduce((max, p) => Math.max(max, p.postId || 0), 0);
+                    const freshPosts = uniquePosts.filter(p => (p.postId || 0) >= maxId - 5000);
+
+                    freshPosts.sort((a, b) => b.comments - a.comments);
+                    const topPosts = freshPosts.slice(0, TOP_COUNT);
+
+                    if (topPosts.length > 0) {
+                        savePosts(topPosts);
+                        // 只更新数据时间戳，不能改动 _lastRefreshTime（冷却基准时间）
+                        try { localStorage.setItem(STORAGE_KEY + '_time', String(Date.now())); } catch (e) {}
+                    }
+
+                    refreshDialogIfOpen(topPosts);
+                    // 同步刷新侧边栏面板
+                    refreshSidebarContent();
+                })
+                .catch(err => {
+                    /* 刷新失败时恢复显示已有数据，避免卡在加载态 */
+                    if (window.addLog) {
+                        window.addLog('[热帖排行] 拉取失败：' + (err && err.message ? err.message : '未知错误'));
+                    }
+                    const dialog = document.getElementById('top-reply-dialog');
+                    if (dialog) {
+                        const listDiv = dialog.querySelector('#top-reply-list');
+                        if (listDiv) {
+                            const cached = loadPosts();
+                            if (cached && cached.length > 0) {
+                                listDiv.innerHTML = '<div style="text-align:center;color:#e74c3c;padding:12px;font-size:12px;">拉取失败，显示缓存数据</div>';
+                                renderPostList(listDiv, cached);
+                            } else {
+                                listDiv.innerHTML = '<div style="text-align:center;color:#e74c3c;padding:50px 0;font-size:13px;">拉取失败，请稍后重试</div>';
+                            }
+                        }
+                    }
+                    // 同步刷新侧边栏面板（显示缓存）
+                    refreshSidebarContent();
+                });
+        }
+
+        /* 锁内统一二次检查 */
+        function preCheck() {
+            if (isRateLimitCooldownActive()) return 'cooldown';
+            if (_peerFetchNotified) { _peerFetchNotified = false; return 'peer_done'; }
+            if (!forceRefresh) {
+                var ct = 0;
+                try { ct = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
+                if (loadPosts().length > 0 && Date.now() - ct < FETCH_CACHE_MS) return 'fresh';
+            }
+            return null; // 可以拉取
+        }
+
+        /* 拿到锁后执行拉取（返回 Promise 以便 navigator.locks 等待完成） */
+        function executeWithLock() {
+            var skip = preCheck();
+            if (skip) return Promise.resolve();
+            showWaitingMsg('刷新中…');
+            bcSend(BC_MSG_FETCH_START, {});
+            var hbTimer = setInterval(refreshLockHeartbeat, 15000);
+            return doFetch().then(function () {
+                clearInterval(hbTimer);
+                bcSend(BC_MSG_FETCH_DONE, {});
+            }).catch(function () {
+                clearInterval(hbTimer);
+                bcSend(BC_MSG_FETCH_DONE, {});
+            });
+        }
+
+        /* 跨 tab 原子锁：优先使用 navigator.locks API（浏览器原生原子锁）；
+           降级方案：localStorage 锁（带重试和二次检查） */
+        var LOCK_NAME = 'nodeseek_topreply_fetch';
+        var lockRetryCount = 0;
+
+        function tryLockOnce() {
+            if (_peerFetchNotified) {
+                _peerFetchNotified = false;
+                return;
+            }
+            if (typeof navigator !== 'undefined' && navigator.locks && navigator.locks.request) {
+                // 使用 async callback 让锁在 doFetch 完成前一直持有
+                navigator.locks.request(LOCK_NAME, { mode: 'exclusive', ifAvailable: true }, async function (lock) {
+                    if (lock) {
+                        try { await executeWithLock(); } finally {}
+                        return;
+                    }
+                    // 没拿到锁
+                    handleLockBusy();
+                });
+            } else {
+                // localStorage 降级
+                if (tryAcquireFetchLock()) {
+                    var skip = preCheck();
+                    if (skip) { releaseFetchLock(); return; }
+                    showWaitingMsg('刷新中…');
+                    bcSend(BC_MSG_FETCH_START, {});
+                    var hbTimer = setInterval(refreshLockHeartbeat, 15000);
+                    doFetch().finally(function () {
+                        clearInterval(hbTimer);
+                        releaseFetchLock();
+                        bcSend(BC_MSG_FETCH_DONE, {});
+                    });
+                } else {
+                    handleLockBusy();
                 }
             }
-
-            // 清理状态
-            document.querySelectorAll('.category-item-dragging, .category-item-drag-over').forEach(el => {
-                el.classList.remove('category-item-dragging', 'category-item-drag-over');
-            });
-
-            draggedElement = null;
-            draggedIndex = -1;
-            isTouchDragging = false;
         }
 
-        // 拖拽完成后重新排序
-        function reorderCategoriesAfterDrag(fromIndex, toIndex) {
-            const categories = getCategories();
-            const movedCategory = categories[fromIndex];
-
-            // 创建新的顺序数组
-            const newOrder = [...categories];
-            newOrder.splice(fromIndex, 1); // 移除原位置的元素
-            newOrder.splice(toIndex, 0, movedCategory); // 插入到新位置
-
-            // 保存新顺序
-            reorderCategories(newOrder);
-
-            // 更新界面
-            updateCategoryList();
-            updateMainDialog();
-
-            if (window.addQuickReplyLog) {
-                window.addQuickReplyLog(`移动分类: ${movedCategory} (${fromIndex + 1} → ${toIndex + 1})`);
+        function handleLockBusy() {
+            // 手动刷新：等待并重试
+            if (forceRefresh && lockRetryCount < LOCK_MAX_RETRIES && !_peerFetchNotified) {
+                lockRetryCount++;
+                if (lockRetryCount === 1) {
+                    showWaitingMsg('其他标签页正在刷新，等待中…');
+                }
+                _lockRetryTimer = setTimeout(tryLockOnce, LOCK_RETRY_INTERVAL_MS);
+                return;
             }
+            // 自动刷新或等待超时：跳过，由 BC/storage 事件更新数据
         }
 
-        updateCategoryList();
-        document.body.appendChild(dialog);
+        tryLockOnce();
+        } // end startFetch
 
-        // 使用全局的 makeDraggable 函数
-        if (window.makeDraggable) {
-            window.makeDraggable(dialog, {width: 60, height: 40});
+        if (startDelay > 0) {
+            setTimeout(startFetch, startDelay);
+        } else {
+            startFetch();
         }
     }
 
-    // 暴露给全局
-    window.NodeSeekQuickReply = {
-        getQuickReplies,
-        setQuickReplies,
-        getCategories,
-        addCategory,
-        deleteCategory,
-        renameCategory,
-        reorderCategories, // 新增：分类排序功能
-        getCategoryReplies,
-        addReplyToCategory,
-        deleteReplyFromCategory,
-        editReplyText,
-        reorderRepliesInCategory, // 新增：回复排序功能
-        insertReplyText,
-        resetToDefault,
-        findEditor,
-        showQuickReplyDialog // 新增：暴露显示弹窗函数
+    // ---- 弹窗 ----
+    function refreshDialogIfOpen(posts) {
+        const dialog = document.getElementById('top-reply-dialog');
+        if (!dialog) return;
+        const listDiv = dialog.querySelector('#top-reply-list');
+        if (listDiv) {
+            listDiv.innerHTML = '';
+            renderPostList(listDiv, posts || loadPosts());
+        }
+        const tsSpan = dialog.querySelector('#top-reply-timestamp');
+        if (tsSpan) {
+            var fetchTime = 0;
+            try { fetchTime = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
+            tsSpan.textContent = '更新于 ' + (fetchTime ? new Date(fetchTime).toLocaleTimeString() : new Date().toLocaleTimeString());
+        }
+    }
+
+    function renderPostList(container, posts) {
+        if (!posts || posts.length === 0) {
+            container.innerHTML = '<div style="text-align:center;color:#bbb;padding:50px 0;font-size:14px;">暂无数据，等待首次拉取…</div>';
+            return;
+        }
+
+        const listIsMobile = isMobile();
+        const viewedEnabled = localStorage.getItem('nodeseek_viewed_history_enabled') !== 'false';
+        const viewedSet = viewedEnabled ? getViewedUrlSet() : new Set();
+        const viewedColor = getViewedColor();
+        posts.forEach((post, idx) => {
+            const row = document.createElement('div');
+            // 移动端：缩小 padding 和 gap，增大触摸区域
+            const rowPad = listIsMobile ? '10px 10px' : '8px 14px';
+            const rowGap = listIsMobile ? '8px' : '12px';
+            row.style.cssText = 'display:flex;align-items:center;padding:' + rowPad + ';margin:0 0 1px;border-radius:8px;gap:' + rowGap + ';transition:background 0.2s ease;cursor:default;' + (listIsMobile ? 'min-height:44px;' : '');
+            row.onmouseenter = function() { this.style.background = '#f7f8fa'; };
+            row.onmouseleave = function() { this.style.background = 'transparent'; };
+
+            // 排名
+            const rank = document.createElement('div');
+            rank.style.cssText = 'min-width:28px;height:28px;line-height:28px;text-align:center;border-radius:8px;font-size:12px;font-weight:700;flex-shrink:0;';
+            if (idx === 0) {
+                rank.textContent = '1';
+                rank.style.cssText += 'background:linear-gradient(135deg,#ff6b6b,#ee5a24);color:#fff;box-shadow:0 2px 8px rgba(238,90,36,0.3);';
+            } else if (idx === 1) {
+                rank.textContent = '2';
+                rank.style.cssText += 'background:linear-gradient(135deg,#ffa502,#e67e22);color:#fff;box-shadow:0 2px 8px rgba(230,126,34,0.25);';
+            } else if (idx === 2) {
+                rank.textContent = '3';
+                rank.style.cssText += 'background:linear-gradient(135deg,#feca57,#f39c12);color:#7d5a00;box-shadow:0 2px 8px rgba(243,156,18,0.25);';
+            } else {
+                rank.textContent = idx + 1;
+                rank.style.cssText += 'background:#f0f0f0;color:#999;';
+            }
+
+            // 内容
+            const content = document.createElement('div');
+            content.style.cssText = 'flex:1;min-width:0;';
+
+            const titleLink = document.createElement('a');
+            titleLink.textContent = post.title;
+            const fullUrl = post.url.startsWith('http') ? post.url : 'https://www.nodeseek.com' + post.url;
+            titleLink.href = fullUrl;
+            titleLink.target = '_blank';
+            titleLink.className = 'top-reply-title-link';
+            // 阅读记忆：已阅读的标题使用灰色
+            const normalized = normalizePostUrl(fullUrl);
+            const isViewed = viewedEnabled && viewedSet.has(normalized);
+            const titleColor = isViewed ? viewedColor : '#2c3e50';
+            // 移动端：标题字号略大，行高更紧凑
+            const titleFontSize = listIsMobile ? '14px' : '13px';
+            titleLink.style.cssText = 'color:' + titleColor + ';text-decoration:none;font-size:' + titleFontSize + ';font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.5;transition:color 0.15s;';
+            titleLink.onmouseenter = function() {
+                this.title = this.scrollWidth > this.clientWidth ? post.title : '';
+            };
+            // 点击后标记为已阅读并立即变色
+            titleLink.addEventListener('click', function() {
+                markUrlAsViewed(normalized);
+                titleLink.style.color = viewedColor;
+            });
+
+            const meta = document.createElement('div');
+            meta.style.cssText = 'display:flex;gap:6px;margin-top:3px;font-size:11px;align-items:center;flex-wrap:wrap;';
+
+            // 作者
+            const authorSpan = document.createElement('span');
+            authorSpan.textContent = post.author;
+            authorSpan.style.cssText = 'color:#5a6d80;background:#eef2f7;padding:2px 8px;border-radius:10px;font-weight:500;';
+
+            // 回复数
+            const commentSpan = document.createElement('span');
+            commentSpan.style.cssText = 'color:#e74c3c;font-weight:700;display:flex;align-items:center;gap:2px;';
+            commentSpan.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>' + post.comments;
+
+            // 浏览数
+            const viewSpan = document.createElement('span');
+            viewSpan.style.cssText = 'color:#95a5a6;display:flex;align-items:center;gap:2px;';
+            viewSpan.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' + post.views;
+
+            meta.appendChild(authorSpan);
+            meta.appendChild(viewSpan);
+            meta.appendChild(commentSpan);
+
+            if (post.lastReplier) {
+                const replierSpan = document.createElement('span');
+                replierSpan.textContent = post.lastReplier;
+                replierSpan.style.cssText = 'color:#5a6d80;';
+                meta.appendChild(replierSpan);
+            }
+
+            if (post.lastCommentTime) {
+                const timeSpan = document.createElement('span');
+                timeSpan.textContent = post.lastCommentTime;
+                timeSpan.style.cssText = 'color:#bdc3c7;font-size:10px;margin-top:2px;';
+                meta.appendChild(timeSpan);
+            }
+
+            if (post.category) {
+                const catSpan = document.createElement('span');
+                catSpan.textContent = post.category;
+                catSpan.style.cssText = 'color:#27ae60;background:#eafaf1;padding:2px 8px;border-radius:10px;font-weight:500;';
+                meta.appendChild(catSpan);
+            }
+
+            content.appendChild(titleLink);
+            content.appendChild(meta);
+
+            row.appendChild(rank);
+            row.appendChild(content);
+            container.appendChild(row);
+        });
+    }
+
+    function showTopReplyDialog() {
+        const dialogId = 'top-reply-dialog';
+        const existing = document.getElementById(dialogId);
+        if (existing) {
+            existing.remove();
+            return;
+        }
+
+        const dialogIsMobile = isMobile();
+        const dialog = document.createElement('div');
+        dialog.id = dialogId;
+        const dialogWidth = dialogIsMobile ? Math.floor(window.innerWidth * 0.95) : 720;
+        dialog.style.cssText = [
+            'position:fixed', 'z-index:10000', 'background:#fff',
+            'border:1px solid rgba(0,0,0,0.08)', 'border-radius:16px',
+            'box-shadow:0 20px 60px rgba(0,0,0,0.12),0 0 0 1px rgba(0,0,0,0.03)',
+            'padding:0', 'width:' + dialogWidth + 'px',
+            'max-height:80vh', 'display:flex', 'flex-direction:column',
+            'overflow:hidden', 'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif'
+        ].join(';');
+
+        // 用像素计算居中位置
+        let topOffset = 0;
+        if (document.getElementById('logs-dialog')) topOffset = 30;
+        if (document.getElementById('chicken-leg-stats-dialog')) topOffset = 60;
+        // PC 端向右偏移 180 避开左侧面板；移动端居中
+        const dialogLeft = dialogIsMobile
+            ? Math.floor((window.innerWidth - dialogWidth) / 2)
+            : Math.floor((window.innerWidth - dialogWidth) / 2) + 180;
+        const dialogTop = Math.floor(window.innerHeight * 0.1) + topOffset;
+        dialog.style.left = Math.max(0, dialogLeft) + 'px';
+        dialog.style.top = Math.max(0, dialogTop) + 'px';
+
+        // 标题栏（移动端缩小 padding）
+        const header = document.createElement('div');
+        const headerPad = dialogIsMobile ? '12px 12px' : '14px 20px';
+        header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:' + headerPad + ';background:#fff;border-bottom:1px solid #f0f0f0;flex-shrink:0;user-select:none;';
+
+        // 左上角拖拽手柄 20x20
+        const dragHandle = document.createElement('div');
+        dragHandle.style.cssText = 'position:absolute;top:0;left:0;width:20px;height:20px;cursor:move;z-index:10;';
+        dialog.appendChild(dragHandle);
+
+        const titleArea = document.createElement('div');
+        titleArea.style.cssText = 'display:flex;align-items:center;gap:8px;';
+
+        const title = document.createElement('div');
+        title.style.cssText = 'font-weight:700;font-size:15px;color:#333;display:flex;align-items:center;gap:6px;';
+        title.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e74c3c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c.3 2.8 2.1 5.1 4.5 6.7C18.2 10.2 20 13 20 16a8 8 0 0 1-16 0c0-3 1.8-5.8 3.5-7.3C9.9 7.1 11.7 4.8 12 2z"></path></svg>热帖排行';
+
+        const tsSpan = document.createElement('span');
+        tsSpan.id = 'top-reply-timestamp';
+        tsSpan.style.cssText = 'font-size:11px;color:#bbb;margin-left:2px;';
+        tsSpan.textContent = '';
+
+        titleArea.appendChild(title);
+        titleArea.appendChild(tsSpan);
+
+        const refreshBtn = document.createElement('span');
+        refreshBtn.className = 'top-reply-refresh-btn';
+        refreshBtn.title = '立即刷新';
+        refreshBtn.style.cssText = 'cursor:pointer;transition:all 0.2s;display:flex;align-items:center;padding:4px;border-radius:6px;user-select:none;';
+        refreshBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
+        refreshBtn.onmouseenter = function() { if (!this.dataset.cooldown) this.style.background = '#f5f5f5'; };
+        refreshBtn.onmouseleave = function() { if (!this.dataset.cooldown) this.style.background = 'transparent'; };
+
+        // 打开弹窗时，恢复冷却状态
+        applyCooldownToBtn(refreshBtn);
+
+        refreshBtn.onclick = function () {
+            if (this.dataset.cooldown) return;
+            startGlobalCooldown();
+            applyCooldownToBtn(refreshBtn);
+            fetchTopPosts(true);
+            // 手动拉取后重置自动拉取倒计时（仅侧边栏开启时有效）
+            if (isSidebarEnabled()) {
+                startAutoRefresh();
+            }
+        };
+
+        const closeBtn = document.createElement('span');
+        closeBtn.style.cssText = 'cursor:pointer;display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;transition:all 0.15s;';
+        closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+        closeBtn.onmouseenter = function() { this.style.background = '#f5f5f5'; };
+        closeBtn.onmouseleave = function() { this.style.background = 'transparent'; };
+        closeBtn.onclick = () => dialog.remove();
+
+        const hintLabel = document.createElement('span');
+        hintLabel.style.cssText = 'font-size:11px;color:#aaa;margin-right:4px;white-space:nowrap;';
+        hintLabel.textContent = '点击刷新约35秒加载，多开自动排队';
+
+        const rightBtns = document.createElement('div');
+        rightBtns.style.cssText = 'display:flex;align-items:center;gap:4px;';
+        rightBtns.appendChild(hintLabel);
+        rightBtns.appendChild(refreshBtn);
+        rightBtns.appendChild(closeBtn);
+
+        header.appendChild(titleArea);
+        header.appendChild(rightBtns);
+        dialog.appendChild(header);
+
+        // 列表区域
+        const listDiv = document.createElement('div');
+        listDiv.id = 'top-reply-list';
+        listDiv.style.cssText = 'overflow-y:auto;flex:1;padding:8px;scrollbar-width:thin;scrollbar-color:#ddd transparent;';
+        listDiv.innerHTML = '<div style="text-align:center;padding:50px 0;"><div style="display:inline-block;width:28px;height:28px;border:3px solid #e8e8e8;border-top-color:#3498db;border-radius:50%;animation:topReplySpin 0.8s linear infinite;"></div><div style="margin-top:12px;color:#aaa;font-size:13px;">加载中…</div></div>';
+        // 注入动画和滚动条样式
+        if (!document.getElementById('top-reply-spin-style')) {
+            const style = document.createElement('style');
+            style.id = 'top-reply-spin-style';
+            style.textContent = '@keyframes topReplySpin{to{transform:rotate(360deg)}}@keyframes hotPostsSpin{to{transform:rotate(360deg)}}#top-reply-list::-webkit-scrollbar{width:6px}#top-reply-list::-webkit-scrollbar-track{background:transparent}#top-reply-list::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px}#top-reply-list::-webkit-scrollbar-thumb:hover{background:#ccc}.top-reply-title-link:hover{color:#3498db !important;}#top-reply-dialog{color:#333;}#top-reply-dialog a{color:#2c3e50;}';
+            document.head.appendChild(style);
+        }
+        dialog.appendChild(listDiv);
+
+        // 阻止滚动穿透：列表滚动到边界时阻止事件传播到页面
+        listDiv.addEventListener('wheel', function (e) {
+            const maxScrollTop = this.scrollHeight - this.clientHeight;
+            if (maxScrollTop <= 0) return;
+            if (this.scrollTop <= 0 && e.deltaY < 0) e.preventDefault();
+            else if (this.scrollTop >= maxScrollTop && e.deltaY > 0) e.preventDefault();
+        }, { passive: false });
+
+        // 底部（移动端缩小 padding）
+        const footer = document.createElement('div');
+        const footerPad = dialogIsMobile ? '8px 12px' : '10px 20px';
+        footer.style.cssText = 'padding:' + footerPad + ';border-top:1px solid #f0f0f0;font-size:11px;color:#c0c0c0;display:flex;justify-content:space-between;flex-shrink:0;background:#fafbfc;';
+        footer.innerHTML = '<span style="display:flex;align-items:center;gap:4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>点击刷新获取最新</span><span>NodeSeek 热门评论</span>';
+        dialog.appendChild(footer);
+
+        document.body.appendChild(dialog);
+
+        // 打开弹窗一律不自动拉取，只显示已有缓存，需手动点刷新按钮拉取
+        var cachedPosts = loadPosts();
+        if (cachedPosts.length > 0) {
+            // 有缓存直接显示（无论是否新鲜）
+            refreshDialogIfOpen(cachedPosts);
+        } else {
+            // 无缓存：提示手动刷新
+            const emptyList = document.getElementById('top-reply-list');
+            if (emptyList) {
+                emptyList.innerHTML = '<div style="text-align:center;padding:50px 0;color:#aaa;font-size:13px;">暂无数据，点击右上角刷新按钮拉取</div>';
+            }
+        }
+
+        // 左上角 20x20 拖拽实现
+        (function initDrag() {
+            let isDragging = false, startX, startY, startLeft, startTop;
+            dragHandle.addEventListener('mousedown', function (e) {
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startLeft = parseInt(dialog.style.left, 10) || 0;
+                startTop = parseInt(dialog.style.top, 10) || 0;
+                e.preventDefault();
+            });
+            document.addEventListener('mousemove', function (e) {
+                if (!isDragging) return;
+                dialog.style.left = (startLeft + e.clientX - startX) + 'px';
+                dialog.style.top = (startTop + e.clientY - startY) + 'px';
+            });
+            document.addEventListener('mouseup', function () {
+                isDragging = false;
+            });
+        })();
+    }
+
+    // ---- 侧边栏面板 ----
+
+    // 设备检测：与项目其他模块（collect.js）保持一致
+    function isMobile() {
+        if (window.NodeSeekFilter && typeof window.NodeSeekFilter.isMobileDevice === 'function') {
+            return window.NodeSeekFilter.isMobileDevice();
+        }
+        return window.innerWidth <= 767;
+    }
+
+    function setPanelWidth(panel) {
+        // 移动端不强制固定宽度，跟随父容器自适应
+        if (isMobile()) {
+            panel.style.width = '100%';
+            panel.style.maxWidth = '100%';
+            panel.style.boxSizing = 'border-box';
+            panel.style.overflow = 'hidden';
+            return;
+        }
+        const quickAccess = document.querySelector('.nsk-panel.quick-access');
+        if (!quickAccess) return;
+        const width = quickAccess.offsetWidth;
+        if (width > 0) {
+            panel.style.width = width + 'px';
+            panel.style.maxWidth = width + 'px';
+            panel.style.boxSizing = 'border-box';
+            panel.style.overflow = 'hidden';
+        }
+    }
+
+    function createSidebarPanel() {
+        // 注入侧边栏面板专属样式，覆盖 .nsk-panel 默认 padding
+        if (!document.getElementById('hot-posts-sidebar-style')) {
+            const sbStyle = document.createElement('style');
+            sbStyle.id = 'hot-posts-sidebar-style';
+            sbStyle.textContent = [
+                ':root{--hb-text:#333;--hb-border:#eee;--hb-hover-bg:#f5f5f5;--hb-muted:#999;--hb-faint:#bbb;}',
+                'body.dark-layout,html[data-ns-theme="dark"],html[data-theme="dark"],html.dark,body.dark,body.theme-dark{--hb-text:rgba(255,255,255,0.86);--hb-border:rgba(255,255,255,0.08);--hb-hover-bg:rgba(255,255,255,0.06);--hb-muted:rgba(255,255,255,0.5);--hb-faint:rgba(255,255,255,0.4);}',
+                '#hot-posts-sidebar-panel{padding:0 5px !important;}',
+                '#hot-posts-sidebar-panel *{box-sizing:border-box;}',
+                '#hot-posts-sidebar-panel h4{padding:0 !important;margin:0 !important;text-indent:0 !important;}',
+                '#hot-posts-sidebar-panel h4 .iconpark-icon{margin:0 !important;margin-right:2px !important;}',
+                '#hot-posts-sidebar-panel h4 span{margin:0 !important;padding:0 !important;}',
+                '#hot-posts-sidebar-panel > div[id]{padding:0 !important;margin:0 !important;}',
+                '#hot-posts-sidebar-panel > div[id] > div{padding-left:0 !important;padding-right:0 !important;}',
+                '#hot-posts-sidebar-list a:hover span{color:#3498db !important;text-decoration:none;}',
+                '#hot-posts-sidebar-list > div:hover{background:var(--hb-hover-bg,#f5f5f5) !important;}'
+            ].join('');
+            document.head.appendChild(sbStyle);
+        }
+
+        const panel = document.createElement('div');
+        panel.id = 'hot-posts-sidebar-panel';
+        panel.className = 'nsk-panel';
+        panel.style.cssText = 'margin-top:12px;padding:0;';
+
+        // 标题行（与原生 nsk-panel h4 结构一致：svg + span）
+        const header = document.createElement('h4');
+        header.setAttribute('aria-level', '2');
+        // 移动端：增大 padding 便于触摸
+        const headerTouchPad = isMobile() ? '8px 4px' : '0';
+        header.style.cssText = 'display:flex;align-items:center;gap:4px;cursor:pointer;padding:' + headerTouchPad + ';margin:0;';
+        header.innerHTML = [
+            '<svg class="iconpark-icon"><use href="#ranking"></use></svg>',
+            '<span>热帖排行</span>',
+            '<span id="hot-posts-sidebar-time" style="font-size:11px;color:var(--hb-muted,#999);font-weight:normal;margin-left:2px;"></span>'
+        ].join('');
+
+        // 点击标题打开弹窗
+        header.addEventListener('click', function () {
+            showTopReplyDialog();
+        });
+
+        panel.appendChild(header);
+
+        // 列表区域
+        const listDiv = document.createElement('div');
+        listDiv.id = 'hot-posts-sidebar-list';
+        listDiv.style.cssText = 'padding:0;width:100%;box-sizing:border-box;overflow:hidden;';
+        listDiv.innerHTML = '<div style="text-align:center;color:var(--hb-faint,#bbb);padding:20px 0;font-size:12px;">加载中…</div>';
+        panel.appendChild(listDiv);
+
+        return panel;
+    }
+
+    // ---- 阅读记忆辅助 ----
+    function getViewedColor() {
+        try { return localStorage.getItem('nodeseek_viewed_color') || '#9aa0a6'; } catch (e) { return '#9aa0a6'; }
+    }
+
+    function normalizePostUrl(urlStr) {
+        try {
+            var urlObj = new URL(urlStr, window.location.origin);
+            var pathname = urlObj.pathname;
+            var m = pathname.match(/^\/post-(\d+)-\d+$/);
+            if (m) pathname = '/post-' + m[1] + '-1';
+            return urlObj.origin + pathname + urlObj.search;
+        } catch (e) {
+            return (urlStr || '').split('#')[0];
+        }
+    }
+
+    function getViewedUrlSet() {
+        try {
+            var raw = localStorage.getItem('nodeseek_viewed_titles_data');
+            if (raw) return new Set(JSON.parse(raw));
+        } catch (e) {}
+        return new Set();
+    }
+
+    function markUrlAsViewed(normalizedUrl) {
+        try {
+            var raw = localStorage.getItem('nodeseek_viewed_titles_data');
+            var list = raw ? JSON.parse(raw) : [];
+            if (!Array.isArray(list)) list = [];
+            if (!list.includes(normalizedUrl)) {
+                list.push(normalizedUrl);
+                localStorage.setItem('nodeseek_viewed_titles_data', JSON.stringify(list));
+            }
+            if (window.NodeSeekViewedTitles && typeof window.NodeSeekViewedTitles.add === 'function') {
+                window.NodeSeekViewedTitles.add(normalizedUrl);
+            }
+        } catch (e) {}
+    }
+
+    function renderSidebarList(container, posts) {
+        if (!posts || posts.length === 0) {
+            container.innerHTML = '<div style="text-align:center;color:var(--hb-faint,#bbb);padding:20px 0;font-size:12px;">暂无数据</div>';
+            return;
+        }
+
+        var viewedEnabled = localStorage.getItem('nodeseek_viewed_history_enabled') !== 'false';
+        var viewedSet = viewedEnabled ? getViewedUrlSet() : new Set();
+        var viewedColor = getViewedColor();
+
+        container.innerHTML = '';
+
+        var sbIsMobile = isMobile();
+        posts.forEach(function (post) {
+            var fullUrl = post.url.startsWith('http') ? post.url : 'https://www.nodeseek.com' + post.url;
+            var normalized = normalizePostUrl(fullUrl);
+            var isViewed = viewedEnabled && viewedSet.has(normalized);
+            var color = isViewed ? viewedColor : 'var(--hb-text,#333)';
+            var title = (post.title || '').replace(/"/g, '&quot;');
+
+            var row = document.createElement('div');
+            // 移动端：增大 padding 和字号，便于触摸
+            var rowPad = sbIsMobile ? '10px 8px' : '6px 12px';
+            row.style.cssText = 'padding:' + rowPad + ';border-bottom:1px solid var(--hb-border,#eee);' + (sbIsMobile ? 'min-height:44px;display:flex;align-items:center;' : '');
+
+            var link = document.createElement('a');
+            link.href = fullUrl;
+            link.target = '_blank';
+            link.style.cssText = 'display:flex;align-items:center;text-decoration:none;color:inherit;min-width:0;' + (sbIsMobile ? 'width:100%;' : '');
+
+            var span = document.createElement('span');
+            var spanFontSize = sbIsMobile ? '14px' : '13px';
+            span.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + color + ';font-size:' + spanFontSize + ';min-width:0;';
+            span.textContent = post.title;
+            // 仅截断时鼠标悬停显示完整内容
+            span.onmouseenter = function() {
+                this.title = this.scrollWidth > this.clientWidth ? post.title : '';
+            };
+            span.onmouseleave = function() { this.title = ''; };
+
+            link.appendChild(span);
+            row.appendChild(link);
+            container.appendChild(row);
+
+            link.addEventListener('click', function () {
+                markUrlAsViewed(normalized);
+                span.style.color = viewedColor;
+            });
+        });
+    }
+
+    function refreshSidebarContent() {
+        var listDiv = document.getElementById('hot-posts-sidebar-list');
+        var timeSpan = document.getElementById('hot-posts-sidebar-time');
+        if (!listDiv) return;
+
+        var posts = loadPosts();
+        if (posts && posts.length > 0) {
+            renderSidebarList(listDiv, posts);
+            if (timeSpan) {
+                var fetchTime = 0;
+                try { fetchTime = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
+                timeSpan.textContent = '更新于 ' + (fetchTime ? new Date(fetchTime).toLocaleTimeString() : new Date().toLocaleTimeString());
+            }
+        }
+    }
+
+    function injectSidebarPanel() {
+        if (document.getElementById('hot-posts-sidebar-panel')) return;
+
+        var quickAccess = document.querySelector('.nsk-panel.quick-access');
+        if (!quickAccess) {
+            // 如果快捷功能区还没加载，延迟重试
+            setTimeout(injectSidebarPanel, 1000);
+            return;
+        }
+
+        var panel = createSidebarPanel();
+        quickAccess.after(panel);
+        setPanelWidth(panel);
+
+        // 窗口变化时调整宽度
+        var resizeTimer = null;
+        window.addEventListener('resize', function () {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(function () {
+                var p = document.getElementById('hot-posts-sidebar-panel');
+                if (p) setPanelWidth(p);
+            }, 200);
+        });
+
+        // 先显示缓存，再拉取最新数据
+        refreshSidebarContent();
+        fetchTopPosts(false);
+    }
+
+    // ---- 自动刷新 ----
+    let _autoRefreshTimer = null;
+
+    function startAutoRefresh() {
+        if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+        _autoRefreshTimer = setInterval(function () {
+            // 无论拉取是否成功，先用缓存刷新侧边栏 UI，确保时间戳和数据始终最新
+            refreshSidebarContent();
+            fetchTopPosts(false);
+        }, AUTO_REFRESH_INTERVAL);
+    }
+
+    function stopAutoRefresh() {
+        if (_autoRefreshTimer) {
+            clearInterval(_autoRefreshTimer);
+            _autoRefreshTimer = null;
+        }
+    }
+
+    function resumeCooldownIfNeeded() {
+        if (_lastRefreshTime <= 0) return;
+        var elapsed = Date.now() - _lastRefreshTime;
+        if (elapsed >= REFRESH_COOLDOWN_MS) {
+            _lastRefreshTime = 0;
+            try { localStorage.removeItem(COOLDOWN_KEY); } catch (e) {}
+            return;
+        }
+        // 仍在冷却期，重启全局计时器（跨页面后计时器已销毁，不重置时间戳）
+        resumeGlobalCooldown();
+    }
+
+    // ---- 热帖排行侧边栏开关 ----
+    const SIDEBAR_ENABLED_KEY = 'nodeseek_hot_posts_sidebar_enabled';
+
+    function isSidebarEnabled() {
+        return localStorage.getItem(SIDEBAR_ENABLED_KEY) !== 'false';
+    }
+
+    /** 动态开关：关闭时移除侧边栏面板并停止自动拉取；开启时注入面板并启动自动拉取 */
+    function setEnabled(enabled) {
+        if (enabled) {
+            // 开启：注入面板并启动自动刷新
+            injectSidebarPanel();
+            resumeCooldownIfNeeded();
+            startAutoRefresh();
+        } else {
+            // 关闭：移除面板并停止自动刷新
+            stopAutoRefresh();
+            const panel = document.getElementById('hot-posts-sidebar-panel');
+            if (panel) panel.remove();
+        }
+    }
+
+    // ---- 初始化 ----
+    function init() {
+        // 未开启侧边栏时，不注入面板也不自动拉取，仅保留手动弹窗能力
+        if (!isSidebarEnabled()) return;
+
+        injectSidebarPanel();
+        resumeCooldownIfNeeded();
+        startAutoRefresh();
+        // 监听页面可见性变化：切回标签页时如果缓存已过期，自动刷新
+        document.addEventListener('visibilitychange', function () {
+            if (document.hidden) return;
+            // 标签页变为可见，刷新侧边栏 UI 显示最新缓存数据
+            refreshSidebarContent();
+            // 缓存已过期且无 429 冷却 → 尝试拉取新数据
+            var cacheTime = 0;
+            try { cacheTime = parseInt(localStorage.getItem(STORAGE_KEY + '_time'), 10) || 0; } catch (e) {}
+            if (Date.now() - cacheTime >= FETCH_CACHE_MS && !isRateLimitCooldownActive()) {
+                fetchTopPosts(false);
+            }
+        });
+        // 监听 localStorage 变化：其他 tab 更新数据后，本 tab 自动刷新侧边栏
+        window.addEventListener('storage', function (e) {
+            if (e.key === STORAGE_KEY || e.key === STORAGE_KEY + '_time') {
+                refreshSidebarContent();
+            }
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    // ---- 公共 API ----
+    window.NodeSeekTopReply = {
+        showTopReplyDialog,
+        fetchTopPosts,
+        getTopPosts: loadPosts,
+        injectSidebarPanel,
+        refreshSidebarContent,
+        setEnabled
     };
 
 })();
