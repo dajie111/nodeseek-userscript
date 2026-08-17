@@ -311,7 +311,8 @@
 			card.className = 'ns-emoji-item';
 			const img = document.createElement('img');
 			img.className='ns-emoji-thumb';
-            const fullUrl = toFullUrl(item.url);
+            // 统一归一化路径：/emojis/ -> /api/emoji_file/，绕过 Nginx 静态规则拦截，直达 Flask 后端
+            const fullUrl = toFullUrl(toRelativePath(item.url));
             img.src = fullUrl;
 			img.alt = item.name;
 			img.loading = 'lazy';
