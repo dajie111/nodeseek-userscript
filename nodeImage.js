@@ -1222,7 +1222,7 @@
         var tip = document.createElement('div');
         tip.style.cssText = 'font-size:12px;color:#666;margin-bottom:8px;line-height:1.4;';
         tip.innerHTML =
-            '请到 <a href="https://www.nodeimage.com/" target="_blank" rel="noopener noreferrer">nodeimage.com</a> 完成 <strong>NodeSeek 授权</strong>。<span style="color:#b45309;">须在与油猴相同的浏览器里授权</span>。密钥需<strong>手动</strong>获取：点「手动获取」从接口拉取（须已登录 nodeimage），或到网站顶部「API」页复制后粘贴，再点「保存密钥」。';
+            '请到 <a href="https://www.nodeimage.com/" target="_blank" rel="noopener noreferrer" style="color:#0d9488;">nodeimage.com</a> 完成 <strong>NodeSeek 授权</strong>。<span style="color:#b45309;">须在与油猴相同的浏览器里授权</span>。密钥需<strong>手动</strong>获取：点「手动获取」从接口拉取（须已登录 nodeimage），或到网站顶部「API」页复制后粘贴，再点「保存密钥」。';
         niScroll.appendChild(tip);
         var keyRow = document.createElement('div');
         keyRow.style.cssText = 'display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center;';
