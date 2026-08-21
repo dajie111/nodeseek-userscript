@@ -1056,8 +1056,8 @@
             // 鼠标悬停显示完整信息（自定义浮层，不使用原生 title 以避免被主脚本 replaceRelativeTimeWithAbsolute 误替换文档内容）
             var tipLines = ['标题：' + (post.title || '')];
             if (post.author) tipLines.push('作者：' + post.author);
-            tipLines.push('浏览量：' + (post.views || 0));
-            if (post.lastReplier) tipLines.push('最后回复ID：' + post.lastReplier +
+            tipLines.push('浏览量：' + (post.views || 0) + '　回复数：' + (post.comments || 0));
+            if (post.lastReplier) tipLines.push('最后回复：' + post.lastReplier +
                 (post.lastCommentTime ? '　时间：' + post.lastCommentTime : ''));
             else if (post.lastCommentTime) tipLines.push('最后回复时间：' + post.lastCommentTime);
             if (post.category) tipLines.push('分类：' + post.category);
