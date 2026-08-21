@@ -1044,11 +1044,15 @@
             var spanFontSize = sbIsMobile ? '14px' : '13px';
             span.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + color + ';font-size:' + spanFontSize + ';min-width:0;';
             span.textContent = post.title;
-            // 仅截断时鼠标悬停显示完整内容
-            span.onmouseenter = function() {
-                this.title = this.scrollWidth > this.clientWidth ? post.title : '';
-            };
-            span.onmouseleave = function() { this.title = ''; };
+            // 鼠标悬停显示完整信息，与弹窗一致：标题 / 作者 / 浏览量 / 最后回复者+时间(同行) / 分类
+            var tipLines = ['标题：' + (post.title || '')];
+            if (post.author) tipLines.push('作者：' + post.author);
+            tipLines.push('浏览量：' + (post.views || 0));
+            if (post.lastReplier) tipLines.push('最后回复ID：' + post.lastReplier +
+                (post.lastCommentTime ? '　时间：' + post.lastCommentTime : ''));
+            else if (post.lastCommentTime) tipLines.push('最后回复时间：' + post.lastCommentTime);
+            if (post.category) tipLines.push('分类：' + post.category);
+            link.title = tipLines.join('\n');
 
             link.appendChild(span);
             row.appendChild(link);
