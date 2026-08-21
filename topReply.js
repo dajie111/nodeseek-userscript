@@ -931,9 +931,18 @@
                 '#hot-posts-sidebar-panel > div[id]{padding:0 !important;margin:0 !important;}',
                 '#hot-posts-sidebar-panel > div[id] > div{padding-left:0 !important;padding-right:0 !important;}',
                 '#hot-posts-sidebar-list a:hover span{color:#3498db !important;text-decoration:none;}',
-                '#hot-posts-sidebar-list > div:hover{background:var(--hb-hover-bg,#f5f5f5) !important;}'
+                '#hot-posts-sidebar-list > div:hover{background:var(--hb-hover-bg,#f5f5f5) !important;}',
+                '#hot-posts-tooltip{position:fixed;z-index:99999;display:none;padding:8px 12px;background:#fff;color:#333;border:1px solid #e0e0e0;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);font-size:12px;line-height:1.7;white-space:pre-line;pointer-events:none;max-width:380px;word-break:break-all;}',
+                'body.dark-layout #hot-posts-tooltip,html[data-ns-theme="dark"] #hot-posts-tooltip,html[data-theme="dark"] #hot-posts-tooltip,html.dark #hot-posts-tooltip,body.dark #hot-posts-tooltip,body.theme-dark #hot-posts-tooltip{background:#2b2b2b;color:rgba(255,255,255,0.9);border-color:rgba(255,255,255,0.15);box-shadow:0 4px 16px rgba(0,0,0,0.5);}'
             ].join('');
             document.head.appendChild(sbStyle);
+        }
+
+        // 创建全局共享的 tooltip 浮层（避免每条热帖都创建 DOM）
+        if (!document.getElementById('hot-posts-tooltip')) {
+            var tipEl = document.createElement('div');
+            tipEl.id = 'hot-posts-tooltip';
+            document.body.appendChild(tipEl);
         }
 
         const panel = document.createElement('div');
@@ -1044,7 +1053,7 @@
             var spanFontSize = sbIsMobile ? '14px' : '13px';
             span.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + color + ';font-size:' + spanFontSize + ';min-width:0;';
             span.textContent = post.title;
-            // 鼠标悬停显示完整信息，与弹窗一致：标题 / 作者 / 浏览量 / 最后回复者+时间(同行) / 分类
+            // 鼠标悬停显示完整信息（自定义浮层，不使用原生 title 以避免被主脚本 replaceRelativeTimeWithAbsolute 误替换文档内容）
             var tipLines = ['标题：' + (post.title || '')];
             if (post.author) tipLines.push('作者：' + post.author);
             tipLines.push('浏览量：' + (post.views || 0));
@@ -1052,7 +1061,46 @@
                 (post.lastCommentTime ? '　时间：' + post.lastCommentTime : ''));
             else if (post.lastCommentTime) tipLines.push('最后回复时间：' + post.lastCommentTime);
             if (post.category) tipLines.push('分类：' + post.category);
-            link.title = tipLines.join('\n');
+            var tipText = tipLines.join('\n');
+            link.setAttribute('data-ns-tip', tipText);
+
+            link.addEventListener('mouseenter', function (e) {
+                var tip = document.getElementById('hot-posts-tooltip');
+                if (!tip) return;
+                tip.textContent = this.getAttribute('data-ns-tip') || '';
+                tip.style.display = 'block';
+                // 首次定位
+                var pad = 14;
+                var x = e.clientX + pad;
+                var y = e.clientY + pad;
+                var tw = tip.offsetWidth;
+                var th = tip.offsetHeight;
+                if (x + tw > window.innerWidth - 4) x = e.clientX - tw - pad;
+                if (y + th > window.innerHeight - 4) y = e.clientY - th - pad;
+                if (x < 4) x = 4;
+                if (y < 4) y = 4;
+                tip.style.left = x + 'px';
+                tip.style.top = y + 'px';
+            });
+            link.addEventListener('mousemove', function (e) {
+                var tip = document.getElementById('hot-posts-tooltip');
+                if (!tip || tip.style.display !== 'block') return;
+                var pad = 14;
+                var x = e.clientX + pad;
+                var y = e.clientY + pad;
+                var tw = tip.offsetWidth;
+                var th = tip.offsetHeight;
+                if (x + tw > window.innerWidth - 4) x = e.clientX - tw - pad;
+                if (y + th > window.innerHeight - 4) y = e.clientY - th - pad;
+                if (x < 4) x = 4;
+                if (y < 4) y = 4;
+                tip.style.left = x + 'px';
+                tip.style.top = y + 'px';
+            });
+            link.addEventListener('mouseleave', function () {
+                var tip = document.getElementById('hot-posts-tooltip');
+                if (tip) tip.style.display = 'none';
+            });
 
             link.appendChild(span);
             row.appendChild(link);
