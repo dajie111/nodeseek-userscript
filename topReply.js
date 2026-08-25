@@ -4,9 +4,9 @@
 
     const STORAGE_KEY = 'nodeseek_top_reply_data';
     const SETTINGS_KEY = 'nodeseek_top_reply_settings';
-    /** 1000条滚动历史存储：按 postId 保存所有拉取到的帖子数据，供数据统计使用 */
+    /** 1250条滚动历史存储：按 postId 保存所有拉取到的帖子数据，供数据统计使用 */
     const HISTORY_KEY = 'nodeseek_top_reply_history';
-    const HISTORY_MAX_ENTRIES = 1000; // 条数上限，超出时清除最旧的记录
+    const HISTORY_MAX_ENTRIES = 1250; // 条数上限，超出时清除最旧的记录
     const HISTORY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 超过7天未更新的记录删除
     const BASE_URL = 'https://www.nodeseek.com/page-';
     const MAX_PAGE = 10;
