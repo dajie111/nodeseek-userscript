@@ -6,7 +6,8 @@
     const SETTINGS_KEY = 'nodeseek_top_reply_settings';
     /** 1000条滚动历史存储：按 postId 保存所有拉取到的帖子数据，供数据统计使用 */
     const HISTORY_KEY = 'nodeseek_top_reply_history';
-    const HISTORY_MAX_ENTRIES = 1000; // 安全上限，超出时清除最旧的记录
+    const HISTORY_MAX_ENTRIES = 1000; // 条数上限，超出时清除最旧的记录
+    const HISTORY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 超过7天未更新的记录删除
     const BASE_URL = 'https://www.nodeseek.com/page-';
     const MAX_PAGE = 10;
     const TOP_COUNT = 30;
@@ -163,12 +164,18 @@
     function saveHistory(list) {
         try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch (e) {}
     }
-    /** 超过1000条时清除最旧的记录 */
+    /** 清理历史：删除超过7天未更新的记录；条数超上限时再清除最旧的 */
     function pruneHistory() {
+        const now = Date.now();
         const list = loadHistory();
-        if (list.length <= HISTORY_MAX_ENTRIES) return;
-        list.sort((a, b) => (b._ts || 0) - (a._ts || 0));
-        saveHistory(list.slice(0, HISTORY_MAX_ENTRIES));
+        let kept = list.filter(p => now - (p._ts || 0) < HISTORY_TTL_MS);
+        let changed = kept.length !== list.length;
+        if (kept.length > HISTORY_MAX_ENTRIES) {
+            kept.sort((a, b) => (b._ts || 0) - (a._ts || 0));
+            kept = kept.slice(0, HISTORY_MAX_ENTRIES);
+            changed = true;
+        }
+        if (changed) saveHistory(kept);
     }
     /** 拉取到新数据后合并进历史：同一 postId 用新数据替换老记录并重置时间戳 */
     function mergeHistory(posts) {
@@ -190,12 +197,13 @@
         }
         saveHistory(merged);
     }
-    /** 供外部（统计功能）读取历史数据 */
+    /** 供外部（统计功能）读取历史数据（已过滤7天前的过期记录） */
     function getHistory() {
-        return loadHistory();
+        const now = Date.now();
+        return loadHistory().filter(p => now - (p._ts || 0) < HISTORY_TTL_MS);
     }
 
-    // 脚本启动时清理超出上限的历史记录
+    // 脚本启动时清理过期和超上限的历史记录
     pruneHistory();
     // 暴露读取接口供外部统计使用：window.getTopReplyHistory() 返回历史全部帖子数据
     window.getTopReplyHistory = getHistory;
