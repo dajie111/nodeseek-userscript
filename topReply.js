@@ -514,15 +514,16 @@
                         return true;
                     });
 
-                    // 全部拉取数据合并进24小时滚动历史（同一帖子新数据替换老数据并重置时间）
+                    // 全部拉取数据合并进滚动历史（同一帖子新数据替换老数据并重置时间）
                     mergeHistory(uniquePosts);
 
-                    // 找到当前批次中最新的帖子 ID，过滤掉老帖（ID 差距超过 5000）
-                    const maxId = uniquePosts.reduce((max, p) => Math.max(max, p.postId || 0), 0);
-                    const freshPosts = uniquePosts.filter(p => (p.postId || 0) >= maxId - 5000);
-
-                    freshPosts.sort((a, b) => b.comments - a.comments);
-                    const topPosts = freshPosts.slice(0, TOP_COUNT);
+                    // 排行榜改为在本地1000条历史中统计：
+                    // 过滤掉老帖（ID 差距超过 5000），再按回复数排序取 top30
+                    const hist = getHistory();
+                    const maxId = hist.reduce((max, p) => Math.max(max, p.postId || 0), 0);
+                    const histFresh = hist.filter(p => (p.postId || 0) >= maxId - 5000);
+                    histFresh.sort((a, b) => b.comments - a.comments);
+                    const topPosts = histFresh.slice(0, TOP_COUNT);
 
                     if (topPosts.length > 0) {
                         savePosts(topPosts);
