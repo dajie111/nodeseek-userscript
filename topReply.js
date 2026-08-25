@@ -4,6 +4,9 @@
 
     const STORAGE_KEY = 'nodeseek_top_reply_data';
     const SETTINGS_KEY = 'nodeseek_top_reply_settings';
+    /** 1000条滚动历史存储：按 postId 保存所有拉取到的帖子数据，供数据统计使用 */
+    const HISTORY_KEY = 'nodeseek_top_reply_history';
+    const HISTORY_MAX_ENTRIES = 1000; // 安全上限，超出时清除最旧的记录
     const BASE_URL = 'https://www.nodeseek.com/page-';
     const MAX_PAGE = 10;
     const TOP_COUNT = 30;
@@ -150,6 +153,52 @@
     function savePosts(posts) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
     }
+
+    // ---- 1000条滚动历史存储（供数据统计） ----
+    function loadHistory() {
+        try {
+            return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+        } catch { return []; }
+    }
+    function saveHistory(list) {
+        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch (e) {}
+    }
+    /** 超过1000条时清除最旧的记录 */
+    function pruneHistory() {
+        const list = loadHistory();
+        if (list.length <= HISTORY_MAX_ENTRIES) return;
+        list.sort((a, b) => (b._ts || 0) - (a._ts || 0));
+        saveHistory(list.slice(0, HISTORY_MAX_ENTRIES));
+    }
+    /** 拉取到新数据后合并进历史：同一 postId 用新数据替换老记录并重置时间戳 */
+    function mergeHistory(posts) {
+        if (!posts || posts.length === 0) return;
+        const now = Date.now();
+        const list = loadHistory();
+        const map = new Map();
+        list.forEach(p => { if (p.postId) map.set(p.postId, p); });
+        posts.forEach(p => {
+            if (!p.postId) return;
+            // 新数据替换老数据，时间重新计算
+            map.set(p.postId, Object.assign({}, p, { _ts: now }));
+        });
+        let merged = Array.from(map.values());
+        // 超过上限：按更新时间从新到旧保留，清除最旧的记录
+        if (merged.length > HISTORY_MAX_ENTRIES) {
+            merged.sort((a, b) => (b._ts || 0) - (a._ts || 0));
+            merged = merged.slice(0, HISTORY_MAX_ENTRIES);
+        }
+        saveHistory(merged);
+    }
+    /** 供外部（统计功能）读取历史数据 */
+    function getHistory() {
+        return loadHistory();
+    }
+
+    // 脚本启动时清理超出上限的历史记录
+    pruneHistory();
+    // 暴露读取接口供外部统计使用：window.getTopReplyHistory() 返回历史全部帖子数据
+    window.getTopReplyHistory = getHistory;
 
     // 从帖子 URL 中提取数字 ID，如 /post-512810-1 返回 512810
     function extractPostId(url) {
@@ -456,6 +505,9 @@
                         seen.add(p.url);
                         return true;
                     });
+
+                    // 全部拉取数据合并进24小时滚动历史（同一帖子新数据替换老数据并重置时间）
+                    mergeHistory(uniquePosts);
 
                     // 找到当前批次中最新的帖子 ID，过滤掉老帖（ID 差距超过 5000）
                     const maxId = uniquePosts.reduce((max, p) => Math.max(max, p.postId || 0), 0);
