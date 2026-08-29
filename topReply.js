@@ -8,7 +8,7 @@
     const HISTORY_KEY = 'nodeseek_top_reply_history';
     const HISTORY_MAX_ENTRIES = 1250; // 条数上限，超出时清除最旧的记录
     const HISTORY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 超过7天未更新的记录删除
-    const BASE_URL = 'https://www.nodeseek.com/page-';
+    const BASE_URL = 'https://www.nodeseek.com/page-'; // 实际页面地址：BASE_URL + 页码 + '?sortBy=replyTime'（见 fetchPage）
     const MAX_PAGE = 10;
     const TOP_COUNT = 30;
     /** 刷新冷却时间（毫秒），避免频繁请求 */
@@ -257,7 +257,7 @@
     }
 
     function fetchPage(pageNum) {
-        const url = BASE_URL + pageNum;
+        const url = BASE_URL + pageNum + '?sortBy=replyTime';
         return fetch(url, { credentials: 'include' })
             .then(resp => {
                 if (!resp.ok) {
