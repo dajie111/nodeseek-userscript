@@ -256,32 +256,25 @@
         return { title, url, author, comments, views, category, lastCommentTime, lastReplier, postId: extractPostId(url) };
     }
 
-    /* ==================== 标签页偏好保护 ====================
-     * NodeSeek 会把 URL 中的 sortBy 参数写入 cookie（Set-Cookie: sortBy=xxx），
-     * 首页「新评论/新帖子」标签的选中态正是读取该 cookie。
-     * 脚本 fetch ?sortBy=replyTime 会把用户偏好改写为「新评论」，导致标签被切换。
-     * 方案：拉取前快照 sortBy cookie，响应到达后立即写回原值，保证用户所在标签不变。
-     */
-    function getSortCookie() {
-        const m = /(?:^|;\s*)sortBy=([^;]*)/.exec(document.cookie || '');
-        return m ? decodeURIComponent(m[1]) : null;
+    /* ---- 排序状态保护 ----
+       拉取统一用 sortBy=replyTime，但服务器会通过 Set-Cookie 把 sortBy 写进 cookie，
+       会把用户当前的「新帖子/新评论」标签改掉。故拉取前记录、拉取后恢复，
+       保证用户在哪个标签页，拉取后仍停留在哪个标签页。 */
+    function getSortByCookie() {
+        var m = document.cookie.match(/(?:^|;\s*)sortBy=([^;]+)/);
+        return m ? m[1] : null;
     }
-
-    function restoreSortCookie(saved) {
-        try {
-            if (saved === null) return; // 原本无该 cookie：站点默认即「新评论」，fetch 写入 replyTime 与默认一致，无需恢复
-            if (getSortCookie() !== saved) {
-                document.cookie = 'sortBy=' + encodeURIComponent(saved) + '; path=/';
-            }
-        } catch (e) { /* cookie 恢复失败不影响拉取主流程 */ }
+    function restoreSortByCookie(saved) {
+        // 仅当拉取把它覆写为 replyTime 且与用户原值不同时才恢复，避免误覆盖拉取期间用户手动切换
+        if (saved && saved !== 'replyTime' && getSortByCookie() === 'replyTime') {
+            document.cookie = 'sortBy=' + saved + '; path=/; max-age=31536000';
+        }
     }
 
     function fetchPage(pageNum) {
         const url = BASE_URL + pageNum + '?sortBy=replyTime';
-        const savedSort = getSortCookie(); // 快照用户当前标签偏好
         return fetch(url, { credentials: 'include' })
             .then(resp => {
-                restoreSortCookie(savedSort); // 服务器已在响应中改写 sortBy，立即恢复用户原偏好
                 if (!resp.ok) {
                     // CF 拦截通常返回 403 或 503
                     if ((resp.status === 403 || resp.status === 503) && !_cfBlockedLogged) {
@@ -515,6 +508,8 @@
 
         /* 核心拉取+渲染逻辑 */
         function doFetch() {
+            // 拉取前记录用户当前排序标签（新帖子/新评论），拉取结束后恢复，防止拉取改写 cookie 导致标签跳变
+            var savedSortBy = getSortByCookie();
             return fetchSequential(1)
                 .then(() => {
                     if (allPosts.length === 0) {
@@ -577,6 +572,10 @@
                     }
                     // 同步刷新侧边栏面板（显示缓存）
                     refreshSidebarContent();
+                })
+                .finally(function () {
+                    // 无论成功失败都恢复用户原有排序标签，保证停留在原标签页
+                    restoreSortByCookie(savedSortBy);
                 });
         }
 
