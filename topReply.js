@@ -265,16 +265,27 @@
         return m ? m[1] : null;
     }
     function restoreSortByCookie(saved) {
-        // 仅当拉取把它覆写为 replyTime 且与用户原值不同时才恢复，避免误覆盖拉取期间用户手动切换
-        if (saved && saved !== 'replyTime' && getSortByCookie() === 'replyTime') {
+        // 仅当拉取把 cookie 覆写为 replyTime 时才需要恢复，避免误覆盖拉取期间用户手动切换
+        if (getSortByCookie() !== 'replyTime') return;
+        if (saved && saved !== 'replyTime') {
+            // 用户原值为 postTime 等：写回原值
             document.cookie = 'sortBy=' + saved + '; path=/; max-age=31536000';
+        } else if (!saved) {
+            // 用户原本无排序 cookie（默认新帖子）：删除覆写值，恢复默认
+            document.cookie = 'sortBy=; path=/; max-age=0';
         }
     }
+
+    /* 拉取期间保存的用户原排序值（每页响应后立即恢复，见 fetchPage） */
+    var _userSortBy = null;
 
     function fetchPage(pageNum) {
         const url = BASE_URL + pageNum + '?sortBy=replyTime';
         return fetch(url, { credentials: 'include' })
             .then(resp => {
+                // 服务器响应的 Set-Cookie 已把 sortBy 覆写为 replyTime，立即恢复用户原值，
+                // 避免拉取窗口期内 SPA 重渲染导致「新帖子→新评论」标签跳变
+                restoreSortByCookie(_userSortBy);
                 if (!resp.ok) {
                     // CF 拦截通常返回 403 或 503
                     if ((resp.status === 403 || resp.status === 503) && !_cfBlockedLogged) {
@@ -508,8 +519,10 @@
 
         /* 核心拉取+渲染逻辑 */
         function doFetch() {
-            // 拉取前记录用户当前排序标签（新帖子/新评论），拉取结束后恢复，防止拉取改写 cookie 导致标签跳变
+            // 拉取前记录用户当前排序标签（新帖子/新评论）：每页响应后立即恢复 + 整轮结束兜底恢复，
+            // 防止拉取改写 cookie 导致标签跳变
             var savedSortBy = getSortByCookie();
+            _userSortBy = savedSortBy;
             return fetchSequential(1)
                 .then(() => {
                     if (allPosts.length === 0) {
