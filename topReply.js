@@ -256,10 +256,32 @@
         return { title, url, author, comments, views, category, lastCommentTime, lastReplier, postId: extractPostId(url) };
     }
 
+    /* ==================== 标签页偏好保护 ====================
+     * NodeSeek 会把 URL 中的 sortBy 参数写入 cookie（Set-Cookie: sortBy=xxx），
+     * 首页「新评论/新帖子」标签的选中态正是读取该 cookie。
+     * 脚本 fetch ?sortBy=replyTime 会把用户偏好改写为「新评论」，导致标签被切换。
+     * 方案：拉取前快照 sortBy cookie，响应到达后立即写回原值，保证用户所在标签不变。
+     */
+    function getSortCookie() {
+        const m = /(?:^|;\s*)sortBy=([^;]*)/.exec(document.cookie || '');
+        return m ? decodeURIComponent(m[1]) : null;
+    }
+
+    function restoreSortCookie(saved) {
+        try {
+            if (saved === null) return; // 原本无该 cookie：站点默认即「新评论」，fetch 写入 replyTime 与默认一致，无需恢复
+            if (getSortCookie() !== saved) {
+                document.cookie = 'sortBy=' + encodeURIComponent(saved) + '; path=/';
+            }
+        } catch (e) { /* cookie 恢复失败不影响拉取主流程 */ }
+    }
+
     function fetchPage(pageNum) {
         const url = BASE_URL + pageNum + '?sortBy=replyTime';
+        const savedSort = getSortCookie(); // 快照用户当前标签偏好
         return fetch(url, { credentials: 'include' })
             .then(resp => {
+                restoreSortCookie(savedSort); // 服务器已在响应中改写 sortBy，立即恢复用户原偏好
                 if (!resp.ok) {
                     // CF 拦截通常返回 403 或 503
                     if ((resp.status === 403 || resp.status === 503) && !_cfBlockedLogged) {
