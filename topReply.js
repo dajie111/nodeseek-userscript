@@ -281,7 +281,10 @@
 
     function fetchPage(pageNum) {
         const url = BASE_URL + pageNum + '?sortBy=replyTime';
-        return fetch(url, { credentials: 'include' })
+        // credentials:'omit'：不带 cookie 请求，浏览器会忽略响应的 Set-Cookie，
+        // 从根源杜绝服务器把 sortBy 覆写为 replyTime 导致用户标签页跳变「新评论」。
+        // 帖子列表为公开内容，已实测 omit 下数据完整返回（标题/作者/浏览/回复均正常）。
+        return fetch(url, { credentials: 'omit' })
             .then(resp => {
                 // 服务器响应的 Set-Cookie 已把 sortBy 覆写为 replyTime，立即恢复用户原值，
                 // 避免拉取窗口期内 SPA 重渲染导致「新帖子→新评论」标签跳变
